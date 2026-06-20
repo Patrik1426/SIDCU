@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { obtenerPerfil, crearPerfil, actualizarPerfil } from "../db";
+import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor } from "../db";
 
 const perfilInput = z.object({
   rfc: z.string().regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/, "RFC inválido"),
@@ -32,6 +32,23 @@ export const perfilRouter = router({
         datosContacto: input.datosContacto ?? null,
         completado: true,
       });
+
+      await crearServidor({
+        userId: ctx.user.id,
+        nombreCompleto: ctx.user.nombre,
+        rfc: input.rfc,
+        curp: input.curp,
+        cargo: input.cargo,
+        dependencia: input.dependencia,
+        nivel: input.nivelGobierno,
+        grupoFuncion: input.grupoFuncion,
+        fechaIngreso: input.fechaIngreso,
+        datosContacto: input.datosContacto ?? null,
+        estatus: "activo",
+        creadoPor: ctx.user.id,
+        actualizadoPor: ctx.user.id,
+      });
+
       return { success: true, id };
     }),
 

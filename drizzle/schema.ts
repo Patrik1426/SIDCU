@@ -14,6 +14,7 @@ export const users = mysqlTable("users", {
 
 export const servidoresPublicos = mysqlTable("servidores_publicos", {
   id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id"),
   nombreCompleto: varchar("nombre_completo", { length: 255 }).notNull(),
   rfc: varchar("rfc", { length: 13 }).notNull().unique(),
   curp: varchar("curp", { length: 18 }).notNull().unique(),
