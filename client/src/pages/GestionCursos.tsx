@@ -23,7 +23,7 @@ const fadeUp = {
 };
 
 const CATEGORIAS = ["obligatorio", "optativo", "especializado"];
-const MODALIDADES = ["presencial", "en_linea", "hibrido"];
+const MODALIDADES = ["presencial", "virtual", "mixto"];
 const NIVELES_GOBIERNO = ["federal", "estatal", "municipal", "otro"];
 
 type ModalState =
@@ -125,14 +125,18 @@ export default function GestionCursos() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
-      ...form,
-      nivelGobierno: form.nivelGobierno || undefined,
+      nombre: form.nombre,
       descripcion: form.descripcion || undefined,
+      nivelRequerido: Number(form.nivelRequerido),
+      nivelGobierno: form.nivelGobierno || undefined,
+      categoria: form.categoria,
+      duracionHoras: Number(form.duracionHoras),
+      modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
     };
     if (modal.type === "create") {
-      await crearMut.mutateAsync(payload as any);
+      await crearMut.mutateAsync(payload);
     } else if (modal.type === "edit") {
-      await actualizarMut.mutateAsync({ id: modal.id, ...payload } as any);
+      await actualizarMut.mutateAsync({ id: modal.id!, ...payload });
     }
   };
 
