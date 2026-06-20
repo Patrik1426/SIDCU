@@ -73,7 +73,7 @@ export default function Home() {
   const [tab, setTab] = useState<"login" | "register">("login");
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Left Panel */}
       <div className="relative hidden w-[48%] flex-col justify-between lg:flex">
         <GeometricBackground />
@@ -141,7 +141,7 @@ export default function Home() {
       </div>
 
       {/* Right Panel */}
-      <div className="flex flex-1 flex-col bg-slate-50">
+      <div className="flex flex-1 flex-col overflow-y-auto bg-slate-50">
         <div className="flex flex-1 flex-col items-center justify-center px-6 sm:px-12">
           <div className="w-full max-w-[440px]">
             {/* Mobile header */}
@@ -196,12 +196,13 @@ export default function Home() {
               </div>
 
               {/* Forms */}
+              <div className="min-h-[380px]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={tab}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
+                  exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.2 }}
                 >
                   {tab === "login" ? (
@@ -211,6 +212,7 @@ export default function Home() {
                   )}
                 </motion.div>
               </AnimatePresence>
+              </div>
             </motion.div>
 
             {/* Mobile footer */}
@@ -317,6 +319,7 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -325,7 +328,7 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
     setError("");
     setLoading(true);
     try {
-      await login({ email, password });
+      await login({ email, password, rememberMe });
       window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.message ?? "Error al iniciar sesión");
@@ -368,6 +371,8 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
         <label className="flex cursor-pointer items-center gap-2 text-[12px] text-slate-400">
           <input
             type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20"
           />
           Recordarme

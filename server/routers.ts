@@ -50,7 +50,7 @@ const authRouter = router({
     }),
 
   login: publicProcedure
-    .input(z.object({ email: z.string().email(), password: z.string() }))
+    .input(z.object({ email: z.string().email(), password: z.string(), rememberMe: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const user = await getUserByEmail(input.email);
       if (
@@ -63,11 +63,14 @@ const authRouter = router({
         });
       }
       const token = generateToken(user);
-      ctx.res.cookie(COOKIE_NAME, token, {
+      const cookieOpts: any = {
         httpOnly: true,
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+        sameSite: "lax" as const,
+      };
+      if (input.rememberMe) {
+        cookieOpts.maxAge = 30 * 24 * 60 * 60 * 1000;
+      }
+      ctx.res.cookie(COOKIE_NAME, token, cookieOpts);
       return {
         success: true,
         user: {
