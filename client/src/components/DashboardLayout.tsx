@@ -6,12 +6,19 @@ import {
   Users,
   UserCog,
   Upload,
+  FileUp,
   FileText,
   ClipboardList,
   LogOut,
   Menu,
   X,
   ChevronRight,
+  Home,
+  BookOpen,
+  ClipboardCheck,
+  GraduationCap,
+  Building,
+  Inbox,
 } from "lucide-react";
 
 interface NavItem {
@@ -22,9 +29,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "capturista", "consultor", "user"] },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "capturista", "consultor"] },
+  { label: "Portal", href: "/portal", icon: Home, roles: ["user"] },
+  { label: "Catálogo Cursos", href: "/portal/cursos", icon: BookOpen, roles: ["user"] },
+  { label: "Mis Solicitudes", href: "/portal/solicitudes", icon: ClipboardCheck, roles: ["user"] },
   { label: "Servidores", href: "/servidores", icon: Users, roles: ["admin", "capturista"] },
+  { label: "Importar CSV", href: "/importar", icon: FileUp, roles: ["admin", "capturista"] },
   { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] },
+  { label: "Cursos", href: "/cursos", icon: GraduationCap, roles: ["admin"] },
+  { label: "Instituciones", href: "/instituciones", icon: Building, roles: ["admin"] },
+  { label: "Solicitudes", href: "/solicitudes", icon: Inbox, roles: ["admin"] },
   { label: "Usuarios", href: "/usuarios", icon: UserCog, roles: ["admin"] },
   { label: "Auditoría", href: "/auditoria", icon: ClipboardList, roles: ["admin"] },
   { label: "Reportes", href: "/reportes", icon: FileText, roles: ["admin", "consultor"] },
@@ -86,7 +100,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {visibleItems.map((item) => {
-            const active = location === item.href;
+            const active = location === item.href || (item.href !== "/dashboard" && location.startsWith(item.href + "/"));
             const Icon = item.icon;
             return (
               <Link
