@@ -1,0 +1,54 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@theme {
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #8b5cf6;
+  --color-accent-600: #7c3aed;
+
+  --color-navy-700: #0f2447;
+  --color-navy-800: #0c1b3a;
+  --color-navy-900: #08112a;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes geo-drift {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(8px) translateY(-5px); }
+}
+
+@keyframes geo-drift-alt {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-6px) translateY(4px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+.animate-geo-drift { animation: geo-drift 20s ease-in-out infinite; }
+.animate-geo-drift-alt { animation: geo-drift-alt 25s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 5s ease-in-out infinite; }

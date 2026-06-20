@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+drizzle/migrations/
+*.zip
+registro-servidores-publicos/
+registro_servidores_publicos/
+servidores-publicos/

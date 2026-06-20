@@ -1,0 +1,378 @@
+import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import {
+  Users,
+  UserCheck,
+  UserX,
+  Building2,
+  TrendingUp,
+  Activity,
+  Clock,
+  ArrowUpRight,
+} from "lucide-react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+const NIVEL_LABELS: Record<string, string> = {
+  federal: "Federal",
+  estatal: "Estatal",
+  municipal: "Municipal",
+  otro: "Otro",
+};
+
+const GRUPO_LABELS: Record<string, string> = {
+  ADMO: "Administrativo",
+  TECN: "Técnico",
+  SERV: "Servicios",
+  COMUN: "Comunicación",
+  PROFE: "Profesional",
+  EDU: "Educación",
+};
+
+const CHART_COLORS = ["#6366f1", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#f59e0b"];
+
+const ACCION_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  crear: { bg: "bg-emerald-50", text: "text-emerald-600", label: "Creado" },
+  actualizar: { bg: "bg-amber-50", text: "text-amber-600", label: "Actualizado" },
+  eliminar: { bg: "bg-rose-50", text: "text-rose-600", label: "Eliminado" },
+};
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08 } },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+};
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  gradient,
+}: {
+  label: string;
+  value: number | string;
+  icon: React.ElementType;
+  gradient: string;
+}) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      className="group relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            {label}
+          </p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+            {value}
+          </p>
+        </div>
+        <div className={`rounded-xl p-2.5 ${gradient} shadow-lg`}>
+          <Icon size={18} className="text-white" />
+        </div>
+      </div>
+      <div className="absolute -bottom-4 -right-4 h-24 w-24 rounded-full bg-gradient-to-br from-slate-100 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+    </motion.div>
+  );
+}
+
+function ChartCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+    >
+      <h3 className="mb-4 text-[13px] font-bold text-slate-700">
+        {title}
+      </h3>
+      {children}
+    </motion.div>
+  );
+}
+
+function formatTimeAgo(date: string | Date) {
+  const d = new Date(date);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `${mins}m`;
+  if (hours < 24) return `${hours}h`;
+  if (days < 7) return `${days}d`;
+  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+export default function Dashboard() {
+  const { user } = useAuth();
+  const canViewStats = user && ["admin", "capturista", "consultor"].includes(user.role);
+
+  const { data: stats, isLoading } = trpc.servidores.estadisticas.useQuery(
+    undefined,
+    { enabled: !!canViewStats, retry: false }
+  );
+
+  const { data: actividad } = trpc.servidores.actividadReciente.useQuery(
+    undefined,
+    { enabled: !!canViewStats, retry: false }
+  );
+
+  const activos = stats?.byEstatus.find((e) => e.estatus === "activo")?.count ?? 0;
+  const inactivos = stats?.byEstatus.find((e) => e.estatus === "inactivo")?.count ?? 0;
+
+  const nivelData = (stats?.byNivel ?? []).map((n) => ({
+    name: NIVEL_LABELS[n.nivel] ?? n.nivel,
+    value: Number(n.count),
+  }));
+
+  const grupoData = (stats?.byGrupo ?? []).map((g) => ({
+    name: GRUPO_LABELS[g.grupoFuncion] ?? g.grupoFuncion,
+    value: Number(g.count),
+  }));
+
+  if (!canViewStats) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <div className="rounded-2xl bg-primary-50 p-5">
+          <Building2 size={28} className="text-primary-500" />
+        </div>
+        <h2 className="mt-4 text-lg font-bold text-slate-800">
+          Bienvenido, {user?.nombre}
+        </h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Contacta al administrador para obtener acceso a más funciones.
+        </p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-primary-500" />
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      variants={stagger}
+      initial="hidden"
+      animate="show"
+      className="space-y-6"
+    >
+      {/* Header */}
+      <motion.div variants={fadeUp} className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+            Dashboard
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-400">
+            Resumen del registro de servidores públicos
+          </p>
+        </div>
+        <div className="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-600 sm:flex">
+          <Activity size={14} />
+          En tiempo real
+        </div>
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total"
+          value={stats?.total ?? 0}
+          icon={Users}
+          gradient="bg-gradient-to-br from-primary-500 to-primary-600 shadow-primary-500/25"
+        />
+        <StatCard
+          label="Activos"
+          value={activos}
+          icon={UserCheck}
+          gradient="bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-emerald-500/25"
+        />
+        <StatCard
+          label="Inactivos"
+          value={inactivos}
+          icon={UserX}
+          gradient="bg-gradient-to-br from-rose-500 to-rose-600 shadow-rose-500/25"
+        />
+        <StatCard
+          label="Niveles"
+          value={nivelData.length}
+          icon={Building2}
+          gradient="bg-gradient-to-br from-accent-500 to-accent-600 shadow-accent-500/25"
+        />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title="Distribución por nivel de gobierno">
+          {nivelData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={nivelData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={4}
+                  dataKey="value"
+                  strokeWidth={0}
+                >
+                  {nivelData.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "13px",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState />
+          )}
+          {nivelData.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-3">
+              {nivelData.map((d, i) => (
+                <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                  />
+                  {d.name} ({d.value})
+                </div>
+              ))}
+            </div>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Servidores por grupo de función">
+          {grupoData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={grupoData} layout="vertical" margin={{ left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  width={95}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "13px",
+                  }}
+                />
+                <Bar dataKey="value" name="Servidores" radius={[0, 6, 6, 0]}>
+                  {grupoData.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState />
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Activity */}
+      <motion.div
+        variants={fadeUp}
+        className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-[13px] font-bold text-slate-700">
+            Actividad reciente
+          </h3>
+          <a href="/auditoria" className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors">
+            Ver todo
+            <ArrowUpRight size={12} />
+          </a>
+        </div>
+
+        {actividad?.items && actividad.items.length > 0 ? (
+          <div className="space-y-1">
+            {actividad.items.map((item: any) => {
+              const style = ACCION_STYLES[item.accion] ?? { bg: "bg-slate-50", text: "text-slate-500", label: item.accion };
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-slate-50"
+                >
+                  <span className={`inline-flex rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
+                    {style.label}
+                  </span>
+                  <p className="flex-1 truncate text-sm text-slate-600">
+                    {item.descripcion ?? style.label}
+                  </p>
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-slate-400 shrink-0">
+                    <Clock size={11} />
+                    {formatTimeAgo(item.createdAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center py-10 text-center">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <Clock size={22} className="text-slate-300" />
+            </div>
+            <p className="mt-3 text-sm text-slate-400">
+              Sin actividad registrada
+            </p>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex h-[250px] flex-col items-center justify-center text-center">
+      <div className="rounded-2xl bg-slate-50 p-4">
+        <TrendingUp size={22} className="text-slate-300" />
+      </div>
+      <p className="mt-3 text-sm text-slate-400">
+        Sin datos para mostrar
+      </p>
+    </div>
+  );
+}
