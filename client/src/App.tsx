@@ -16,6 +16,9 @@ import Onboarding from "@/pages/Onboarding";
 import Portal from "@/pages/Portal";
 import CatalogoCursos from "@/pages/CatalogoCursos";
 import MisSolicitudes from "@/pages/MisSolicitudes";
+import GestionCursos from "@/pages/GestionCursos";
+import Instituciones from "@/pages/Instituciones";
+import GestionSolicitudes from "@/pages/GestionSolicitudes";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -134,6 +137,24 @@ export default function App() {
         <ProtectedRoute
           path="/onboarding"
           component={Onboarding}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/cursos"
+          component={GestionCursos}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/instituciones"
+          component={Instituciones}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/solicitudes"
+          component={GestionSolicitudes}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />
