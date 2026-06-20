@@ -230,7 +230,7 @@ export async function eliminarServidor(id: number) {
 
 export async function getServidoresStats() {
   const d = await getDb();
-  const [byEstatus, byNivel, byGrupo, totalResult] = await Promise.all([
+  const [byEstatus, byNivel, byGrupo, totalResult, byDependencia, byMes] = await Promise.all([
     d
       .select({
         estatus: schema.servidoresPublicos.estatus,
@@ -255,6 +255,24 @@ export async function getServidoresStats() {
     d
       .select({ count: sql<number>`count(*)` })
       .from(schema.servidoresPublicos),
+    d
+      .select({
+        dependencia: schema.servidoresPublicos.dependencia,
+        count: sql<number>`count(*)`,
+      })
+      .from(schema.servidoresPublicos)
+      .groupBy(schema.servidoresPublicos.dependencia)
+      .orderBy(sql`count(*) DESC`)
+      .limit(10),
+    d
+      .select({
+        mes: sql<string>`DATE_FORMAT(created_at, '%Y-%m')`,
+        count: sql<number>`count(*)`,
+      })
+      .from(schema.servidoresPublicos)
+      .groupBy(sql`DATE_FORMAT(created_at, '%Y-%m')`)
+      .orderBy(sql`DATE_FORMAT(created_at, '%Y-%m') ASC`)
+      .limit(12),
   ]);
 
   return {
@@ -262,6 +280,8 @@ export async function getServidoresStats() {
     byEstatus,
     byNivel,
     byGrupo,
+    byDependencia,
+    byMes,
   };
 }
 
@@ -318,4 +338,213 @@ export async function listarAuditoria(filtros?: {
     limit,
     totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
   };
+}
+
+// ─── Perfiles Servidor ───────────────────────────────────────────────
+
+export async function obtenerPerfil(userId: number) {
+  const d = await getDb();
+  const [perfil] = await d
+    .select()
+    .from(schema.perfilesServidor)
+    .where(eq(schema.perfilesServidor.userId, userId));
+  return perfil ?? null;
+}
+
+export async function crearPerfil(data: schema.InsertPerfilServidor) {
+  const d = await getDb();
+  const [result] = await d.insert(schema.perfilesServidor).values(data);
+  return result.insertId;
+}
+
+export async function actualizarPerfil(userId: number, data: Partial<schema.InsertPerfilServidor>) {
+  const d = await getDb();
+  await d
+    .update(schema.perfilesServidor)
+    .set(data)
+    .where(eq(schema.perfilesServidor.userId, userId));
+}
+
+export async function incrementarNivelProgresion(userId: number) {
+  const d = await getDb();
+  const perfil = await obtenerPerfil(userId);
+  if (!perfil || perfil.nivelProgresion >= 4) return;
+  await d
+    .update(schema.perfilesServidor)
+    .set({ nivelProgresion: perfil.nivelProgresion + 1 })
+    .where(eq(schema.perfilesServidor.userId, userId));
+}
+
+// ─── Cursos ──────────────────────────────────────────────────────────
+
+export async function listarCursos(filtros?: {
+  nivelMax?: number;
+  nivelGobierno?: string | null;
+  categoria?: string;
+  modalidad?: string;
+  soloActivos?: boolean;
+}) {
+  const d = await getDb();
+  const conditions = [];
+
+  if (filtros?.soloActivos !== false) {
+    conditions.push(eq(schema.cursos.activo, true));
+  }
+  if (filtros?.nivelMax) {
+    conditions.push(sql`${schema.cursos.nivelRequerido} <= ${filtros.nivelMax}`);
+  }
+  if (filtros?.nivelGobierno) {
+    conditions.push(
+      or(
+        eq(schema.cursos.nivelGobierno, filtros.nivelGobierno as any),
+        sql`${schema.cursos.nivelGobierno} IS NULL`,
+      )!,
+    );
+  }
+  if (filtros?.categoria) {
+    conditions.push(eq(schema.cursos.categoria, filtros.categoria));
+  }
+  if (filtros?.modalidad) {
+    conditions.push(eq(schema.cursos.modalidad, filtros.modalidad as any));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  return d.select().from(schema.cursos).where(where).orderBy(desc(schema.cursos.createdAt));
+}
+
+export async function obtenerCursoPorId(id: number) {
+  const d = await getDb();
+  const [curso] = await d.select().from(schema.cursos).where(eq(schema.cursos.id, id));
+  return curso ?? null;
+}
+
+export async function crearCurso(data: schema.InsertCurso) {
+  const d = await getDb();
+  const [result] = await d.insert(schema.cursos).values(data);
+  return result.insertId;
+}
+
+export async function actualizarCurso(id: number, data: Partial<schema.InsertCurso>) {
+  const d = await getDb();
+  await d.update(schema.cursos).set(data).where(eq(schema.cursos.id, id));
+}
+
+export async function toggleActivoCurso(id: number) {
+  const d = await getDb();
+  const [curso] = await d.select().from(schema.cursos).where(eq(schema.cursos.id, id));
+  if (!curso) return;
+  await d.update(schema.cursos).set({ activo: !curso.activo }).where(eq(schema.cursos.id, id));
+}
+
+// ─── Instituciones ───────────────────────────────────────────────────
+
+export async function listarInstituciones(soloActivas = true) {
+  const d = await getDb();
+  const where = soloActivas ? eq(schema.instituciones.activo, true) : undefined;
+  return d.select().from(schema.instituciones).where(where).orderBy(desc(schema.instituciones.createdAt));
+}
+
+export async function crearInstitucion(data: schema.InsertInstitucion) {
+  const d = await getDb();
+  const [result] = await d.insert(schema.instituciones).values(data);
+  return result.insertId;
+}
+
+export async function actualizarInstitucion(id: number, data: Partial<schema.InsertInstitucion>) {
+  const d = await getDb();
+  await d.update(schema.instituciones).set(data).where(eq(schema.instituciones.id, id));
+}
+
+export async function toggleActivoInstitucion(id: number) {
+  const d = await getDb();
+  const [inst] = await d.select().from(schema.instituciones).where(eq(schema.instituciones.id, id));
+  if (!inst) return;
+  await d.update(schema.instituciones).set({ activo: !inst.activo }).where(eq(schema.instituciones.id, id));
+}
+
+// ─── Cursos ↔ Instituciones ──────────────────────────────────────────
+
+export async function listarCursosInstituciones(cursoId: number) {
+  const d = await getDb();
+  return d
+    .select()
+    .from(schema.cursosInstituciones)
+    .innerJoin(schema.instituciones, eq(schema.cursosInstituciones.institucionId, schema.instituciones.id))
+    .where(and(eq(schema.cursosInstituciones.cursoId, cursoId), eq(schema.cursosInstituciones.activo, true)));
+}
+
+export async function asignarCursoInstitucion(data: schema.InsertCursoInstitucion) {
+  const d = await getDb();
+  const [result] = await d.insert(schema.cursosInstituciones).values(data);
+  return result.insertId;
+}
+
+export async function decrementarCupo(cursoInstitucionId: number) {
+  const d = await getDb();
+  await d.execute(
+    sql`UPDATE cursos_instituciones SET cupo_disponible = cupo_disponible - 1 WHERE id = ${cursoInstitucionId} AND cupo_disponible > 0`,
+  );
+}
+
+// ─── Solicitudes Curso ───────────────────────────────────────────────
+
+export async function crearSolicitud(data: schema.InsertSolicitudCurso) {
+  const d = await getDb();
+  const [result] = await d.insert(schema.solicitudesCurso).values(data);
+  return result.insertId;
+}
+
+export async function listarSolicitudesUsuario(userId: number) {
+  const d = await getDb();
+  return d
+    .select()
+    .from(schema.solicitudesCurso)
+    .innerJoin(schema.cursos, eq(schema.solicitudesCurso.cursoId, schema.cursos.id))
+    .where(eq(schema.solicitudesCurso.userId, userId))
+    .orderBy(desc(schema.solicitudesCurso.createdAt));
+}
+
+export async function listarTodasSolicitudes(filtros?: { estado?: string }) {
+  const d = await getDb();
+  const conditions = [];
+  if (filtros?.estado) {
+    conditions.push(eq(schema.solicitudesCurso.estado, filtros.estado as any));
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  return d
+    .select()
+    .from(schema.solicitudesCurso)
+    .innerJoin(schema.cursos, eq(schema.solicitudesCurso.cursoId, schema.cursos.id))
+    .innerJoin(schema.users, eq(schema.solicitudesCurso.userId, schema.users.id))
+    .where(where)
+    .orderBy(desc(schema.solicitudesCurso.createdAt));
+}
+
+export async function obtenerSolicitud(id: number) {
+  const d = await getDb();
+  const [sol] = await d.select().from(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.id, id));
+  return sol ?? null;
+}
+
+export async function actualizarSolicitud(id: number, data: Partial<schema.InsertSolicitudCurso>) {
+  const d = await getDb();
+  await d.update(schema.solicitudesCurso).set(data).where(eq(schema.solicitudesCurso.id, id));
+}
+
+export async function tieneSolicitudActiva(userId: number, cursoId: number) {
+  const d = await getDb();
+  const [existing] = await d
+    .select({ id: schema.solicitudesCurso.id })
+    .from(schema.solicitudesCurso)
+    .where(
+      and(
+        eq(schema.solicitudesCurso.userId, userId),
+        eq(schema.solicitudesCurso.cursoId, cursoId),
+        or(
+          eq(schema.solicitudesCurso.estado, "pendiente"),
+          eq(schema.solicitudesCurso.estado, "aprobada"),
+        ),
+      ),
+    );
+  return !!existing;
 }
