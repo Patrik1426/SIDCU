@@ -14,6 +14,8 @@ import { COOKIE_NAME } from "../shared/const";
 import { router, publicProcedure, protectedProcedure } from "./trpc";
 import { servidoresRouter } from "./routers/servidores";
 import { usuariosRouter } from "./routers/usuarios";
+import { importacionRouter } from "./routers/importacion";
+import { perfilRouter } from "./routers/perfil";
 
 export { router, publicProcedure };
 
@@ -117,6 +119,8 @@ export const appRouter = router({
   auth: authRouter,
   servidores: servidoresRouter,
   usuarios: usuariosRouter,
+  importacion: importacionRouter,
+  perfil: perfilRouter,
 });
 
 export type AppRouter = typeof appRouter;
