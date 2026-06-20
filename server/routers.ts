@@ -16,6 +16,8 @@ import { servidoresRouter } from "./routers/servidores";
 import { usuariosRouter } from "./routers/usuarios";
 import { importacionRouter } from "./routers/importacion";
 import { perfilRouter } from "./routers/perfil";
+import { cursosRouter } from "./routers/cursos";
+import { institucionesRouter } from "./routers/instituciones";
 
 export { router, publicProcedure };
 
@@ -121,6 +123,8 @@ export const appRouter = router({
   usuarios: usuariosRouter,
   importacion: importacionRouter,
   perfil: perfilRouter,
+  cursos: cursosRouter,
+  instituciones: institucionesRouter,
 });
 
 export type AppRouter = typeof appRouter;
