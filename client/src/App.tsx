@@ -13,6 +13,9 @@ import Reportes from "@/pages/Reportes";
 import Importacion from "@/pages/Importacion";
 import Usuarios from "@/pages/Usuarios";
 import Onboarding from "@/pages/Onboarding";
+import Portal from "@/pages/Portal";
+import CatalogoCursos from "@/pages/CatalogoCursos";
+import MisSolicitudes from "@/pages/MisSolicitudes";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -131,6 +134,24 @@ export default function App() {
         <ProtectedRoute
           path="/onboarding"
           component={Onboarding}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/cursos"
+          component={CatalogoCursos}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/solicitudes"
+          component={MisSolicitudes}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal"
+          component={Portal}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />
