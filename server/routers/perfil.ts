@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor } from "../db";
+import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
+import { eq } from "drizzle-orm";
+import * as schema from "../../drizzle/schema";
+import { getDb } from "../db";
 
 const perfilInput = z.object({
   rfc: z.string().regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/, "RFC inválido"),
@@ -59,6 +62,55 @@ export const perfilRouter = router({
         ...input,
         datosContacto: input.datosContacto ?? undefined,
       });
+      return { success: true };
+    }),
+
+  solicitarBaja: protectedProcedure
+    .input(z.object({ motivo: z.string().min(5, "Describe el motivo de tu solicitud") }))
+    .mutation(async ({ ctx, input }) => {
+      const perfil = await obtenerPerfil(ctx.user.id);
+      if (!perfil) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil no encontrado" });
+      if (perfil.solicitudBaja) throw new TRPCError({ code: "CONFLICT", message: "Ya tienes una solicitud de baja pendiente" });
+      await actualizarPerfil(ctx.user.id, {
+        solicitudBaja: true,
+        motivoBaja: input.motivo,
+        fechaSolicitudBaja: new Date(),
+      });
+      return { success: true };
+    }),
+
+  cancelarBaja: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      await actualizarPerfil(ctx.user.id, {
+        solicitudBaja: false,
+        motivoBaja: null,
+        fechaSolicitudBaja: null,
+      });
+      return { success: true };
+    }),
+
+  listarBajas: adminProcedure.query(async () => {
+    return listarSolicitudesBaja();
+  }),
+
+  aprobarBaja: adminProcedure
+    .input(z.object({ userId: z.number() }))
+    .mutation(async ({ input }) => {
+      const perfil = await obtenerPerfil(input.userId);
+      if (!perfil) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil no encontrado" });
+
+      const d = await getDb();
+      await d
+        .update(schema.servidoresPublicos)
+        .set({ estatus: "inactivo" })
+        .where(eq(schema.servidoresPublicos.userId, input.userId));
+
+      await toggleActivoUsuario(input.userId);
+
+      await actualizarPerfil(input.userId, {
+        solicitudBaja: false,
+      });
+
       return { success: true };
     }),
 });

@@ -155,6 +155,25 @@ export const servidoresRouter = router({
       return { success: true };
     }),
 
+  exportarTodos: requireRole("admin", "consultor")
+    .input(
+      z.object({
+        search: z.string().optional(),
+        dependencia: z.string().optional(),
+        nivel: z.string().optional(),
+        estatus: z.string().optional(),
+        grupoFuncion: z.string().optional(),
+      }).optional(),
+    )
+    .query(async ({ input }) => {
+      const result = await listarServidores({
+        ...input,
+        page: 1,
+        limit: 10000,
+      });
+      return result.items;
+    }),
+
   estadisticas: requireRole("admin", "capturista", "consultor").query(async () => {
     return getServidoresStats();
   }),

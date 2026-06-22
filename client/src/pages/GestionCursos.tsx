@@ -11,7 +11,9 @@ import {
   Calendar,
   Clock,
   Users,
+  Upload,
 } from "lucide-react";
+import ImportarCSVModal from "@/components/ImportarCSVModal";
 
 const stagger = {
   hidden: {},
@@ -57,12 +59,15 @@ export default function GestionCursos() {
   const utils = trpc.useUtils();
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [form, setForm] = useState<CursoFormData>(emptyForm);
+  const [showImport, setShowImport] = useState(false);
 
   // Assignment form state
   const [assignForm, setAssignForm] = useState({
     institucionId: 0,
     cupoMaximo: 30,
-    horario: "",
+    dias: [] as string[],
+    horaInicio: "09:00",
+    horaFin: "11:00",
     fechaInicio: "",
     fechaFin: "",
   });
@@ -100,7 +105,19 @@ export default function GestionCursos() {
   const asignarMut = trpc.cursos.asignarInstitucion.useMutation({
     onSuccess: () => {
       utils.cursos.obtener.invalidate();
-      setAssignForm({ institucionId: 0, cupoMaximo: 30, horario: "", fechaInicio: "", fechaFin: "" });
+      setAssignForm({ institucionId: 0, cupoMaximo: 30, dias: [], horaInicio: "09:00", horaFin: "11:00", fechaInicio: "", fechaFin: "" });
+    },
+  });
+
+  const importarCursosMut = trpc.cursos.importar.useMutation();
+
+  const desasignarMut = trpc.cursos.desasignarInstitucion.useMutation({
+    onSuccess: () => {
+      utils.cursos.obtener.invalidate();
+      utils.cursos.listar.invalidate();
+    },
+    onError: (err) => {
+      alert("Error al desasignar: " + err.message);
     },
   });
 
@@ -143,11 +160,15 @@ export default function GestionCursos() {
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (modal.type !== "assign" || !assignForm.institucionId) return;
+    const horarioParts: string[] = [];
+    if (assignForm.dias.length > 0) horarioParts.push(assignForm.dias.join(", "));
+    if (assignForm.horaInicio && assignForm.horaFin) horarioParts.push(`${assignForm.horaInicio} - ${assignForm.horaFin}`);
+    const horario = horarioParts.join(" · ") || undefined;
     await asignarMut.mutateAsync({
       cursoId: modal.cursoId,
       institucionId: assignForm.institucionId,
       cupoMaximo: assignForm.cupoMaximo,
-      horario: assignForm.horario || undefined,
+      horario,
       fechaInicio: assignForm.fechaInicio ? new Date(assignForm.fechaInicio) : undefined,
       fechaFin: assignForm.fechaFin ? new Date(assignForm.fechaFin) : undefined,
     } as any);
@@ -182,13 +203,22 @@ export default function GestionCursos() {
             Administra el catalogo de capacitaciones
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition-colors hover:bg-primary-700"
-        >
-          <Plus size={16} />
-          Crear Curso
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Upload size={16} />
+            Importar CSV
+          </button>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition-colors hover:bg-primary-700"
+          >
+            <Plus size={16} />
+            Crear Curso
+          </button>
+        </div>
       </motion.div>
 
       {/* Course list */}
@@ -404,14 +434,28 @@ export default function GestionCursos() {
                 <div>
                   <label className="mb-2 block text-xs font-semibold text-slate-500">Instituciones Asignadas</label>
                   <div className="space-y-2">
-                    {cursoDetalle.instituciones.map((inst: any) => (
-                      <div key={inst.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                        <Building2 size={12} className="text-slate-400" />
-                        <span className="font-medium">{inst.institucion?.nombre ?? `Institucion #${inst.institucionId}`}</span>
-                        <span className="text-slate-400">· Cupo: {inst.cupoMaximo}</span>
-                        {inst.horario && <span className="text-slate-400">· {inst.horario}</span>}
-                      </div>
-                    ))}
+                    {cursoDetalle.instituciones.map((inst: any) => {
+                      const ci = inst.cursos_instituciones ?? inst;
+                      const instData = inst.instituciones ?? inst;
+                      return (
+                        <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          <Building2 size={12} className="text-slate-400" />
+                          <span className="flex-1 font-medium">{instData.nombre ?? `Institución #${ci.institucionId}`}</span>
+                          <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
+                          {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!confirm(`¿Eliminar asignación de "${instData.nombre}"?`)) return;
+                              desasignarMut.mutate({ id: ci.id });
+                            }}
+                            className="ml-1 rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -466,14 +510,28 @@ export default function GestionCursos() {
             {cursoDetalle?.instituciones && cursoDetalle.instituciones.length > 0 && (
               <div className="border-b border-slate-100 px-5 py-4 space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Asignaciones actuales</p>
-                {cursoDetalle.instituciones.map((inst: any) => (
-                  <div key={inst.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    <Building2 size={12} className="text-slate-400" />
-                    <span className="font-medium">{inst.institucion?.nombre ?? `#${inst.institucionId}`}</span>
-                    <span className="text-slate-400">· Cupo: {inst.cupoMaximo}</span>
-                    {inst.horario && <span className="text-slate-400">· {inst.horario}</span>}
-                  </div>
-                ))}
+                {cursoDetalle.instituciones.map((inst: any) => {
+                  const ci = inst.cursos_instituciones ?? inst;
+                  const instData = inst.instituciones ?? inst;
+                  return (
+                    <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <Building2 size={12} className="text-slate-400" />
+                      <span className="flex-1 font-medium">{instData.nombre ?? `#${ci.institucionId}`}</span>
+                      <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
+                      {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!confirm(`¿Eliminar asignación de "${instData.nombre}"?`)) return;
+                          desasignarMut.mutate({ id: ci.id });
+                        }}
+                        className="ml-1 rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -501,26 +559,65 @@ export default function GestionCursos() {
                 </select>
               </div>
 
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Cupo Máximo *</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={assignForm.cupoMaximo}
+                  onChange={(e) => setAssignForm({ ...assignForm, cupoMaximo: Number(e.target.value) })}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Días</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((dia) => {
+                    const selected = assignForm.dias.includes(dia);
+                    return (
+                      <button
+                        key={dia}
+                        type="button"
+                        onClick={() => {
+                          setAssignForm({
+                            ...assignForm,
+                            dias: selected
+                              ? assignForm.dias.filter((d) => d !== dia)
+                              : [...assignForm.dias, dia],
+                          });
+                        }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                          selected
+                            ? "bg-primary-500 text-white shadow-sm"
+                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        }`}
+                      >
+                        {dia}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Cupo Maximo *</label>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Hora Inicio</label>
                   <input
-                    type="number"
-                    required
-                    min={1}
-                    value={assignForm.cupoMaximo}
-                    onChange={(e) => setAssignForm({ ...assignForm, cupoMaximo: Number(e.target.value) })}
+                    type="time"
+                    value={assignForm.horaInicio}
+                    onChange={(e) => setAssignForm({ ...assignForm, horaInicio: e.target.value })}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Horario</label>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Hora Fin</label>
                   <input
-                    type="text"
-                    value={assignForm.horario}
-                    onChange={(e) => setAssignForm({ ...assignForm, horario: e.target.value })}
+                    type="time"
+                    value={assignForm.horaFin}
+                    onChange={(e) => setAssignForm({ ...assignForm, horaFin: e.target.value })}
                     className={inputClass}
-                    placeholder="Ej: Lun-Vie 9:00-11:00"
                   />
                 </div>
               </div>
@@ -565,6 +662,24 @@ export default function GestionCursos() {
             </form>
           </motion.div>
         </div>
+      )}
+      {/* Import CSV Modal */}
+      {showImport && (
+        <ImportarCSVModal
+          titulo="Cursos"
+          columnas={[
+            { key: "nombre", label: "Nombre", ejemplo: "Ética en el servicio público" },
+            { key: "descripcion", label: "Descripción", ejemplo: "Curso de ética profesional" },
+            { key: "categoria", label: "Categoría", ejemplo: "obligatorio" },
+            { key: "modalidad", label: "Modalidad", ejemplo: "presencial" },
+            { key: "duracionHoras", label: "Duración (hrs)", ejemplo: "20" },
+            { key: "nivelRequerido", label: "Nivel requerido", ejemplo: "1" },
+            { key: "nivelGobierno", label: "Nivel gobierno", ejemplo: "municipal" },
+          ]}
+          onImportar={(registros) => importarCursosMut.mutateAsync({ registros })}
+          onClose={() => setShowImport(false)}
+          onSuccess={() => utils.cursos.listar.invalidate()}
+        />
       )}
     </motion.div>
   );

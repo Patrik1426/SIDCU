@@ -10,7 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Download,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
+import { exportarExcel, exportarPDF } from "@/lib/exportar";
 
 type ModalState =
   | { type: "closed" }
@@ -67,6 +71,35 @@ export default function Servidores() {
   const canCreate = role === "admin" || role === "capturista";
   const canEdit = role === "admin";
   const canDelete = role === "admin";
+  const canExport = role === "admin" || role === "consultor";
+
+  const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
+
+  const handleExport = async (tipo: "excel" | "pdf") => {
+    setExportando(tipo);
+    try {
+      const datos = await utils.servidores.exportarTodos.fetch({
+        search: search || undefined,
+        dependencia: dependencia || undefined,
+        nivel: nivel || undefined,
+        estatus: estatus || undefined,
+        grupoFuncion: grupoFuncion || undefined,
+      });
+      if (datos && datos.length > 0) {
+        if (tipo === "excel") {
+          exportarExcel(datos as any);
+        } else {
+          exportarPDF(datos as any);
+        }
+      } else {
+        alert("No hay datos para exportar");
+      }
+    } catch (err: any) {
+      alert("Error al exportar: " + (err.message ?? "desconocido"));
+    } finally {
+      setExportando(null);
+    }
+  };
 
   const handleCreate = async (formData: ServidorFormData) => {
     await crearMut.mutateAsync({
@@ -124,15 +157,37 @@ export default function Servidores() {
         <h1 className="text-2xl font-bold text-gray-900">
           Servidores Públicos
         </h1>
-        {canCreate && (
-          <button
-            onClick={() => setModal({ type: "create" })}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-          >
-            <Plus size={16} />
-            Nuevo Servidor
-          </button>
-        )}
+        <div className="flex gap-2">
+          {canExport && (
+            <>
+              <button
+                onClick={() => handleExport("excel")}
+                disabled={exportando !== null}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <FileSpreadsheet size={16} />
+                {exportando === "excel" ? "Exportando..." : "Excel"}
+              </button>
+              <button
+                onClick={() => handleExport("pdf")}
+                disabled={exportando !== null}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
+              >
+                <FileText size={16} />
+                {exportando === "pdf" ? "Exportando..." : "PDF"}
+              </button>
+            </>
+          )}
+          {canCreate && (
+            <button
+              onClick={() => setModal({ type: "create" })}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              <Plus size={16} />
+              Nuevo Servidor
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}

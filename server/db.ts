@@ -375,6 +375,16 @@ export async function incrementarNivelProgresion(userId: number) {
     .where(eq(schema.perfilesServidor.userId, userId));
 }
 
+export async function listarSolicitudesBaja() {
+  const d = await getDb();
+  return d
+    .select()
+    .from(schema.perfilesServidor)
+    .innerJoin(schema.users, eq(schema.perfilesServidor.userId, schema.users.id))
+    .where(eq(schema.perfilesServidor.solicitudBaja, true))
+    .orderBy(desc(schema.perfilesServidor.fechaSolicitudBaja));
+}
+
 // ─── Cursos ──────────────────────────────────────────────────────────
 
 export async function listarCursos(filtros?: {
@@ -479,6 +489,11 @@ export async function asignarCursoInstitucion(data: schema.InsertCursoInstitucio
   return result.insertId;
 }
 
+export async function eliminarCursoInstitucion(id: number) {
+  const d = await getDb();
+  await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.id, id));
+}
+
 export async function decrementarCupo(cursoInstitucionId: number) {
   const d = await getDb();
   await d.execute(
@@ -500,6 +515,8 @@ export async function listarSolicitudesUsuario(userId: number) {
     .select()
     .from(schema.solicitudesCurso)
     .innerJoin(schema.cursos, eq(schema.solicitudesCurso.cursoId, schema.cursos.id))
+    .leftJoin(schema.cursosInstituciones, eq(schema.solicitudesCurso.cursoInstitucionId, schema.cursosInstituciones.id))
+    .leftJoin(schema.instituciones, eq(schema.cursosInstituciones.institucionId, schema.instituciones.id))
     .where(eq(schema.solicitudesCurso.userId, userId))
     .orderBy(desc(schema.solicitudesCurso.createdAt));
 }

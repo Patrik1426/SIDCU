@@ -323,13 +323,17 @@ export default function GestionSolicitudes() {
                     className={inputClass}
                   >
                     <option value={0}>Seleccionar sede...</option>
-                    {cursoDetalle.instituciones.map((ci: any) => (
-                      <option key={ci.id} value={ci.id}>
-                        {ci.institucion?.nombre ?? `Institucion #${ci.institucionId}`}
-                        {ci.horario ? ` - ${ci.horario}` : ""}
-                        {ci.cupoMaximo ? ` (Cupo: ${ci.cupoMaximo})` : ""}
-                      </option>
-                    ))}
+                    {cursoDetalle.instituciones.map((row: any) => {
+                      const ci = row.cursos_instituciones ?? row;
+                      const inst = row.instituciones ?? row;
+                      return (
+                        <option key={ci.id} value={ci.id}>
+                          {inst.nombre ?? `Institución #${ci.institucionId}`}
+                          {ci.horario ? ` — ${ci.horario}` : ""}
+                          {ci.cupoMaximo ? ` (Cupo: ${ci.cupoMaximo})` : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-600">

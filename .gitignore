@@ -9,3 +9,7 @@ drizzle/migrations/
 registro-servidores-publicos/
 registro_servidores_publicos/
 servidores-publicos/
+.claude/
+.superpowers/
+CLAUDE.md
+docs/superpowers/

@@ -9,6 +9,7 @@ import {
   toggleActivoCurso,
   listarCursosInstituciones,
   asignarCursoInstitucion,
+  eliminarCursoInstitucion,
   obtenerPerfil,
 } from "../db";
 
@@ -103,5 +104,57 @@ export const cursosRouter = router({
         fechaFin: input.fechaFin ?? null,
       });
       return { success: true, id };
+    }),
+
+  desasignarInstitucion: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await eliminarCursoInstitucion(input.id);
+      return { success: true };
+    }),
+
+  importar: adminProcedure
+    .input(z.object({ registros: z.array(z.record(z.string(), z.any())) }))
+    .mutation(async ({ ctx, input }) => {
+      const creados: number[] = [];
+      const errores: { fila: number; error: string }[] = [];
+
+      for (let i = 0; i < input.registros.length; i++) {
+        const row = input.registros[i];
+        const parsed = cursoInput.safeParse({
+          nombre: row.nombre,
+          descripcion: row.descripcion || null,
+          nivelRequerido: Number(row.nivelRequerido ?? row.nivel_requerido ?? 1),
+          nivelGobierno: row.nivelGobierno ?? row.nivel_gobierno ?? null,
+          categoria: row.categoria ?? "obligatorio",
+          duracionHoras: Number(row.duracionHoras ?? row.duracion_horas ?? row.duracion ?? 1),
+          modalidad: row.modalidad ?? "presencial",
+        });
+
+        if (!parsed.success) {
+          errores.push({
+            fila: i + 1,
+            error: parsed.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
+          });
+          continue;
+        }
+
+        try {
+          const id = await crearCurso({
+            ...parsed.data,
+            descripcion: parsed.data.descripcion ?? null,
+            nivelGobierno: parsed.data.nivelGobierno ?? null,
+            creadoPor: ctx.user.id,
+          });
+          creados.push(id);
+        } catch (err: any) {
+          errores.push({
+            fila: i + 1,
+            error: err.message?.includes("Duplicate") ? "Curso duplicado" : err.message ?? "Error desconocido",
+          });
+        }
+      }
+
+      return { totalProcesados: input.registros.length, creados: creados.length, errores };
     }),
 });

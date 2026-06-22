@@ -1,13 +1,43 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, adminProcedure } from "../trpc";
+import { hashPassword } from "../auth";
 import {
   listarUsuarios,
   cambiarRolUsuario,
   toggleActivoUsuario,
+  getUserByEmail,
+  createUser,
 } from "../db";
 
 export const usuariosRouter = router({
+  crear: adminProcedure
+    .input(
+      z.object({
+        nombre: z.string().min(2, "Nombre requerido"),
+        email: z.string().email("Email inválido"),
+        password: z.string().min(8, "Mínimo 8 caracteres"),
+        role: z.enum(["admin", "capturista", "consultor", "user"]),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const existing = await getUserByEmail(input.email);
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Email ya registrado",
+        });
+      }
+      const hash = await hashPassword(input.password);
+      const id = await createUser({
+        nombre: input.nombre,
+        email: input.email,
+        passwordHash: hash,
+        role: input.role,
+      });
+      return { success: true, id };
+    }),
+
   listar: adminProcedure
     .input(
       z.object({

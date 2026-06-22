@@ -87,6 +87,9 @@ export const perfilesServidor = mysqlTable("perfiles_servidor", {
   fechaIngreso: timestamp("fecha_ingreso").notNull(),
   datosContacto: varchar("datos_contacto", { length: 255 }),
   completado: boolean("completado").default(false).notNull(),
+  solicitudBaja: boolean("solicitud_baja").default(false).notNull(),
+  motivoBaja: text("motivo_baja"),
+  fechaSolicitudBaja: timestamp("fecha_solicitud_baja"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

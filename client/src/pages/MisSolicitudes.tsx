@@ -72,7 +72,7 @@ export default function MisSolicitudes() {
           {solicitudes.map((item: any) => {
             const solicitud = item.solicitudes_curso;
             const curso = item.cursos;
-            const estatus = solicitud.estatus ?? "pendiente";
+            const estatus = solicitud.estado ?? "pendiente";
             const config = ESTATUS_CONFIG[estatus] ?? ESTATUS_CONFIG.pendiente;
             const EstatusIcon = config.icon;
 
@@ -102,15 +102,15 @@ export default function MisSolicitudes() {
                     {/* Approved details */}
                     {estatus === "aprobada" && (
                       <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
-                        {item.cursoInstitucion ? (
+                        {item.instituciones ? (
                           <div>
-                            <p className="font-medium">{item.cursoInstitucion.nombre}</p>
-                            {item.cursoInstitucion.horario && (
-                              <p className="mt-1">Horario: {item.cursoInstitucion.horario}</p>
+                            <p className="font-medium">{item.instituciones.nombre}</p>
+                            {item.cursos_instituciones?.horario && (
+                              <p className="mt-1">Horario: {item.cursos_instituciones.horario}</p>
                             )}
                           </div>
                         ) : (
-                          <p>Aprobada - pendiente asignacion</p>
+                          <p>Aprobada — pendiente asignación de sede</p>
                         )}
                       </div>
                     )}

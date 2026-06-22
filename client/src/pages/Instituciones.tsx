@@ -10,7 +10,9 @@ import {
   Phone,
   Mail,
   User,
+  Upload,
 } from "lucide-react";
+import ImportarCSVModal from "@/components/ImportarCSVModal";
 
 const stagger = {
   hidden: {},
@@ -46,8 +48,9 @@ export default function Instituciones() {
   const utils = trpc.useUtils();
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [form, setForm] = useState<InstFormData>(emptyForm);
+  const [showImport, setShowImport] = useState(false);
 
-  const { data: instituciones, isLoading } = trpc.instituciones.listar.useQuery({});
+  const { data: instituciones, isLoading } = trpc.instituciones.listar.useQuery({ soloActivas: false });
 
   const crearMut = trpc.instituciones.crear.useMutation({
     onSuccess: () => {
@@ -68,6 +71,8 @@ export default function Instituciones() {
       utils.instituciones.listar.invalidate();
     },
   });
+
+  const importarMut = trpc.instituciones.importar.useMutation();
 
   const openCreate = () => {
     setForm(emptyForm);
@@ -116,13 +121,22 @@ export default function Instituciones() {
             Gestiona las instituciones de capacitacion
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition-colors hover:bg-primary-700"
-        >
-          <Plus size={16} />
-          Crear Institucion
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Upload size={16} />
+            Importar CSV
+          </button>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition-colors hover:bg-primary-700"
+          >
+            <Plus size={16} />
+            Crear Institución
+          </button>
+        </div>
       </motion.div>
 
       {/* Institution list */}
@@ -313,6 +327,22 @@ export default function Instituciones() {
             </form>
           </motion.div>
         </div>
+      )}
+      {/* Import CSV Modal */}
+      {showImport && (
+        <ImportarCSVModal
+          titulo="Instituciones"
+          columnas={[
+            { key: "nombre", label: "Nombre", ejemplo: "Universidad Autónoma" },
+            { key: "direccion", label: "Dirección", ejemplo: "Av. Principal #123" },
+            { key: "contacto", label: "Contacto", ejemplo: "Juan Pérez" },
+            { key: "telefono", label: "Teléfono", ejemplo: "6141234567" },
+            { key: "email", label: "Email", ejemplo: "contacto@universidad.edu.mx" },
+          ]}
+          onImportar={(registros) => importarMut.mutateAsync({ registros })}
+          onClose={() => setShowImport(false)}
+          onSuccess={() => utils.instituciones.listar.invalidate()}
+        />
       )}
     </motion.div>
   );
