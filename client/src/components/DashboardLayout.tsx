@@ -87,7 +87,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="min-w-0">
             <span className="block truncate text-sm font-bold text-slate-900">
-              Casa de la Cultura
+              Secretaría de Cultura
             </span>
             <span className="block text-[10px] font-medium text-slate-400">
               Panel de gestión
@@ -157,7 +157,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <button onClick={() => setSidebarOpen(true)} className="text-slate-600">
             <Menu size={22} />
           </button>
-          <span className="text-sm font-bold text-slate-800">Casa de la Cultura</span>
+          <span className="text-sm font-bold text-slate-800">Secretaría de Cultura</span>
         </header>
         <main className="flex-1 overflow-y-auto p-5 lg:p-8">{children}</main>
       </div>

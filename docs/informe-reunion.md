@@ -1,6 +1,6 @@
 # Informe para Reunión — Sistema de Registro y Capacitación de Servidores Públicos
 
-**Casa de la Cultura del Municipio**  
+**Secretaría de Cultura del Municipio**  
 **Fecha de elaboración:** 21 de junio de 2026  
 **Elaborado por:** Área de Desarrollo de Sistemas
 

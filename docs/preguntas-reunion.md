@@ -1,6 +1,6 @@
 # Preguntas para Reunión — Sistema de Capacitación de Servidores Públicos
 
-**Casa de la Cultura del Municipio**  
+**Secretaría de Cultura del Municipio**  
 **Fecha:** 21 de junio de 2026
 
 ---

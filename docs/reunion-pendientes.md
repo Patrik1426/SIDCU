@@ -1,4 +1,4 @@
-# Puntos para Reunión — Casa de la Cultura
+# Puntos para Reunión — Secretaría de Cultura
 
 **Fecha de elaboración:** 20 de junio de 2026  
 **Sistema:** Portal de Registro y Capacitación de Servidores Públicos

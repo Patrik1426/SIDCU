@@ -1,4 +1,4 @@
-# Casa de la Cultura — Registro de Servidores Públicos
+# Secretaría de Cultura — Registro de Servidores Públicos
 
 ## Documento Consolidado: PRD · TRD · UI/UX · Flujos · Backend · Roadmap
 
@@ -25,7 +25,7 @@
 
 ### ¿Qué es?
 
-Sistema web interno para el registro, gestión y consulta de servidores públicos de la Casa de la Cultura. Centraliza la información de personal gubernamental con trazabilidad completa de cambios.
+Sistema web interno para el registro, gestión y consulta de servidores públicos de la Secretaría de Cultura. Centraliza la información de personal gubernamental con trazabilidad completa de cambios.
 
 ### Problema que resuelve
 

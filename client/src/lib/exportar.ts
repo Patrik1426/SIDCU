@@ -86,7 +86,7 @@ export function exportarPDF(items: ServidorExport[], filename = "servidores_publ
 
   doc.setFontSize(16);
   doc.setTextColor(30, 58, 138);
-  doc.text("Casa de la Cultura", 14, 15);
+  doc.text("Secretaría de Cultura", 14, 15);
 
   doc.setFontSize(11);
   doc.setTextColor(100, 116, 139);

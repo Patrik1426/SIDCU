@@ -1,4 +1,4 @@
-# Guía de Importación CSV — Casa de la Cultura
+# Guía de Importación CSV — Secretaría de Cultura
 
 **Sistema:** Portal de Registro y Capacitación de Servidores Públicos  
 **Dirigido a:** Capturistas y Administradores  

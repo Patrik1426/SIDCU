@@ -92,7 +92,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-[20px] font-extrabold tracking-tight text-white">
-                  Casa de la Cultura
+                  Secretaría de Cultura
                 </h1>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-400/70">
                   Gobierno Municipal
@@ -135,7 +135,7 @@ export default function Home() {
         <div className="relative z-10 px-12 pb-5 xl:px-16">
           <div className="h-px w-full bg-white/[0.06]" />
           <p className="mt-3 text-[10px] font-medium tracking-wide text-slate-600">
-            © 2026 Casa de la Cultura · Plataforma Institucional
+            © 2026 Secretaría de Cultura · Plataforma Institucional
           </p>
         </div>
       </div>
@@ -155,7 +155,7 @@ export default function Home() {
                   CC
                 </div>
                 <div>
-                  <h1 className="text-base font-extrabold text-slate-900">Casa de la Cultura</h1>
+                  <h1 className="text-base font-extrabold text-slate-900">Secretaría de Cultura</h1>
                   <p className="text-[11px] font-medium text-slate-400">Sistema de Registro</p>
                 </div>
               </div>
@@ -217,7 +217,7 @@ export default function Home() {
 
             {/* Mobile footer */}
             <p className="mt-6 text-center text-[10px] text-slate-300 lg:hidden">
-              © 2026 Casa de la Cultura
+              © 2026 Secretaría de Cultura
             </p>
           </div>
         </div>
