@@ -1,8 +1,12 @@
 {
-  "name": "registro-servidores-publicos",
+  "name": "sigecap",
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build",
