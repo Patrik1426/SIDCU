@@ -78,6 +78,8 @@ export const importacionRouter = router({
     .mutation(async ({ ctx, input }) => {
       const creados: number[] = [];
       const errores: { fila: number; error: string }[] = [];
+      const curpsVistos = new Set<string>();
+      const rfcsVistos = new Set<string>();
 
       for (let i = 0; i < input.registros.length; i++) {
         const row = input.registros[i];
@@ -110,6 +112,20 @@ export const importacionRouter = router({
           continue;
         }
 
+        const curp = reg.data.curp.toUpperCase();
+        const rfc = reg.data.rfc.toUpperCase();
+
+        if (curpsVistos.has(curp) && !curp.startsWith("PEND")) {
+          errores.push({ fila: i + 1, error: `CURP "${curp}" duplicado en el mismo archivo (fila anterior)` });
+          continue;
+        }
+        if (rfcsVistos.has(rfc) && !rfc.startsWith("PEND")) {
+          errores.push({ fila: i + 1, error: `RFC "${rfc}" duplicado en el mismo archivo (fila anterior)` });
+          continue;
+        }
+        curpsVistos.add(curp);
+        rfcsVistos.add(rfc);
+
         try {
           const id = await crearServidor({
             ...reg.data,
@@ -135,12 +151,14 @@ export const importacionRouter = router({
 
           creados.push(id);
         } catch (err: any) {
-          errores.push({
-            fila: i + 1,
-            error: err.message?.includes("Duplicate")
-              ? "RFC o CURP duplicado"
-              : err.message ?? "Error desconocido",
-          });
+          const msg = err.message ?? "Error desconocido";
+          let error = msg;
+          if (msg.includes("Duplicate")) {
+            if (msg.includes("rfc")) error = `RFC "${reg.data.rfc}" ya existe en el sistema`;
+            else if (msg.includes("curp")) error = `CURP "${reg.data.curp}" ya existe en el sistema`;
+            else error = "Registro duplicado (RFC o CURP ya existe)";
+          }
+          errores.push({ fila: i + 1, error });
         }
       }
 

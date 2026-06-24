@@ -2,6 +2,8 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import ConfirmModal from "@/components/ConfirmModal";
+import { SkeletonCard, SkeletonTable } from "@/components/Skeleton";
 import {
   Plus,
   Pencil,
@@ -65,6 +67,7 @@ export default function GestionCursos() {
   const [showImport, setShowImport] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
 
   // Assignment form state
   const [assignForm, setAssignForm] = useState({
@@ -132,11 +135,11 @@ export default function GestionCursos() {
   };
 
   const eliminarSeleccionados = async () => {
-    if (!confirm(`¿Eliminar ${selected.size} curso${selected.size > 1 ? "s" : ""}? Esta acción no se puede deshacer.`)) return;
     for (const id of selected) {
       await eliminarCursoMut.mutateAsync({ id });
     }
     setSelected(new Set());
+    setConfirmDelete(null);
   };
 
   const asignarMut = trpc.cursos.asignarInstitucion.useMutation({
@@ -291,7 +294,7 @@ export default function GestionCursos() {
             </span>
           </div>
           <button
-            onClick={eliminarSeleccionados}
+            onClick={() => setConfirmDelete({ type: "bulk" })}
             disabled={eliminarCursoMut.isPending}
             className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-caption font-semibold text-white hover:bg-rose-600 disabled:opacity-50 transition-colors"
           >
@@ -303,9 +306,13 @@ export default function GestionCursos() {
 
       {/* Course list */}
       {isLoading ? (
-        <div className="flex min-h-[40dvh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-primary-500" />
-        </div>
+        viewMode === "grid" ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        ) : (
+          <SkeletonTable rows={8} cols={8} />
+        )
       ) : !cursos?.length ? (
         <motion.div variants={fadeUp} className="flex flex-col items-center py-16 text-center">
           <div className="rounded-2xl bg-slate-50 p-5">
@@ -375,7 +382,7 @@ export default function GestionCursos() {
                     <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500" title="Editar">
                       <Pencil size={15} />
                     </button>
-                    <button onClick={() => { if (!confirm(`¿Eliminar "${curso.nombre}"?`)) return; eliminarCursoMut.mutate({ id: curso.id }); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
+                    <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -441,7 +448,7 @@ export default function GestionCursos() {
                         <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-500" title="Editar">
                           <Pencil size={14} />
                         </button>
-                        <button onClick={() => { if (!confirm(`¿Eliminar "${curso.nombre}"?`)) return; eliminarCursoMut.mutate({ id: curso.id }); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
+                        <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -815,6 +822,30 @@ export default function GestionCursos() {
           onSuccess={() => utils.cursos.listar.invalidate()}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        open={!!confirmDelete}
+        title={confirmDelete?.type === "bulk" ? `Eliminar ${selected.size} cursos` : "Eliminar curso"}
+        message={
+          confirmDelete?.type === "bulk"
+            ? `¿Eliminar ${selected.size} curso${selected.size > 1 ? "s" : ""} seleccionado${selected.size > 1 ? "s" : ""}? Esta acción no se puede deshacer.`
+            : `¿Eliminar "${confirmDelete?.type === "single" ? confirmDelete.nombre : ""}"? Esta acción no se puede deshacer.`
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={eliminarCursoMut.isPending}
+        onConfirm={() => {
+          if (confirmDelete?.type === "single") {
+            eliminarCursoMut.mutate({ id: confirmDelete.id }, {
+              onSuccess: () => setConfirmDelete(null),
+            });
+          } else {
+            eliminarSeleccionados();
+          }
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </motion.div>
   );
 }

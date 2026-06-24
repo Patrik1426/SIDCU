@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { eq } from "drizzle-orm";
+import * as schema from "../../drizzle/schema";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import {
@@ -126,6 +128,7 @@ export const cursosRouter = router({
     .mutation(async ({ ctx, input }) => {
       const creados: number[] = [];
       const errores: { fila: number; error: string }[] = [];
+      const nombresVistos = new Set<string>();
 
       for (let i = 0; i < input.registros.length; i++) {
         const row = input.registros[i];
@@ -148,6 +151,23 @@ export const cursosRouter = router({
             fila: i + 1,
             error: parsed.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", "),
           });
+          continue;
+        }
+
+        const nombreKey = parsed.data.nombre.toLowerCase();
+        if (nombresVistos.has(nombreKey)) {
+          errores.push({ fila: i + 1, error: `Curso "${parsed.data.nombre}" duplicado en el mismo archivo` });
+          continue;
+        }
+        nombresVistos.add(nombreKey);
+
+        const existente = await (await import("../db")).getDb().then(d =>
+          d.select({ id: schema.cursos.id }).from(schema.cursos)
+            .where(eq(schema.cursos.nombre, parsed.data.nombre))
+            .then(r => r[0])
+        );
+        if (existente) {
+          errores.push({ fila: i + 1, error: `Curso "${parsed.data.nombre}" ya existe en el sistema` });
           continue;
         }
 
