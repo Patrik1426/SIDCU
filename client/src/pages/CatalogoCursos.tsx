@@ -38,7 +38,7 @@ export default function CatalogoCursos() {
   const { data: cursos, isLoading: cursosLoading } = trpc.cursos.listar.useQuery({
     categoria: categoria || undefined,
     modalidad: modalidad || undefined,
-  });
+  }, { placeholderData: (prev) => prev });
 
   const { data: cursoDetalle, isLoading: detalleLoading } = trpc.cursos.obtener.useQuery(
     { id: selectedCursoId! },
