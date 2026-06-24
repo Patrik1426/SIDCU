@@ -37,7 +37,8 @@ export default function Servidores() {
   const [grupoFuncion, setGrupoFuncion] = useState("");
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
-  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nombre: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const { data: upas } = trpc.servidores.listarUpas.useQuery();
   const { data: uas } = trpc.servidores.listarUas.useQuery();
@@ -127,6 +128,32 @@ export default function Servidores() {
 
   const handleDelete = async (id: number) => {
     await eliminarMut.mutateAsync({ id });
+    setConfirmDelete(null);
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (!data?.items?.length) return;
+    if (selected.size === data.items.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(data.items.map((s: any) => s.id)));
+    }
+  };
+
+  const eliminarSeleccionados = async () => {
+    for (const id of selected) {
+      await eliminarMut.mutateAsync({ id });
+    }
+    setSelected(new Set());
     setConfirmDelete(null);
   };
 
@@ -258,11 +285,40 @@ export default function Servidores() {
         </select>
       </div>
 
+      {/* Selection bar */}
+      {selected.size > 0 && canDelete && (
+        <div className="flex items-center justify-between rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <button onClick={selectAll} className="text-xs font-semibold text-primary-600 hover:underline">
+              {selected.size === data?.items?.length ? "Deseleccionar todos" : "Seleccionar todos"}
+            </button>
+            <span className="text-xs text-primary-500">{selected.size} seleccionado{selected.size > 1 ? "s" : ""}</span>
+          </div>
+          <button
+            onClick={() => setConfirmDelete({ type: "bulk" })}
+            disabled={eliminarMut.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50 transition-colors"
+          >
+            Eliminar {selected.size}
+          </button>
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
+              {canDelete && (
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={data?.items?.length > 0 && selected.size === data.items.length}
+                    onChange={selectAll}
+                    className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3">Nombre</th>
               <th className="px-4 py-3">RFC</th>
               <th className="hidden px-4 py-3 md:table-cell">CURP</th>
@@ -290,6 +346,16 @@ export default function Servidores() {
             ) : (
               data.items.map((srv) => (
                 <tr key={srv.id} className="hover:bg-gray-50">
+                  {canDelete && (
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(srv.id)}
+                        onChange={() => toggleSelect(srv.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {srv.nombreCompleto}
                   </td>
@@ -331,7 +397,7 @@ export default function Servidores() {
                         {canDelete && (
                           <button
                             onClick={() =>
-                              setConfirmDelete({ id: srv.id, nombre: srv.nombreCompleto })
+                              setConfirmDelete({ type: "single", id: srv.id, nombre: srv.nombreCompleto })
                             }
                             className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
                             title="Eliminar"
@@ -419,12 +485,22 @@ export default function Servidores() {
 
       <ConfirmModal
         open={!!confirmDelete}
-        title="Eliminar servidor"
-        message={`¿Eliminar a "${confirmDelete?.nombre ?? ""}"? Esta acción no se puede deshacer.`}
+        title={confirmDelete?.type === "bulk" ? `Eliminar ${selected.size} servidores` : "Eliminar servidor"}
+        message={
+          confirmDelete?.type === "bulk"
+            ? `¿Eliminar ${selected.size} servidor${selected.size > 1 ? "es" : ""} seleccionado${selected.size > 1 ? "s" : ""}? Esta acción no se puede deshacer.`
+            : `¿Eliminar a "${confirmDelete?.type === "single" ? confirmDelete.nombre : ""}"? Esta acción no se puede deshacer.`
+        }
         confirmLabel="Eliminar"
         variant="danger"
         loading={eliminarMut.isPending}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete.id)}
+        onConfirm={() => {
+          if (confirmDelete?.type === "single") {
+            handleDelete(confirmDelete.id);
+          } else {
+            eliminarSeleccionados();
+          }
+        }}
         onCancel={() => setConfirmDelete(null)}
       />
     </div>
