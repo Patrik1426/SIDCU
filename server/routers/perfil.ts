@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
+import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor, actualizarServidor, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
 import { eq } from "drizzle-orm";
 import * as schema from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -36,25 +36,44 @@ export const perfilRouter = router({
         completado: true,
       });
 
-      await crearServidor({
-        userId: ctx.user.id,
-        nombreCompleto: ctx.user.nombre,
-        rfc: input.rfc,
-        curp: input.curp,
-        cargo: input.cargo,
-        dependencia: input.dependencia,
-        nivel: input.nivelGobierno,
-        grupoFuncion: input.grupoFuncion,
-        fechaIngreso: input.fechaIngreso,
-        datosContacto: input.datosContacto ?? null,
-        upa: null,
-        cmao: null,
-        ua: null,
-        nivelProgresion: 0,
-        estatus: "activo",
-        creadoPor: ctx.user.id,
-        actualizadoPor: ctx.user.id,
-      });
+      const d = await getDb();
+      const [existingSrv] = await d.select().from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
+
+      if (existingSrv) {
+        await d.update(schema.servidoresPublicos).set({
+          nombreCompleto: ctx.user.nombre,
+          rfc: input.rfc,
+          curp: input.curp,
+          cargo: input.cargo,
+          dependencia: input.dependencia,
+          nivel: input.nivelGobierno,
+          grupoFuncion: input.grupoFuncion,
+          fechaIngreso: input.fechaIngreso,
+          datosContacto: input.datosContacto ?? null,
+          actualizadoPor: ctx.user.id,
+        }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
+      } else {
+        await crearServidor({
+          userId: ctx.user.id,
+          nombreCompleto: ctx.user.nombre,
+          rfc: input.rfc,
+          curp: input.curp,
+          cargo: input.cargo,
+          dependencia: input.dependencia,
+          nivel: input.nivelGobierno,
+          grupoFuncion: input.grupoFuncion,
+          fechaIngreso: input.fechaIngreso,
+          datosContacto: input.datosContacto ?? null,
+          upa: null,
+          cmao: null,
+          ua: null,
+          nivelProgresion: 0,
+          estatus: "activo",
+          creadoPor: ctx.user.id,
+          actualizadoPor: ctx.user.id,
+        });
+      }
 
       return { success: true, id };
     }),

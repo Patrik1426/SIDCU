@@ -316,17 +316,17 @@ export function ServidorForm({
           </select>
         </div>
 
-        {/* Datos de Contacto */}
+        {/* Número de Contacto */}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            Datos de Contacto
+            Número de Contacto
           </label>
           <input
-            type="text"
+            type="tel"
             value={form.datosContacto}
             onChange={(e) => set("datosContacto", e.target.value)}
             className={inputClass}
-            placeholder="Teléfono o correo"
+            placeholder="Ej. 55-1234-5678"
           />
         </div>
 

@@ -374,14 +374,14 @@ export default function Onboarding() {
 
               <div>
                 <label htmlFor="contacto" className={labelClass}>
-                  Datos de Contacto{" "}
+                  Número de Contacto{" "}
                   <span className="font-normal text-slate-400">(opcional)</span>
                 </label>
                 <input
+                  type="tel"
                   id="contacto"
-                  type="text"
                   className={inputClass}
-                  placeholder="Ej. Tel. 555-1234 o correo alterno"
+                  placeholder="Ej. 55-1234-5678"
                   value={formData.contacto}
                   onChange={(e) => updateField("contacto", e.target.value)}
                 />
