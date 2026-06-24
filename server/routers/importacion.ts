@@ -129,7 +129,7 @@ export const importacionRouter = router({
         rfcsVistos.add(rfc);
 
         const d = await getDb();
-        const [existente] = await d.select({ id: schema.servidoresPublicos.id })
+        const [existente] = await d.select({ id: schema.servidoresPublicos.id, estatus: schema.servidoresPublicos.estatus, curp: schema.servidoresPublicos.curp })
           .from(schema.servidoresPublicos)
           .where(
             or(
@@ -138,6 +138,10 @@ export const importacionRouter = router({
             )
           );
         if (existente) {
+          if (existente.estatus === "inactivo") {
+            errores.push({ fila: i + 1, error: `CURP "${curp}" pertenece a un servidor dado de baja — no se puede reimportar` });
+            continue;
+          }
           errores.push({ fila: i + 1, error: `Servidor con CURP "${curp}" ya registrado — se omitió` });
           continue;
         }
