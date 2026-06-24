@@ -57,6 +57,7 @@ function formatFecha(date: string | Date) {
 export default function GestionSolicitudes() {
   const utils = trpc.useUtils();
   const [estadoFilter, setEstadoFilter] = useState<Estado>("");
+  const [userFilter, setUserFilter] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [notasAdmin, setNotasAdmin] = useState("");
   const [cursoInstitucionId, setCursoInstitucionId] = useState<number>(0);
@@ -159,6 +160,16 @@ export default function GestionSolicitudes() {
             </button>
           );
         })}
+        <select
+          value={userFilter}
+          onChange={(e) => setUserFilter(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+        >
+          <option value="">Todos los usuarios</option>
+          {[...new Set((solicitudes ?? []).map((s: any) => s.users?.nombre).filter(Boolean))].sort().map((nombre: string) => (
+            <option key={nombre} value={nombre}>{nombre}</option>
+          ))}
+        </select>
       </motion.div>
 
       {/* Solicitudes list */}
@@ -175,7 +186,7 @@ export default function GestionSolicitudes() {
         </motion.div>
       ) : (
         <motion.div variants={stagger} className="space-y-3">
-          {solicitudes.map((item: any, index: number) => {
+          {solicitudes.filter((item: any) => !userFilter || item.users?.nombre === userFilter).map((item: any, index: number) => {
             const solicitud = item.solicitudes_curso ?? item;
             const curso = item.cursos ?? {};
             const usuario = item.users ?? {};
