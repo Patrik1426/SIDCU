@@ -131,10 +131,40 @@ export async function toggleActivoUsuario(id: number) {
     throw new Error("Usuario no encontrado");
   }
 
+  const activar = !user.isActive;
+
   await d
     .update(schema.users)
-    .set({ isActive: !user.isActive, updatedAt: new Date() })
+    .set({ isActive: activar, updatedAt: new Date() })
     .where(eq(schema.users.id, id));
+
+  if (activar) {
+    const [srvExistente] = await d.select({ id: schema.servidoresPublicos.id })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, id));
+
+    if (!srvExistente) {
+      await d.insert(schema.servidoresPublicos).values({
+        userId: id,
+        nombreCompleto: user.nombre,
+        rfc: `UREG${String(id).padStart(9, "0")}`,
+        curp: `UREG${String(id).padStart(14, "0")}`,
+        cargo: "Por definir",
+        dependencia: "Por definir",
+        nivel: "federal",
+        grupoFuncion: "ADMO",
+        fechaIngreso: new Date(),
+        datosContacto: user.email,
+        estatus: "activo",
+        creadoPor: id,
+        actualizadoPor: id,
+      });
+    } else {
+      await d.update(schema.servidoresPublicos)
+        .set({ estatus: "activo" })
+        .where(eq(schema.servidoresPublicos.id, srvExistente.id));
+    }
+  }
 }
 
 // ─── Servidores Públicos ─────────────────────────────────────────────
