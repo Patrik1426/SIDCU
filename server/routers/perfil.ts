@@ -40,11 +40,13 @@ export const perfilRouter = router({
       const [curpExistente] = await d.select().from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.curp, input.curp));
 
-      if (curpExistente && curpExistente.userId !== ctx.user.id) {
+      if (curpExistente) {
         if (curpExistente.estatus === "inactivo") {
           throw new TRPCError({ code: "FORBIDDEN", message: "Este CURP pertenece a un servidor dado de baja. Contacte al administrador." });
         }
-        throw new TRPCError({ code: "CONFLICT", message: "Este CURP ya está registrado en el sistema." });
+        if (!curpExistente.curp.startsWith("PEND") && !curpExistente.curp.startsWith("UREG")) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este CURP ya está registrado en el sistema." });
+        }
       }
 
       const [existingSrv] = await d.select().from(schema.servidoresPublicos)
