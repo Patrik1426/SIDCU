@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { ServidorForm, type ServidorFormData } from "@/components/ServidorForm";
+import ConfirmModal from "@/components/ConfirmModal";
 import {
   Plus,
   Search,
@@ -36,6 +37,7 @@ export default function Servidores() {
   const [grupoFuncion, setGrupoFuncion] = useState("");
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nombre: string } | null>(null);
 
   const { data: upas } = trpc.servidores.listarUpas.useQuery();
   const { data: uas } = trpc.servidores.listarUas.useQuery();
@@ -123,9 +125,9 @@ export default function Servidores() {
     });
   };
 
-  const handleDelete = async (id: number, nombre: string) => {
-    if (!confirm(`¿Eliminar a "${nombre}"? Esta acción no se puede deshacer.`)) return;
+  const handleDelete = async (id: number) => {
     await eliminarMut.mutateAsync({ id });
+    setConfirmDelete(null);
   };
 
   const openEdit = (srv: any) => {
@@ -329,7 +331,7 @@ export default function Servidores() {
                         {canDelete && (
                           <button
                             onClick={() =>
-                              handleDelete(srv.id, srv.nombreCompleto)
+                              setConfirmDelete({ id: srv.id, nombre: srv.nombreCompleto })
                             }
                             className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
                             title="Eliminar"
@@ -414,6 +416,17 @@ export default function Servidores() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Eliminar servidor"
+        message={`¿Eliminar a "${confirmDelete?.nombre ?? ""}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={eliminarMut.isPending}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete.id)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

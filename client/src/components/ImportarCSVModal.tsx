@@ -241,32 +241,62 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
 
           {/* Result */}
           <AnimatePresence>
-            {result && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
-                {result.creados > 0 && (
-                  <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
-                    <CheckCircle2 size={16} />
-                    <span className="font-medium">{result.creados} registros importados correctamente</span>
-                  </div>
-                )}
-                {result.errores.length > 0 && (
-                  <div className="rounded-xl bg-rose-50 p-3 space-y-1">
-                    <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
-                      <AlertTriangle size={14} />
-                      {result.errores.length} error{result.errores.length !== 1 ? "es" : ""}
+            {result && (() => {
+              const omitidos = result.errores.filter((e) => e.error.includes("ya registrado") || e.error.includes("ya existe") || e.error.includes("duplicado") || e.error.includes("se omitió"));
+              const erroresReales = result.errores.filter((e) => !omitidos.includes(e));
+              return (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+                  {/* Resumen */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-xl bg-emerald-50 p-2.5">
+                      <p className="text-lg font-extrabold text-emerald-600">{result.creados}</p>
+                      <p className="text-micro font-medium text-emerald-500">Importados</p>
                     </div>
-                    {result.errores.slice(0, 5).map((err, i) => (
-                      <p key={i} className="text-xs text-rose-600">
-                        {err.fila > 0 ? `Fila ${err.fila}: ` : ""}{err.error}
-                      </p>
-                    ))}
-                    {result.errores.length > 5 && (
-                      <p className="text-xs text-rose-400">...y {result.errores.length - 5} más</p>
-                    )}
+                    <div className="rounded-xl bg-amber-50 p-2.5">
+                      <p className="text-lg font-extrabold text-amber-600">{omitidos.length}</p>
+                      <p className="text-micro font-medium text-amber-500">Omitidos</p>
+                    </div>
+                    <div className="rounded-xl bg-rose-50 p-2.5">
+                      <p className="text-lg font-extrabold text-rose-600">{erroresReales.length}</p>
+                      <p className="text-micro font-medium text-rose-500">Errores</p>
+                    </div>
                   </div>
-                )}
-              </motion.div>
-            )}
+
+                  {/* Omitidos (duplicados) */}
+                  {omitidos.length > 0 && (
+                    <div className="rounded-xl bg-amber-50 p-3 space-y-1">
+                      <p className="text-sm font-semibold text-amber-700">Registros omitidos (ya existían)</p>
+                      {omitidos.slice(0, 5).map((err, i) => (
+                        <p key={i} className="text-xs text-amber-600">
+                          Fila {err.fila}: {err.error}
+                        </p>
+                      ))}
+                      {omitidos.length > 5 && (
+                        <p className="text-xs text-amber-400">...y {omitidos.length - 5} más</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Errores reales */}
+                  {erroresReales.length > 0 && (
+                    <div className="rounded-xl bg-rose-50 p-3 space-y-1">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-rose-700">
+                        <AlertTriangle size={14} />
+                        {erroresReales.length} error{erroresReales.length !== 1 ? "es" : ""}
+                      </div>
+                      {erroresReales.slice(0, 5).map((err, i) => (
+                        <p key={i} className="text-xs text-rose-600">
+                          Fila {err.fila}: {err.error}
+                        </p>
+                      ))}
+                      {erroresReales.length > 5 && (
+                        <p className="text-xs text-rose-400">...y {erroresReales.length - 5} más</p>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })()}
           </AnimatePresence>
         </div>
 

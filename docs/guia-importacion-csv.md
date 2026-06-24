@@ -24,7 +24,8 @@
 - Codificación: **UTF-8** (para que los acentos y la ñ se muestren correctamente)
 - La **primera fila** debe contener los nombres de las columnas exactamente como se indican en esta guía
 - No dejar filas vacías entre los datos
-- No usar comas dentro de los valores (si es necesario, encerrar el valor entre comillas dobles)
+- Si un valor contiene comas, encerrarlo entre comillas dobles (ej: `"COMPUTO CON WORD, EXCEL, POWERPOINT"`)
+- Excel y Google Sheets hacen esto automáticamente al exportar
 
 ### Cómo guardar como CSV desde Excel
 1. Abrir el archivo en Excel
@@ -186,7 +187,10 @@ Si los nombres vienen en MAYÚSCULAS, el sistema los convierte automáticamente 
 | Error | Causa | Solución |
 |-------|-------|----------|
 | "CURP inválido" | CURP en minúsculas o formato incorrecto | Verificar MAYÚSCULAS, 18 caracteres exactos |
-| "RFC o CURP duplicado" | Ya existe un servidor con ese dato | Verificar si ya fue registrado |
+| "CURP duplicado en el mismo archivo" | Dos filas tienen el mismo CURP | Eliminar la fila duplicada del CSV |
+| "CURP ya existe en el sistema" | El CURP ya está registrado en la BD | Verificar si ya fue registrado |
+| "RFC ya existe en el sistema" | El RFC ya está registrado en la BD | Verificar si ya fue registrado |
+| "Curso ya existe en el sistema" | El nombre del curso ya existe | No se crean cursos duplicados |
 | Los acentos se ven mal | Codificación incorrecta | Guardar como **CSV UTF-8** |
 | El archivo no se reconoce | Formato incorrecto | Guardar como CSV, no como .xlsx |
 | Nombres en MAYÚSCULAS | CSV original sin formato | El sistema convierte automáticamente a título |

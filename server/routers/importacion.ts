@@ -2,7 +2,9 @@ import { z } from "zod";
 import { router } from "../trpc";
 import { protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { crearServidor, crearAuditoria } from "../db";
+import { crearServidor, crearAuditoria, getDb } from "../db";
+import { eq, or } from "drizzle-orm";
+import * as schema from "../../drizzle/schema";
 
 function requireRole(...roles: string[]) {
   return protectedProcedure.use(({ ctx, next }) => {
@@ -125,6 +127,20 @@ export const importacionRouter = router({
         }
         curpsVistos.add(curp);
         rfcsVistos.add(rfc);
+
+        const d = await getDb();
+        const [existente] = await d.select({ id: schema.servidoresPublicos.id })
+          .from(schema.servidoresPublicos)
+          .where(
+            or(
+              eq(schema.servidoresPublicos.curp, curp),
+              ...(!rfc.startsWith("PEND") ? [eq(schema.servidoresPublicos.rfc, rfc)] : [])
+            )
+          );
+        if (existente) {
+          errores.push({ fila: i + 1, error: `Servidor con CURP "${curp}" ya registrado — se omitió` });
+          continue;
+        }
 
         try {
           const id = await crearServidor({

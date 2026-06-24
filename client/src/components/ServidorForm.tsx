@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import ComboInput from "./ComboInput";
 
 export interface ServidorFormData {
   nombreCompleto: string;
@@ -224,19 +225,14 @@ export function ServidorForm({
           <label className="mb-1 block text-sm font-medium text-gray-700">
             UPA (Sector)
           </label>
-          <input
-            type="text"
-            list="upa-options"
+          <ComboInput
             value={form.upa}
-            onChange={(e) => set("upa", e.target.value.toUpperCase())}
-            className={inputClass}
+            onChange={(v) => set("upa", v)}
+            options={upas}
             placeholder="Ej: CULTURA, RE, INDAUTOR"
+            className={inputClass}
+            uppercase
           />
-          <datalist id="upa-options">
-            {upas.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
         </div>
 
         {/* CMAO */}
@@ -261,19 +257,13 @@ export function ServidorForm({
           <label className="mb-1 block text-sm font-medium text-gray-700">
             UA (Dirección)
           </label>
-          <input
-            type="text"
-            list="ua-options"
+          <ComboInput
             value={form.ua}
-            onChange={(e) => set("ua", e.target.value)}
-            className={inputClass}
+            onChange={(v) => set("ua", v)}
+            options={uas}
             placeholder="Dirección de adscripción"
+            className={inputClass}
           />
-          <datalist id="ua-options">
-            {uas.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
         </div>
 
         {/* Nivel de Progresión */}
