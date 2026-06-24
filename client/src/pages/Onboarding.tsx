@@ -96,12 +96,15 @@ export default function Onboarding() {
     }
   }, [perfilData, navigate]);
 
+  const utils = trpc.useUtils();
   const crearMutation = trpc.perfil.crear.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      await utils.perfil.obtener.invalidate();
       navigate("/portal");
     },
     onError: (err) => {
       setErrors({ rfc: err.message });
+      alert("Error al completar registro: " + err.message);
     },
   });
 
@@ -176,8 +179,8 @@ export default function Onboarding() {
       cargo: formData.cargo.trim(),
       dependencia: formData.dependencia.trim(),
       fechaIngreso: formData.fechaIngreso,
-      nivelGobierno: formData.nivelGobierno,
-      grupoFuncion: formData.grupoFuncion,
+      nivelGobierno: "federal" as const,
+      grupoFuncion: formData.grupoFuncion as "ADMO" | "TECN" | "SERV" | "COMUN" | "PROFE" | "EDU",
       datosContacto: formData.contacto.trim() || null,
     });
   }
