@@ -273,7 +273,14 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
       await login({ email, password, rememberMe });
       window.location.href = "/dashboard";
     } catch (err: any) {
-      setError(err.message ?? "Error al iniciar sesión");
+      const msg = err.message ?? "";
+      if (msg.includes("desactivada")) {
+        setError("Tu cuenta ha sido desactivada. Contacta al administrador.");
+      } else if (msg.includes("invalidas") || msg.includes("UNAUTHORIZED")) {
+        setError("Correo o contraseña incorrectos");
+      } else {
+        setError(msg || "Error al iniciar sesión");
+      }
     } finally {
       setLoading(false);
     }
@@ -354,16 +361,37 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    if (nombre.trim().length < 2) {
+      setError("El nombre debe tener al menos 2 caracteres");
+      return;
+    }
+    if (!email.includes("@")) {
+      setError("Ingresa un correo electrónico válido");
+      return;
+    }
+    if (password.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Las contraseñas no coinciden");
       return;
     }
     setLoading(true);
     try {
-      await register({ nombre, email, password });
+      await register({ nombre: nombre.trim(), email, password });
       onSuccess();
     } catch (err: any) {
-      setError(err.message ?? "Error al registrarse");
+      const msg = err.message ?? "";
+      if (msg.includes("too_small") || msg.includes("Too small")) {
+        setError("Verifica que todos los campos cumplan con el formato requerido");
+      } else if (msg.includes("email") || msg.includes("Email")) {
+        setError("El correo electrónico no es válido");
+      } else if (msg.includes("ya registrado") || msg.includes("CONFLICT")) {
+        setError("Este correo ya está registrado");
+      } else {
+        setError(msg || "Error al registrarse");
+      }
     } finally {
       setLoading(false);
     }
