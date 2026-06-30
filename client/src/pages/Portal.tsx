@@ -3,7 +3,221 @@ import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
-import { BookOpen, ClipboardList, ArrowRight, Clock, CheckCircle2, Award, LogOut, AlertTriangle, X } from "lucide-react";
+import { BookOpen, ClipboardList, ArrowRight, Clock, CheckCircle2, Award, LogOut, AlertTriangle, X, Download } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+
+const NIVEL_LABELS_PROG: Record<number, string> = { 0: "Nuevo ingreso", 1: "N1", 2: "N2", 3: "N3", 4: "N4", 5: "N5" };
+
+interface DatosCedula {
+  nombre: string;
+  curp: string;
+  folioSdpc: string;
+  email: string;
+  telOficina: string;
+  ext: string;
+  grupoFuncion: string;
+  nivelProgresion: number;
+  cmo: string;
+  cmao: string;
+  ua: string;
+  preparacionAcademica: string;
+  actividadDesempena: string;
+  jefeInmediatoCurp: string;
+  jefeInmediatoNombre: string;
+  jefeInmediatoCorreo: string;
+}
+
+function loadImageBase64(url: string, trim = false): Promise<{ data: string; w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const px = imageData.data;
+      const threshold = 235;
+
+      // Limpiar fondo gris claro → blanco puro (no se puede usar CSS blend-mode en PDF)
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i] >= threshold && px[i + 1] >= threshold && px[i + 2] >= threshold) {
+          px[i] = 255;
+          px[i + 1] = 255;
+          px[i + 2] = 255;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      if (!trim) {
+        resolve({ data: canvas.toDataURL("image/jpeg", 0.95), w: canvas.width, h: canvas.height });
+        return;
+      }
+
+      // Recortar el margen blanco — encontrar bounding box del contenido real
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = (y * canvas.width + x) * 4;
+          const isWhite = px[idx] >= threshold && px[idx + 1] >= threshold && px[idx + 2] >= threshold;
+          if (!isWhite) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      if (maxX <= minX || maxY <= minY) {
+        resolve({ data: canvas.toDataURL("image/jpeg", 0.95), w: canvas.width, h: canvas.height });
+        return;
+      }
+
+      const pad = Math.round(Math.max(maxX - minX, maxY - minY) * 0.04);
+      minX = Math.max(0, minX - pad);
+      minY = Math.max(0, minY - pad);
+      maxX = Math.min(canvas.width, maxX + pad);
+      maxY = Math.min(canvas.height, maxY + pad);
+
+      const trimW = maxX - minX;
+      const trimH = maxY - minY;
+      const trimCanvas = document.createElement("canvas");
+      trimCanvas.width = trimW;
+      trimCanvas.height = trimH;
+      const trimCtx = trimCanvas.getContext("2d")!;
+      trimCtx.fillStyle = "#ffffff";
+      trimCtx.fillRect(0, 0, trimW, trimH);
+      trimCtx.drawImage(canvas, minX, minY, trimW, trimH, 0, 0, trimW, trimH);
+
+      resolve({ data: trimCanvas.toDataURL("image/jpeg", 0.95), w: trimW, h: trimH });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function generarCedula(datos: DatosCedula) {
+  const doc = new jsPDF({ unit: "mm", format: "letter" });
+  const w = doc.internal.pageSize.getWidth();
+  const margin = 14;
+
+  const [logoCultura, sndtsc, sinac, sntsc, sintca] = await Promise.all([
+    loadImageBase64("/logo-secretaria-cultura.jpeg"),
+    loadImageBase64("/logo-sndtsc.jpg", true),
+    loadImageBase64("/logo-sinac.jpg", true),
+    loadImageBase64("/logo-sntsc.jpg", true),
+    loadImageBase64("/logo-sintca.jpg", true),
+  ]);
+
+  const cultureW = 45;
+  const cultureH = (logoCultura.h / logoCultura.w) * cultureW;
+  doc.addImage(logoCultura.data, "JPEG", margin, 10, cultureW, cultureH);
+
+  const boxSize = 11;
+  const unionGap = 3;
+  const unionLogos = [sndtsc, sinac, sntsc, sintca];
+  let unionX = w - margin - boxSize * 4 - unionGap * 3;
+  unionLogos.forEach((img) => {
+    const ratio = img.w / img.h;
+    let drawW = boxSize, drawH = boxSize;
+    if (ratio > 1) drawH = boxSize / ratio;
+    else drawW = boxSize * ratio;
+    const offsetX = (boxSize - drawW) / 2;
+    const offsetY = (boxSize - drawH) / 2;
+    doc.addImage(img.data, "JPEG", unionX + offsetX, 10 + offsetY, drawW, drawH);
+    unionX += boxSize + unionGap;
+  });
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(20, 20, 20);
+  doc.text(
+    "SISTEMA DE DESARROLLO PROFESIONAL DE CARRERA PARA EL",
+    w / 2, 36, { align: "center" }
+  );
+  doc.text(
+    "PERSONAL OPERATIVO DE BASE DE LA SECRETARÍA DE CULTURA (SDPC)",
+    w / 2, 41, { align: "center" }
+  );
+
+  doc.setFillColor(97, 18, 50);
+  doc.rect(margin, 46, w - margin * 2, 7, "F");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text(
+    `CÉDULA DE INSCRIPCIÓN A NUEVO INGRESO Y PROMOCIÓN ${new Date().getFullYear()}`,
+    w / 2, 51, { align: "center" }
+  );
+
+  let y = 58;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    head: [[{ content: "DATOS PERSONALES", colSpan: 4, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
+    body: [
+      [{ content: "NOMBRE:", styles: { fontStyle: "bold" } }, datos.nombre, { content: "FOLIO SDPC:", styles: { fontStyle: "bold" } }, datos.folioSdpc || "—"],
+      [{ content: "CURP:", styles: { fontStyle: "bold" } }, datos.curp, { content: "TEL. OFICINA:", styles: { fontStyle: "bold" } }, datos.telOficina || "—"],
+      [{ content: "CORREO ELECTRÓNICO:", styles: { fontStyle: "bold" } }, datos.email || "—", { content: "EXT:", styles: { fontStyle: "bold" } }, datos.ext || "—"],
+      [{ content: "GRUPO/FUNCIÓN:", styles: { fontStyle: "bold" } }, datos.grupoFuncion, { content: "NIVEL:", styles: { fontStyle: "bold" } }, NIVEL_LABELS_PROG[datos.nivelProgresion] ?? `N${datos.nivelProgresion}`],
+    ],
+    columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 75 }, 2: { cellWidth: 30 }, 3: { cellWidth: "auto" } },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    head: [[{ content: "DATOS DE ADSCRIPCIÓN DEL TRABAJADOR", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
+    body: [
+      [{ content: "CLAVE DE LA CMO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.cmo || "—"],
+      [{ content: "CLAVE DE LA CMAO:", styles: { fontStyle: "bold" } }, datos.cmao || "—"],
+      [{ content: "UNIDAD ADMINISTRATIVA:", styles: { fontStyle: "bold" } }, datos.ua || "—"],
+      [{ content: "PREPARACIÓN ACADÉMICA:", styles: { fontStyle: "bold" } }, datos.preparacionAcademica || "—"],
+    ],
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    body: [
+      [{ content: "ACTIVIDAD QUE DESEMPEÑA:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.actividadDesempena || "—"],
+    ],
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    head: [[{ content: "INFORMACIÓN DEL JEFE INMEDIATO", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
+    body: [
+      [{ content: "CURP DEL JEFE INMEDIATO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.jefeInmediatoCurp || "—"],
+      [{ content: "NOMBRE DEL JEFE INMEDIATO:", styles: { fontStyle: "bold" } }, datos.jefeInmediatoNombre || "—"],
+      [{ content: "CORREO DEL JEFE INMEDIATO:", styles: { fontStyle: "bold" } }, datos.jefeInmediatoCorreo || "—"],
+    ],
+  });
+
+  doc.save(`cedula_inscripcion_${datos.curp}.pdf`);
+}
 
 const stagger = {
   hidden: {},
@@ -29,7 +243,9 @@ export default function Portal() {
   const [bajaMsg, setBajaMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery();
+  const { data: servidor } = trpc.servidores.miServidor.useQuery();
   const { data: solicitudes } = trpc.solicitudes.misSolicitudes.useQuery();
+  const { data: progresoAcreditacion } = trpc.solicitudes.progresoAcreditacion.useQuery();
   const utils = trpc.useUtils();
 
   const solicitarBajaMut = trpc.perfil.solicitarBaja.useMutation({
@@ -69,9 +285,6 @@ export default function Portal() {
   const completados = solicitudes?.filter((s: any) => (s.solicitudes_curso ?? s).estado === "completada").length ?? 0;
 
   const nivelActual = perfil?.nivelProgresion ?? 0;
-  const nivelMax = 5;
-  const progreso = (nivelActual / nivelMax) * 100;
-  const NIVEL_LABELS_PROG: Record<number, string> = { 0: "Nuevo ingreso", 1: "N1", 2: "N2", 3: "N3", 4: "N4", 5: "N5" };
 
   return (
     <motion.div
@@ -123,69 +336,85 @@ export default function Portal() {
       </AnimatePresence>
 
       {/* Profile Card */}
-      <motion.div variants={fadeUp} className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm">
+      <motion.div variants={fadeUp} className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-card-rest">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{user?.nombre ?? "Usuario"}</h2>
             {perfil?.cargo && <p className="text-sm text-slate-600">{perfil.cargo}</p>}
             {perfil?.dependencia && <p className="text-sm text-slate-400">{perfil.dependencia}</p>}
           </div>
-          <span className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
-            Federal
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
+              Federal
+            </span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              {NIVEL_LABELS_PROG[nivelActual] ?? `N${nivelActual}`}
+            </span>
+          </div>
         </div>
 
-        {/* Level Progression */}
-        <div className="mt-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-slate-700">{NIVEL_LABELS_PROG[nivelActual] ?? `N${nivelActual}`}</span>
-            <span className="text-sm text-slate-400">{progreso.toFixed(0)}%</span>
+        {/* Accreditation Progress */}
+        {progresoAcreditacion && (
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Acreditación {progresoAcreditacion.acreditado && <CheckCircle2 className="inline h-3.5 w-3.5 text-emerald-500 ml-1" />}
+              </span>
+              <span className="text-sm text-slate-400">
+                {progresoAcreditacion.aprobados}/{progresoAcreditacion.requeridos} cursos aprobados
+              </span>
+            </div>
+            <div className="h-3 w-full rounded-full bg-slate-100 overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${progresoAcreditacion.acreditado ? "bg-emerald-500" : "bg-linear-to-r from-amber-400 to-amber-500"}`}
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(100, (progresoAcreditacion.aprobados / progresoAcreditacion.requeridos) * 100)}%` }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
+              />
+            </div>
+            {progresoAcreditacion.completados > progresoAcreditacion.aprobados && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                {progresoAcreditacion.completados - progresoAcreditacion.aprobados} curso{progresoAcreditacion.completados - progresoAcreditacion.aprobados > 1 ? "s" : ""} completado{progresoAcreditacion.completados - progresoAcreditacion.aprobados > 1 ? "s" : ""} sin calificación aprobatoria
+              </p>
+            )}
           </div>
-          <div className="h-3 w-full rounded-full bg-slate-100 overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-primary-500 to-primary-600"
-              initial={{ width: 0 }}
-              animate={{ width: `${progreso}%` }}
-              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
-            />
-          </div>
-        </div>
+        )}
       </motion.div>
 
       {/* Stats Cards */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
               <Clock className="h-5 w-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900">{pendientes}</p>
-              <p className="text-xs font-medium text-slate-400">Pendientes</p>
+              <p className="text-stat text-slate-900">{pendientes}</p>
+              <p className="text-label">Pendientes</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900">{aprobadas}</p>
-              <p className="text-xs font-medium text-slate-400">Aprobadas</p>
+              <p className="text-stat text-slate-900">{aprobadas}</p>
+              <p className="text-label">Aprobadas</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
               <Award className="h-5 w-5 text-indigo-600" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-slate-900">{completados}</p>
-              <p className="text-xs font-medium text-slate-400">Completados</p>
+              <p className="text-stat text-slate-900">{completados}</p>
+              <p className="text-label">Completados</p>
             </div>
           </div>
         </div>
@@ -195,7 +424,7 @@ export default function Portal() {
       <motion.div variants={fadeUp} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <button
           onClick={() => navigate("/portal/cursos")}
-          className="group flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm hover:border-primary-200 hover:shadow-md transition-all text-left"
+          className="group flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest hover:border-primary-200 hover:shadow-card-hover transition-all text-left"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50">
@@ -211,7 +440,7 @@ export default function Portal() {
 
         <button
           onClick={() => navigate("/portal/solicitudes")}
-          className="group flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm hover:border-primary-200 hover:shadow-md transition-all text-left"
+          className="group flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest hover:border-primary-200 hover:shadow-card-hover transition-all text-left"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50">
@@ -223,6 +452,37 @@ export default function Portal() {
             </div>
           </div>
           <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-primary-600 transition-colors" />
+        </button>
+      </motion.div>
+
+      {/* Descargar Cédula */}
+      <motion.div variants={fadeUp}>
+        <button
+          onClick={() => {
+            if (!servidor || !user) return;
+            generarCedula({
+              nombre: user.nombre ?? servidor.nombreCompleto ?? "Sin nombre",
+              curp: servidor.curp,
+              folioSdpc: servidor.folioSdpc ?? "",
+              email: servidor.email ?? "",
+              telOficina: servidor.telOficina ?? "",
+              ext: servidor.ext ?? "",
+              grupoFuncion: servidor.grupoFuncion,
+              nivelProgresion: servidor.nivelProgresion ?? 0,
+              cmo: servidor.cmo ?? "",
+              cmao: servidor.cmao ?? "",
+              ua: servidor.ua ?? "",
+              preparacionAcademica: servidor.preparacionAcademica ?? "",
+              actividadDesempena: servidor.actividadDesempena ?? "",
+              jefeInmediatoCurp: servidor.jefeInmediatoCurp ?? "",
+              jefeInmediatoNombre: servidor.jefeInmediatoNombre ?? "",
+              jefeInmediatoCorreo: servidor.jefeInmediatoCorreo ?? "",
+            });
+          }}
+          className="flex items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-600 hover:bg-primary-100 transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          Descargar cédula de inscripción
         </button>
       </motion.div>
 

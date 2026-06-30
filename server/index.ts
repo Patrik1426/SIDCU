@@ -4,10 +4,43 @@ import cookieParser from "cookie-parser";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext } from "./middleware/auth";
+import { generalLimiter, authLimiter } from "./middleware/rateLimiter";
 
 const app = express();
+// Railway (y la mayoría de PaaS) ponen la app detrás de un solo proxy reverso.
+// Sin esto, req.ip ve la IP del proxy para todos los requests — el rate limiting
+// por IP (login/register) queda inútil, todo el tráfico cae en un solo bucket.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
+
+// Health check — Railway/Load Balancer monitorea este endpoint
+app.get("/api/health", async (_req, res) => {
+  try {
+    const { getDb } = await import("./db");
+    const { dbCircuitBreaker } = await import("./middleware/circuitBreaker");
+    const d = await getDb();
+    await d.execute(import("drizzle-orm").then(m => m.sql`SELECT 1`));
+    const circuit = dbCircuitBreaker.getState();
+    res.json({
+      status: "ok",
+      uptime: Math.floor(process.uptime()),
+      memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      db: circuit.state === "OPEN" ? "degraded" : "connected",
+      circuit: circuit.state,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    res.status(503).json({ status: "error", db: "disconnected" });
+  }
+});
+
+app.use("/api/trpc/auth.login", authLimiter);
+app.use("/api/trpc/auth.register", authLimiter);
+
+app.use("/api/trpc", generalLimiter);
 
 app.use(
   "/api/trpc",

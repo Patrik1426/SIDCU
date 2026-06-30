@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
+import { parseCSV } from "@/lib/csv";
 import {
   Upload,
   FileSpreadsheet,
@@ -13,33 +14,38 @@ import {
   Info,
 } from "lucide-react";
 
-const CAMPOS_REQUERIDOS = [
-  "nombreCompleto",
-  "rfc",
-  "curp",
-  "cargo",
-  "dependencia",
-  "nivel",
+const CAMPOS_REQUERIDOS = ["curp", "nombreCompleto"];
+
+const CAMPOS_OPCIONALES = [
+  "upa",
   "fechaIngreso",
+  "preparacionAcademica",
+  "cmao",
+  "ua",
+  "cargo",
+  "nivelProgresion",
+  "rfc",
+  "dependencia",
   "grupoFuncion",
+  "datosContacto",
+  "estatus",
+  "observaciones",
 ];
 
-const CAMPOS_OPCIONALES = ["datosContacto", "estatus", "observaciones", "upa", "cmao", "ua", "nivelProgresion"];
-
 const CAMPO_LABELS: Record<string, string> = {
-  nombreCompleto: "Nombre Completo",
+  nombreCompleto: "Nombre (NOMBRE)",
   rfc: "RFC",
   curp: "CURP",
-  cargo: "Cargo",
+  cargo: "Cargo (PUESTO)",
   dependencia: "Dependencia",
-  nivel: "Nivel",
-  fechaIngreso: "Fecha Ingreso",
+  fechaIngreso: "Fecha Ingreso (ANTIGÜEDAD)",
   datosContacto: "Datos Contacto",
   grupoFuncion: "Grupo Función",
-  upa: "UPA (Sector)",
+  upa: "UPA (UP)",
   cmao: "CMAO",
-  ua: "UA (Dirección)",
-  nivelProgresion: "Nivel Progresión (0,N1-N5)",
+  ua: "UA",
+  nivelProgresion: "Nivel Progresión (NIVEL: 0,N1-N5)",
+  preparacionAcademica: "Preparación Académica",
   estatus: "Estatus",
   observaciones: "Observaciones",
 };
@@ -68,44 +74,6 @@ const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
 };
-
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, ""));
-  const rows: Record<string, string>[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values: string[] = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (const char of lines[i]) {
-      if (char === '"' && !inQuotes) {
-        inQuotes = true;
-      } else if (char === '"' && inQuotes) {
-        inQuotes = false;
-      } else if (char === "," && !inQuotes) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    values.push(current.trim());
-
-    if (values.some((v) => v !== "")) {
-      const row: Record<string, string> = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx] ?? "";
-      });
-      rows.push(row);
-    }
-  }
-
-  return rows;
-}
 
 export default function Importacion() {
   const [paso, setPaso] = useState<Paso>("subir");
@@ -186,21 +154,21 @@ export default function Importacion() {
   const descargarPlantilla = () => {
     const headers = [...CAMPOS_REQUERIDOS, ...CAMPOS_OPCIONALES].join(",");
     const ejemplo = [
-      "Juan Pérez López",
-      "PELJ900101ABC",
       "PELJ900101HDFRPN01",
-      "Director General",
-      "Secretaría de Cultura",
-      "federal",
+      "Juan Pérez López",
+      "CULTURA",
       "2024-01-15",
+      "Licenciatura en Administración",
+      "CMAO1",
+      "Dirección de Vinculación",
+      "Director General",
+      "0",
+      "PELJ900101ABC",
+      "Secretaría de Cultura",
       "ADMO",
       "contacto@email.com",
       "activo",
       "Sin observaciones",
-      "CULTURA",
-      "CMAO1",
-      "Dirección de Vinculación",
-      "0",
     ].join(",");
     const csv = `${headers}\n${ejemplo}`;
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -324,7 +292,7 @@ export default function Importacion() {
           </div>
 
           {/* Format help */}
-          <div className="mt-4 rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm">
+          <div className="mt-4 rounded-2xl border border-slate-200/60 bg-white p-4 shadow-card-rest">
             <div className="mb-3 flex items-center gap-2 text-xs font-bold text-slate-600">
               <Info size={14} className="text-primary-400" />
               Formato requerido
@@ -384,7 +352,7 @@ export default function Importacion() {
           </div>
 
           {/* File info */}
-          <div className="flex items-center gap-3 rounded-xl bg-white border border-slate-200/60 px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-3 rounded-xl bg-white border border-slate-200/60 px-4 py-3 shadow-card-rest">
             <FileSpreadsheet size={18} className="text-emerald-500" />
             <span className="text-sm font-medium text-slate-700">{archivo}</span>
             <span className="ml-auto text-xs text-slate-400">
@@ -393,7 +361,7 @@ export default function Importacion() {
           </div>
 
           {/* Preview table */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-card-rest">
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <tr>
@@ -491,7 +459,7 @@ export default function Importacion() {
       {/* Step 3: Result */}
       {paso === "resultado" && resultado && (
         <motion.div variants={fadeUp} className="space-y-4">
-          <div className="rounded-2xl border border-slate-200/60 bg-white p-8 text-center shadow-sm">
+          <div className="rounded-2xl border border-slate-200/60 bg-white p-8 text-center shadow-card-rest">
             {resultado.creados > 0 ? (
               <>
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">

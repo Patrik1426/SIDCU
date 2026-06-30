@@ -174,8 +174,17 @@ export default function Servidores() {
         datosContacto: srv.datosContacto ?? "",
         grupoFuncion: srv.grupoFuncion,
         upa: srv.upa ?? "",
+        cmo: srv.cmo ?? "",
         cmao: srv.cmao ?? "",
+        email: srv.email ?? "",
+        telOficina: srv.telOficina ?? "",
+        ext: srv.ext ?? "",
+        actividadDesempena: srv.actividadDesempena ?? "",
+        jefeInmediatoCurp: srv.jefeInmediatoCurp ?? "",
+        jefeInmediatoNombre: srv.jefeInmediatoNombre ?? "",
+        jefeInmediatoCorreo: srv.jefeInmediatoCorreo ?? "",
         ua: srv.ua ?? "",
+        preparacionAcademica: srv.preparacionAcademica ?? "",
         nivelProgresion: String(srv.nivelProgresion ?? 0),
         estatus: srv.estatus,
         observaciones: srv.observaciones ?? "",
@@ -226,7 +235,7 @@ export default function Servidores() {
       </div>
 
       {/* Filtros */}
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg bg-white p-4 shadow-card-rest sm:grid-cols-2 lg:grid-cols-4">
         <div className="relative sm:col-span-2 lg:col-span-1">
           <Search
             size={16}
@@ -305,7 +314,7 @@ export default function Servidores() {
       )}
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-lg bg-white shadow-card-rest">
         <table className="w-full text-left text-sm">
           <thead className="border-b bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
@@ -357,7 +366,14 @@ export default function Servidores() {
                     </td>
                   )}
                   <td className="px-4 py-3 font-medium text-gray-900">
-                    {srv.nombreCompleto}
+                    <div className="flex items-center gap-2">
+                      {srv.nombreCompleto}
+                      {srv.rfc?.startsWith("PEND") || srv.rfc?.startsWith("UREG") ? (
+                        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-500">Pendiente</span>
+                      ) : (
+                        <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">Registrado</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">
                     {srv.rfc}

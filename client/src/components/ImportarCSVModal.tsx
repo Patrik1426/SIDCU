@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, FileSpreadsheet, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { parseCSV } from "@/lib/csv";
 
 interface ImportarCSVModalProps {
   titulo: string;
@@ -8,61 +9,37 @@ interface ImportarCSVModalProps {
   onImportar: (registros: Record<string, any>[]) => Promise<{ totalProcesados: number; creados: number; errores: { fila: number; error: string }[] }>;
   onClose: () => void;
   onSuccess: () => void;
+  /** Campos que heredan el valor de la fila anterior cuando vienen vacíos
+   *  (celdas combinadas de Excel exportadas a CSV dejan vacías las filas siguientes). */
+  camposHeredables?: string[];
 }
 
-function limpiarTexto(text: string): string {
-  return text
-    .replace(/�/g, "")
-    .replace(/Ã¡/g, "á").replace(/Ã©/g, "é").replace(/Ã­/g, "í").replace(/Ã³/g, "ó").replace(/Ãº/g, "ú")
-    .replace(/Ã±/g, "ñ").replace(/Ã¼/g, "ü").replace(/Ã'/g, "Ñ")
-    .replace(/Ã\x81/g, "Á").replace(/Ã\x89/g, "É").replace(/Ã\x8D/g, "Í").replace(/Ã\x93/g, "Ó").replace(/Ã\x9A/g, "Ú")
-    .trim();
-}
-
-function splitCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
+function aplicarFillDown(registros: Record<string, string>[], campos: string[]): Record<string, string>[] {
+  const ultimoValor: Record<string, string> = {};
+  return registros.map((row) => {
+    const nuevo = { ...row };
+    for (const campo of campos) {
+      const valor = nuevo[campo];
+      const vacio = valor === undefined || valor === null || valor.toString().trim() === "";
+      if (vacio && ultimoValor[campo] !== undefined) {
+        nuevo[campo] = ultimoValor[campo];
+      } else if (!vacio) {
+        ultimoValor[campo] = valor;
       }
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
     }
-  }
-  result.push(current);
-  return result;
-}
-
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = splitCSVLine(lines[0]).map((h) => limpiarTexto(h.replace(/^"|"$/g, "")));
-  return lines.slice(1).filter((l) => l.trim()).map((line) => {
-    const values = splitCSVLine(line).map((v) => limpiarTexto(v.replace(/^"|"$/g, "")));
-    const obj: Record<string, string> = {};
-    headers.forEach((h, i) => {
-      obj[h] = values[i] ?? "";
-    });
-    return obj;
+    return nuevo;
   });
 }
 
-export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose, onSuccess }: ImportarCSVModalProps) {
+export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose, onSuccess, camposHeredables }: ImportarCSVModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Record<string, any>[] | null>(null);
   const [fileName, setFileName] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ creados: number; errores: { fila: number; error: string }[] } | null>(null);
+
+  const procesarPreview = (registros: Record<string, string>[]) =>
+    camposHeredables?.length ? aplicarFillDown(registros, camposHeredables) : registros;
 
   const handleFile = (file: File) => {
     setFileName(file.name);
@@ -74,12 +51,12 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
         const readerLatin = new FileReader();
         readerLatin.onload = (e2) => {
           const textLatin = e2.target?.result as string;
-          setPreview(parseCSV(textLatin));
+          setPreview(procesarPreview(parseCSV(textLatin)));
         };
         readerLatin.readAsText(file, "latin1");
         return;
       }
-      setPreview(parseCSV(text));
+      setPreview(procesarPreview(parseCSV(text)));
     };
     reader.readAsText(file, "UTF-8");
   };
@@ -122,7 +99,7 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={importing ? undefined : onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -136,12 +113,23 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
             <FileSpreadsheet size={18} className="text-primary-500" />
             <h2 className="text-base font-bold text-slate-800">Importar {titulo}</h2>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
+          <button onClick={onClose} disabled={importing} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 relative">
+          {/* Importing overlay */}
+          {importing && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/90 backdrop-blur-sm">
+              <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary-200 border-t-primary-600" />
+              <p className="text-sm font-semibold text-slate-600">
+                Importando {preview?.length} registro{preview?.length !== 1 ? "s" : ""}...
+              </p>
+              <p className="text-xs text-slate-400">No cierres esta ventana</p>
+            </div>
+          )}
+
           {/* Download template */}
           <button
             onClick={descargarPlantilla}
@@ -304,7 +292,8 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
         <div className="flex gap-3 border-t border-slate-100 px-5 py-4">
           <button
             onClick={onClose}
-            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+            disabled={importing}
+            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             Cerrar
           </button>

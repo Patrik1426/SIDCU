@@ -3,14 +3,18 @@ import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, bigint, 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   nombre: varchar("nombre", { length: 255 }).notNull(),
-  email: varchar("email", { length: 320 }).notNull().unique(),
+  curp: varchar("curp", { length: 18 }),
+  email: varchar("email", { length: 320 }),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "capturista", "consultor", "user"]).default("user").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("last_signed_in"),
-});
+}, (table) => ({
+  curpIdx: index("users_curp_idx").on(table.curp),
+  roleActiveIdx: index("users_role_active_idx").on(table.role, table.isActive),
+}));
 
 export const servidoresPublicos = mysqlTable("servidores_publicos", {
   id: int("id").autoincrement().primaryKey(),
@@ -25,9 +29,19 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   datosContacto: varchar("datos_contacto", { length: 255 }),
   grupoFuncion: mysqlEnum("grupo_funcion", ["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]).notNull(),
   upa: varchar("upa", { length: 100 }),
+  cmo: varchar("cmo", { length: 50 }),
   cmao: varchar("cmao", { length: 50 }),
   ua: varchar("ua", { length: 255 }),
   nivelProgresion: int("nivel_progresion").default(0),
+  preparacionAcademica: varchar("preparacion_academica", { length: 255 }),
+  email: varchar("email", { length: 320 }),
+  telOficina: varchar("tel_oficina", { length: 20 }),
+  ext: varchar("ext", { length: 10 }),
+  actividadDesempena: text("actividad_desempena"),
+  jefeInmediatoCurp: varchar("jefe_inmediato_curp", { length: 18 }),
+  jefeInmediatoNombre: varchar("jefe_inmediato_nombre", { length: 255 }),
+  jefeInmediatoCorreo: varchar("jefe_inmediato_correo", { length: 320 }),
+  folioSdpc: varchar("folio_sdpc", { length: 20 }),
   estatus: mysqlEnum("estatus", ["activo", "inactivo"]).default("activo").notNull(),
   observaciones: text("observaciones"),
   creadoPor: int("creado_por").notNull(),
@@ -37,6 +51,7 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
 }, (table) => ({
   rfcIdx: index("rfc_idx").on(table.rfc),
   curpIdx: index("curp_idx").on(table.curp),
+  userIdIdx: index("srv_user_id_idx").on(table.userId),
   nombreIdx: index("nombre_idx").on(table.nombreCompleto),
   dependenciaIdx: index("dependencia_idx").on(table.dependencia),
   nivelIdx: index("nivel_idx").on(table.nivel),
@@ -47,13 +62,15 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   nivelProgIdx: index("nivel_prog_idx").on(table.nivelProgresion),
   estatusIdx: index("estatus_idx").on(table.estatus),
   createdAtIdx: index("srv_created_at_idx").on(table.createdAt),
+  estatusUserIdx: index("srv_estatus_user_idx").on(table.estatus, table.userId),
+  dependenciaEstatusIdx: index("srv_dep_estatus_idx").on(table.dependencia, table.estatus),
 }));
 
 export const auditoria = mysqlTable("auditoria", {
   id: int("id").autoincrement().primaryKey(),
-  servidorId: int("servidor_id").notNull(),
+  servidorId: int("servidor_id"),
   usuarioId: int("usuario_id").notNull(),
-  accion: mysqlEnum("accion", ["crear", "actualizar", "eliminar"]).notNull(),
+  accion: mysqlEnum("accion", ["crear", "actualizar", "eliminar", "ver"]).notNull(),
   cambiosAnteriores: text("cambios_anteriores"),
   cambiosPosterior: text("cambios_posterior"),
   descripcion: text("descripcion"),
@@ -62,6 +79,7 @@ export const auditoria = mysqlTable("auditoria", {
   servidorIdIdx: index("servidor_id_idx").on(table.servidorId),
   usuarioIdIdx: index("usuario_id_idx").on(table.usuarioId),
   fechaIdx: index("fecha_idx").on(table.createdAt),
+  servidorFechaIdx: index("aud_srv_fecha_idx").on(table.servidorId, table.createdAt),
 }));
 
 export const archivosCargados = mysqlTable("archivos_cargados", {
@@ -86,7 +104,7 @@ export const passwordResetTokens = mysqlTable("password_reset_tokens", {
 
 export const perfilesServidor = mysqlTable("perfiles_servidor", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
+  userId: int("user_id").notNull().unique(),
   rfc: varchar("rfc", { length: 13 }).notNull(),
   curp: varchar("curp", { length: 18 }).notNull(),
   cargo: varchar("cargo", { length: 255 }).notNull(),
@@ -106,6 +124,8 @@ export const perfilesServidor = mysqlTable("perfiles_servidor", {
   userIdIdx: index("perfil_user_id_idx").on(table.userId),
   nivelGobiernoIdx: index("perfil_nivel_gobierno_idx").on(table.nivelGobierno),
   nivelProgresionIdx: index("perfil_nivel_progresion_idx").on(table.nivelProgresion),
+  completadoIdx: index("perfil_completado_idx").on(table.completado),
+  solicitudBajaIdx: index("perfil_baja_idx").on(table.solicitudBaja),
 }));
 
 export const cursos = mysqlTable("cursos", {
@@ -118,6 +138,18 @@ export const cursos = mysqlTable("cursos", {
   duracionHoras: int("duracion_horas").notNull(),
   modalidad: mysqlEnum("modalidad", ["presencial", "virtual", "mixto"]).notNull(),
   activo: boolean("activo").default(true).notNull(),
+  // Campos modulares — estructura real de PAC / CERT-SPC / SDPC
+  tipoPrograma: mysqlEnum("tipo_programa", ["PAC", "CERT", "SDPC", "OTRO"]).default("OTRO").notNull(),
+  bloque: int("bloque"),
+  numero: int("numero"),
+  institucionResponsable: varchar("institucion_responsable", { length: 255 }),
+  finalidad: text("finalidad"),
+  fechaInicio: timestamp("fecha_inicio"),
+  fechaTermino: timestamp("fecha_termino"),
+  horarioTexto: varchar("horario_texto", { length: 255 }),
+  fechaEvaluacion: timestamp("fecha_evaluacion"),
+  horarioEvaluacion: varchar("horario_evaluacion", { length: 255 }),
+  duracionEvaluacion: varchar("duracion_evaluacion", { length: 50 }),
   creadoPor: int("creado_por").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -126,6 +158,8 @@ export const cursos = mysqlTable("cursos", {
   nivelGobiernoIdx: index("curso_nivel_gobierno_idx").on(table.nivelGobierno),
   categoriaIdx: index("curso_categoria_idx").on(table.categoria),
   activoIdx: index("curso_activo_idx").on(table.activo),
+  tipoProgramaIdx: index("curso_tipo_programa_idx").on(table.tipoPrograma),
+  bloqueIdx: index("curso_bloque_idx").on(table.bloque),
 }));
 
 export const instituciones = mysqlTable("instituciones", {
@@ -154,6 +188,8 @@ export const cursosInstituciones = mysqlTable("cursos_instituciones", {
   cursoIdIdx: index("ci_curso_id_idx").on(table.cursoId),
   institucionIdIdx: index("ci_institucion_id_idx").on(table.institucionId),
   activoIdx: index("ci_activo_idx").on(table.activo),
+  cursoActivoIdx: index("ci_curso_activo_idx").on(table.cursoId, table.activo),
+  fechasIdx: index("ci_fechas_idx").on(table.fechaInicio, table.fechaFin),
 }));
 
 export const solicitudesCurso = mysqlTable("solicitudes_curso", {
@@ -162,6 +198,7 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   cursoId: int("curso_id").notNull(),
   cursoInstitucionId: int("curso_institucion_id"),
   estado: mysqlEnum("estado", ["pendiente", "aprobada", "rechazada", "completada"]).default("pendiente").notNull(),
+  calificacion: int("calificacion"),
   notasAdmin: text("notas_admin"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
@@ -170,6 +207,8 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   cursoIdIdx: index("sol_curso_id_idx").on(table.cursoId),
   estadoIdx: index("sol_estado_idx").on(table.estado),
   createdAtIdx: index("sol_created_at_idx").on(table.createdAt),
+  userEstadoIdx: index("sol_user_estado_idx").on(table.userId, table.estado),
+  userCursoIdx: index("sol_user_curso_idx").on(table.userId, table.cursoId),
 }));
 
 export type User = typeof users.$inferSelect;

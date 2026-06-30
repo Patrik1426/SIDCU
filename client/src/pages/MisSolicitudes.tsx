@@ -56,7 +56,7 @@ export default function MisSolicitudes() {
 
       {/* Solicitudes List */}
       {!solicitudes?.length ? (
-        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-12 text-center shadow-sm border border-gray-100">
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-12 text-center shadow-card-rest border border-gray-100">
           <ClipboardList className="mx-auto h-12 w-12 text-gray-300" />
           <p className="mt-3 font-medium text-gray-600">No tienes solicitudes aun</p>
           <p className="mt-1 text-sm text-gray-400">Explora el catalogo de cursos para inscribirte</p>
@@ -80,7 +80,7 @@ export default function MisSolicitudes() {
               <motion.div
                 key={solicitud.id}
                 variants={fadeUp}
-                className="rounded-2xl bg-white p-5 shadow-sm border border-gray-100"
+                className="rounded-2xl bg-white p-5 shadow-card-rest border border-gray-100"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">

@@ -212,7 +212,16 @@ No, mientras los nombres de las columnas coincidan con los indicados en esta gu�
 El sistema acepta variantes: `nombreCompleto`, `nombre_completo`, `nombre`. Para UPA/CMAO/UA acepta mayúsculas y minúsculas.
 
 **¿Cuántos registros puedo importar a la vez?**
-No hay límite fijo, pero se recomienda no superar 500 registros por archivo.
+No hay límite fijo. El sistema procesa en lotes de 50 registros para no saturar la base de datos. Se permiten máximo 5 importaciones cada 5 minutos.
+
+**¿Qué pasa si subo el mismo archivo dos veces?**
+El sistema detecta duplicados automáticamente contra la base de datos. Los registros que ya existen se omiten con un mensaje claro (amarillo), y solo se importan los nuevos.
+
+**¿Qué pasa si un CURP fue dado de baja?**
+No se puede reimportar. El sistema bloquea con mensaje: "CURP pertenece a un servidor dado de baja". Solo el administrador puede reactivarlo.
+
+**¿Los valores con comas funcionan?**
+Sí. Si un campo contiene comas (ej: "COMPUTO CON WORD, EXCEL, POWERPOINT"), enciérrelo entre comillas dobles. Excel y Google Sheets lo hacen automáticamente.
 
 **¿Quién puede importar datos?**
 - **Servidores:** Roles admin y capturista

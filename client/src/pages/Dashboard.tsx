@@ -74,14 +74,14 @@ function StatCard({
   return (
     <motion.div
       variants={fadeUp}
-      className="group relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="group relative h-full overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-shadow hover:shadow-card-hover"
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+          <p className="text-label">
             {label}
           </p>
-          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+          <p className="text-stat mt-2 text-slate-900">
             {value}
           </p>
         </div>
@@ -104,9 +104,9 @@ function ChartCard({
   return (
     <motion.div
       variants={fadeUp}
-      className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+      className="h-full rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest"
     >
-      <h3 className="mb-4 text-[13px] font-bold text-slate-700">
+      <h3 className="text-section-title mb-4 text-slate-700">
         {title}
       </h3>
       {children}
@@ -239,7 +239,8 @@ export default function Dashboard() {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="bento-grid">
+        <div className="bento-md">
         <ChartCard title="Distribución por nivel de gobierno">
           {nivelData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
@@ -285,7 +286,9 @@ export default function Dashboard() {
             </div>
           )}
         </ChartCard>
+        </div>
 
+        <div className="bento-md">
         <ChartCard title="Servidores por grupo de función">
           {grupoData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
@@ -319,15 +322,16 @@ export default function Dashboard() {
             <EmptyState />
           )}
         </ChartCard>
+        </div>
       </div>
 
       {/* Activity */}
       <motion.div
         variants={fadeUp}
-        className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+        className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest"
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[13px] font-bold text-slate-700">
+          <h3 className="text-section-title text-slate-700">
             Actividad reciente
           </h3>
           <a href="/auditoria" className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors">

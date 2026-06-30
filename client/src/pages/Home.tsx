@@ -39,14 +39,18 @@ export default function Home() {
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className="relative h-16 w-full bg-primary-500 shrink-0 flex items-center px-8 xl:px-12"
         >
-          <motion.img
-            src="/Gobierno-blanco.png"
-            alt="Gobierno de México"
-            className="h-10 w-auto object-contain"
+          <motion.div
+            className="rounded-lg bg-white px-3 py-1.5 shadow-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4, duration: 0.5 }}
-          />
+          >
+            <img
+              src="/logo-secretaria-cultura.jpeg"
+              alt="Secretaría de Cultura"
+              className="h-8 w-auto object-contain"
+            />
+          </motion.div>
         </motion.div>
 
         {/* Contenido centrado — stagger secuencial */}
@@ -62,9 +66,10 @@ export default function Home() {
           />
 
           <motion.img
-            src="/gobierno.png"
-            alt="Gobierno de México"
+            src="/logo-secretaria-cultura.jpeg"
+            alt="Secretaría de Cultura"
             className="mt-4 max-h-[8vh] w-auto object-contain"
+            style={{ mixBlendMode: "multiply" }}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -77,13 +82,10 @@ export default function Home() {
             transition={{ delay: 0.85, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           >
             <p className="text-micro font-semibold tracking-[0.15em] text-accent-500 uppercase">
-              SIGECAP
+              SIDCU
             </p>
             <p className="mt-0.5 text-subheading font-bold leading-tight text-primary-500 xl:text-heading">
-              Sistema de Gestión y Capacitación
-            </p>
-            <p className="mt-1 text-[11px] text-inst-gray">
-              de Servidores Públicos
+              Sistema Informático de SPDC – SIDCU
             </p>
           </motion.div>
         </div>
@@ -117,7 +119,7 @@ export default function Home() {
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, delay: 0.8, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xl shadow-slate-200/50 sm:p-7"
+            className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-modal sm:p-7"
           >
             <h2 className="text-subheading font-extrabold tracking-tight text-slate-900 sm:text-heading">
               {tab === "login" ? "Iniciar sesión" : "Crear cuenta"}
@@ -259,7 +261,7 @@ function SubmitButton({ loading, children }: { loading: boolean; children: React
 
 function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  const [curp, setCurp] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
@@ -268,16 +270,20 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    if (curp.trim().length < 18) {
+      setError("La CURP debe tener 18 caracteres");
+      return;
+    }
     setLoading(true);
     try {
-      await login({ email, password, rememberMe });
+      await login({ curp: curp.toUpperCase(), password, rememberMe });
       window.location.href = "/dashboard";
     } catch (err: any) {
       const msg = err.message ?? "";
       if (msg.includes("desactivada")) {
         setError("Tu cuenta ha sido desactivada. Contacta al administrador.");
-      } else if (msg.includes("invalidas") || msg.includes("UNAUTHORIZED")) {
-        setError("Correo o contraseña incorrectos");
+      } else if (msg.includes("incorrectos") || msg.includes("UNAUTHORIZED")) {
+        setError("CURP o contraseña incorrectos");
       } else {
         setError(msg || "Error al iniciar sesión");
       }
@@ -299,12 +305,11 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
       )}
 
       <FormInput
-        label="Correo electrónico"
-        icon={Mail}
-        type="email"
-        value={email}
-        onChange={setEmail}
-        placeholder="correo@ejemplo.com"
+        label="CURP"
+        icon={User}
+        value={curp}
+        onChange={(v) => setCurp(v.toUpperCase())}
+        placeholder="Ingresa tu CURP"
       />
 
       <FormInput
@@ -351,8 +356,8 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
 
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const { register } = useAuth();
+  const [curp, setCurp] = useState("");
   const [nombre, setNombre] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -361,12 +366,12 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    if (nombre.trim().length < 2) {
-      setError("El nombre debe tener al menos 2 caracteres");
+    if (curp.trim().length !== 18) {
+      setError("La CURP debe tener exactamente 18 caracteres");
       return;
     }
-    if (!email.includes("@")) {
-      setError("Ingresa un correo electrónico válido");
+    if (nombre.trim().length < 2) {
+      setError("El nombre debe tener al menos 2 caracteres");
       return;
     }
     if (password.length < 8) {
@@ -379,16 +384,14 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
     }
     setLoading(true);
     try {
-      await register({ nombre: nombre.trim(), email, password });
+      await register({ curp: curp.toUpperCase(), nombre: nombre.trim(), password });
       onSuccess();
     } catch (err: any) {
       const msg = err.message ?? "";
-      if (msg.includes("too_small") || msg.includes("Too small")) {
-        setError("Verifica que todos los campos cumplan con el formato requerido");
-      } else if (msg.includes("email") || msg.includes("Email")) {
-        setError("El correo electrónico no es válido");
-      } else if (msg.includes("ya registrado") || msg.includes("CONFLICT")) {
-        setError("Este correo ya está registrado");
+      if (msg.includes("ya tiene una cuenta") || msg.includes("CONFLICT")) {
+        setError("Esta CURP ya tiene una cuenta registrada");
+      } else if (msg.includes("dado de baja") || msg.includes("FORBIDDEN")) {
+        setError("Esta CURP pertenece a un servidor dado de baja. Contacte al administrador.");
       } else {
         setError(msg || "Error al registrarse");
       }
@@ -410,20 +413,19 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       )}
 
       <FormInput
+        label="CURP"
+        icon={User}
+        value={curp}
+        onChange={(v) => setCurp(v.toUpperCase())}
+        placeholder="18 caracteres"
+      />
+
+      <FormInput
         label="Nombre completo"
         icon={User}
         value={nombre}
         onChange={setNombre}
         placeholder="Juan Pérez"
-      />
-
-      <FormInput
-        label="Correo electrónico"
-        icon={Mail}
-        type="email"
-        value={email}
-        onChange={setEmail}
-        placeholder="correo@ejemplo.com"
       />
 
       <div className="grid grid-cols-2 gap-3">

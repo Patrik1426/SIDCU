@@ -25,6 +25,7 @@ export default function CatalogoCursos() {
   const [, navigate] = useLocation();
   const [categoria, setCategoria] = useState("");
   const [modalidad, setModalidad] = useState("");
+  const [bloqueSeleccionado, setBloqueSeleccionado] = useState<number | null>(null);
   const [selectedCursoId, setSelectedCursoId] = useState<number | null>(null);
   const [solicitudMsg, setSolicitudMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -47,6 +48,28 @@ export default function CatalogoCursos() {
 
   const { data: misSolicitudes } = trpc.solicitudes.misSolicitudes.useQuery();
 
+  const bloques = (() => {
+    if (!cursos) return [] as { bloque: number | null; cursos: any[] }[];
+    const grupos = new Map<number | null, any[]>();
+    for (const curso of cursos) {
+      const key = curso.bloque ?? null;
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key)!.push(curso);
+    }
+    return [...grupos.entries()]
+      .sort(([a], [b]) => {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      })
+      .map(([bloque, cursos]) => ({ bloque, cursos }));
+  })();
+
+  const bloqueActivo = bloques.some((b) => b.bloque === bloqueSeleccionado)
+    ? bloqueSeleccionado
+    : bloques[0]?.bloque ?? null;
+  const cursosDelBloque = bloques.find((b) => b.bloque === bloqueActivo)?.cursos ?? [];
+
   const utils = trpc.useUtils();
 
   const solicitarMut = trpc.solicitudes.crear.useMutation({
@@ -57,6 +80,10 @@ export default function CatalogoCursos() {
     onError: (err) => {
       const msg = err.message.includes("activa")
         ? "Ya tienes una solicitud activa para este curso"
+        : err.message.includes("2 cursos")
+        ? "Solo puedes tener 2 cursos activos. Completa o cancela uno antes de solicitar otro."
+        : err.message.includes("empalman")
+        ? "Las fechas de este curso se empalman con otro curso inscrito."
         : err.message;
       setSolicitudMsg({ type: "error", text: msg });
     },
@@ -145,29 +172,48 @@ export default function CatalogoCursos() {
         </div>
       </motion.div>
 
+      {/* Block selector */}
+      {bloques.length > 1 && (
+        <motion.div variants={fadeUp} className="flex flex-wrap gap-2">
+          {bloques.map(({ bloque }) => (
+            <button
+              key={bloque ?? "sin-bloque"}
+              onClick={() => setBloqueSeleccionado(bloque)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                bloqueActivo === bloque
+                  ? "bg-primary-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {bloque != null ? `Bloque ${bloque}` : "Sin bloque"}
+            </button>
+          ))}
+        </motion.div>
+      )}
+
       {/* Course Grid */}
       {cursosLoading ? (
         <div className="flex h-32 items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
         </div>
       ) : !cursos?.length ? (
-        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-12 text-center shadow-sm border border-slate-100">
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-12 text-center shadow-card-rest border border-slate-100">
           <BookOpen className="mx-auto h-12 w-12 text-slate-300" />
           <p className="mt-3 text-slate-500">No se encontraron cursos con los filtros seleccionados</p>
         </motion.div>
       ) : (
-        <motion.div variants={stagger} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {cursos.map((curso: any) => {
+        <motion.div key={bloqueActivo ?? "sin-bloque"} variants={stagger} initial="hidden" animate="show" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {cursosDelBloque.map((curso: any) => {
             const estado = getEstadoSolicitud(curso.id);
             return (
               <motion.div
                 key={curso.id}
                 variants={fadeUp}
                 onClick={() => setSelectedCursoId(curso.id)}
-                className="relative cursor-pointer rounded-2xl bg-white p-5 shadow-sm border border-slate-200/60 hover:border-primary-200 hover:shadow-md transition-all"
+                className="relative cursor-pointer rounded-2xl bg-white p-5 shadow-card-rest border border-slate-200/60 hover:border-primary-200 hover:shadow-card-hover transition-all"
               >
                 {estado && (
-                  <div className={`absolute top-3 right-3 rounded-lg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                  <div className={`absolute top-3 right-3 rounded-lg px-2 py-0.5 text-micro font-bold uppercase tracking-wider ${
                     estado === "pendiente" ? "bg-amber-50 text-amber-600" :
                     estado === "aprobada" ? "bg-emerald-50 text-emerald-600" :
                     estado === "completada" ? "bg-indigo-50 text-indigo-600" :
@@ -192,11 +238,6 @@ export default function CatalogoCursos() {
                   {curso.modalidad && (
                     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${MODALIDAD_COLORS[curso.modalidad] ?? "bg-slate-100 text-slate-600"}`}>
                       {curso.modalidad.charAt(0).toUpperCase() + curso.modalidad.slice(1)}
-                    </span>
-                  )}
-                  {curso.nivelRequerido != null && (
-                    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
-                      Nivel {curso.nivelRequerido}
                     </span>
                   )}
                 </div>
@@ -254,11 +295,6 @@ export default function CatalogoCursos() {
                     {cursoDetalle.modalidad && (
                       <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${MODALIDAD_COLORS[cursoDetalle.modalidad] ?? "bg-slate-100 text-slate-600"}`}>
                         {cursoDetalle.modalidad.charAt(0).toUpperCase() + cursoDetalle.modalidad.slice(1)}
-                      </span>
-                    )}
-                    {cursoDetalle.nivelRequerido != null && (
-                      <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
-                        Nivel {cursoDetalle.nivelRequerido}
                       </span>
                     )}
                   </div>

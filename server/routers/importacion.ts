@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { crearServidor, crearAuditoria, getDb } from "../db";
 import { eq, or } from "drizzle-orm";
 import * as schema from "../../drizzle/schema";
+import { capitalizarNombre } from "../../shared/utils";
 
 function requireRole(...roles: string[]) {
   return protectedProcedure.use(({ ctx, next }) => {
@@ -18,23 +19,32 @@ function requireRole(...roles: string[]) {
   });
 }
 
-const registroSchema = z.object({
-  nombreCompleto: z.string().min(2, "Nombre requerido"),
-  rfc: z
-    .string()
-    .regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/, "RFC inválido"),
-  curp: z
-    .string()
-    .regex(/^[A-Z]{4}\d{6}[HM][A-Z]{5}[0-9A-Z]\d$/, "CURP inválido"),
-  cargo: z.string().min(2, "Cargo requerido"),
-  dependencia: z.string().min(2, "Dependencia requerida"),
-  nivel: z.enum(["federal", "estatal", "municipal", "otro"]),
-  fechaIngreso: z.string().min(1, "Fecha requerida"),
-  datosContacto: z.string().nullable().optional(),
-  grupoFuncion: z.enum(["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]),
-  estatus: z.enum(["activo", "inactivo"]).default("activo"),
-  observaciones: z.string().nullable().optional(),
-});
+// Busca un valor en la fila probando varios nombres de columna posibles,
+// ignorando mayúsculas/acentos (formatos reales como "ANTIGÜEDAD", "UP", "PUESTO" varían).
+const normalizar = (s: string) => s.toString().trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+function buscarCampo(row: Record<string, any>, ...nombres: string[]): string | undefined {
+  const entradas = Object.entries(row);
+  for (const nombre of nombres) {
+    const nombreNorm = normalizar(nombre);
+    const encontrado = entradas.find(([k]) => normalizar(k) === nombreNorm);
+    if (encontrado && encontrado[1] !== undefined && encontrado[1] !== null && encontrado[1].toString().trim() !== "") {
+      return encontrado[1].toString();
+    }
+  }
+  return undefined;
+}
+
+// Convierte fechas en formato DD/MM/YYYY (formato de Excel/CSV) a ISO para que Date las parsee bien.
+function parseFechaDDMMYYYY(valor: string | undefined): string | null {
+  if (!valor) return null;
+  const texto = valor.toString().trim();
+  if (!texto) return null;
+  const match = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const isoCandidato = match
+    ? `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`
+    : texto;
+  return isNaN(new Date(isoCandidato).getTime()) ? null : isoCandidato;
+}
 
 const registroImportSchema = z.object({
   nombreCompleto: z.string(),
@@ -48,23 +58,26 @@ const registroImportSchema = z.object({
   grupoFuncion: z.string(),
   estatus: z.string(),
   observaciones: z.string().nullable().optional(),
+  preparacionAcademica: z.string().nullable().optional(),
 });
 
 export const importacionRouter = router({
   validar: requireRole("admin", "capturista")
     .input(z.object({ registros: z.array(z.record(z.string(), z.any())) }))
     .mutation(({ input }) => {
+      // Solo previsualiza: cualquier campo faltante se autocompleta en "importar",
+      // así que aquí solo se marca inválida una fila vacía o sin nombre/CURP reconocible.
       const resultados = input.registros.map((row, index) => {
-        const parsed = registroSchema.safeParse(row);
-        if (parsed.success) {
-          return { fila: index + 1, valido: true as const, data: parsed.data, errores: [] };
+        const vacia = Object.values(row).every((v) => !v || v.toString().trim() === "");
+        if (vacia) {
+          return { fila: index + 1, valido: false as const, data: row, errores: ["Fila vacía"] };
         }
-        return {
-          fila: index + 1,
-          valido: false as const,
-          data: row,
-          errores: parsed.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`),
-        };
+        const nombreCompleto = buscarCampo(row, "nombreCompleto", "nombre_completo", "nombre");
+        const curp = buscarCampo(row, "curp");
+        if (!nombreCompleto && !curp) {
+          return { fila: index + 1, valido: false as const, data: row, errores: ["No se reconoce nombre ni CURP en esta fila"] };
+        }
+        return { fila: index + 1, valido: true as const, data: row, errores: [] };
       });
 
       return {
@@ -78,6 +91,7 @@ export const importacionRouter = router({
   importar: requireRole("admin", "capturista")
     .input(z.object({ registros: z.array(z.record(z.string(), z.any())) }))
     .mutation(async ({ ctx, input }) => {
+      const BATCH_SIZE = 50;
       const creados: number[] = [];
       const errores: { fila: number; error: string }[] = [];
       const curpsVistos = new Set<string>();
@@ -85,25 +99,33 @@ export const importacionRouter = router({
 
       for (let i = 0; i < input.registros.length; i++) {
         const row = input.registros[i];
-        const nivelProgRaw = (row.nivelProgresion || row.nivel_progresion || row.nivelP || "0").toString().trim();
+        const nivelProgRaw = (buscarCampo(row, "nivelProgresion", "nivel_progresion", "nivelP", "nivel") || "0").toString().trim();
         const nivelProgresion = nivelProgRaw.toUpperCase().startsWith("N") ? Number(nivelProgRaw.slice(1)) : Number(nivelProgRaw) || 0;
 
-        const upa = (row.upa || row.UPA || "").toString().toUpperCase().trim() || "SIN ASIGNAR";
-        const cmao = (row.cmao || row.CMAO || "").toString().toUpperCase().trim() || "SIN ASIGNAR";
-        const ua = (row.ua || row.UA || "").toString().trim() || "Sin asignar";
+        const upa = (buscarCampo(row, "upa", "up") || "").toString().toUpperCase().trim() || "SIN ASIGNAR";
+        const cmao = (buscarCampo(row, "cmao") || "").toString().toUpperCase().trim() || "SIN ASIGNAR";
+        const ua = (buscarCampo(row, "ua") || "").toString().trim() || "Sin asignar";
+        const preparacionAcademica = buscarCampo(row, "preparacionAcademica", "preparacion_academica", "preparacion academica") || null;
 
+        // ANTIGÜEDAD en el formato real = fecha de ingreso del servidor
+        const fechaIngresoRaw = buscarCampo(row, "fechaIngreso", "fecha_ingreso", "antiguedad", "antigüedad");
+
+        const nombreRaw = buscarCampo(row, "nombreCompleto", "nombre_completo", "nombre");
         const reg = registroImportSchema.safeParse({
-          nombreCompleto: row.nombreCompleto || row.nombre_completo || row.nombre || "Por definir",
-          rfc: row.rfc || row.RFC || `PEND${String(i + 1).padStart(9, "0")}`,
-          curp: row.curp || row.CURP || `PEND${String(i + 1).padStart(14, "0")}`,
-          cargo: row.cargo || "Por definir",
-          dependencia: row.dependencia || "Por definir",
-          nivel: row.nivel || "federal",
-          fechaIngreso: row.fechaIngreso || row.fecha_ingreso || new Date().toISOString().split("T")[0],
-          grupoFuncion: row.grupoFuncion || row.grupo_funcion || "ADMO",
-          datosContacto: row.datosContacto || row.datos_contacto || "Sin datos",
-          estatus: row.estatus || "activo",
-          observaciones: row.observaciones || "Sin observaciones",
+          nombreCompleto: nombreRaw ? capitalizarNombre(nombreRaw) : "Por definir",
+          rfc: buscarCampo(row, "rfc") || `PEND${String(i + 1).padStart(9, "0")}`,
+          curp: buscarCampo(row, "curp") || `PEND${String(i + 1).padStart(14, "0")}`,
+          cargo: buscarCampo(row, "cargo", "puesto") || "Por definir",
+          // El formato real no trae columna "dependencia" explícita — la UA (unidad administrativa)
+          // es la dependencia real del servidor dentro de la Secretaría de Cultura.
+          dependencia: buscarCampo(row, "dependencia") || (ua !== "Sin asignar" ? ua : "Por definir"),
+          nivel: "federal",
+          fechaIngreso: parseFechaDDMMYYYY(fechaIngresoRaw) || new Date().toISOString().split("T")[0],
+          grupoFuncion: buscarCampo(row, "grupoFuncion", "grupo_funcion") || "ADMO",
+          datosContacto: buscarCampo(row, "datosContacto", "datos_contacto") || "Sin datos",
+          estatus: buscarCampo(row, "estatus") || "activo",
+          observaciones: buscarCampo(row, "observaciones") || "Sin observaciones",
+          preparacionAcademica,
         });
 
         if (!reg.success) {
@@ -158,7 +180,7 @@ export const importacionRouter = router({
             nivelProgresion,
             creadoPor: ctx.user.id,
             actualizadoPor: ctx.user.id,
-          });
+          } as any);
 
           await crearAuditoria({
             servidorId: id,

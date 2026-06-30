@@ -31,7 +31,7 @@ export default function RestablecerContrasena({ params }: { params: { token: str
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-modal">
         <Link
           href="/"
           className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"

@@ -12,6 +12,7 @@ import {
   BookOpen,
   Building2,
 } from "lucide-react";
+import ImportarCSVModal from "@/components/ImportarCSVModal";
 
 const stagger = {
   hidden: {},
@@ -61,10 +62,13 @@ export default function GestionSolicitudes() {
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [notasAdmin, setNotasAdmin] = useState("");
   const [cursoInstitucionId, setCursoInstitucionId] = useState<number>(0);
+  const [calificacion, setCalificacion] = useState("");
+  const [showImportCalificaciones, setShowImportCalificaciones] = useState(false);
 
-  const { data: solicitudes, isLoading } = trpc.solicitudes.listar.useQuery({
-    estado: estadoFilter || undefined,
-  });
+  const { data: solicitudes, isLoading, isFetching } = trpc.solicitudes.listar.useQuery(
+    { estado: estadoFilter || undefined },
+    { placeholderData: (prev) => prev },
+  );
 
   // Fetch course details for approval modal to get available institutions
   const cursoIdForModal = modal.type === "aprobar" ? modal.cursoId : 0;
@@ -94,8 +98,11 @@ export default function GestionSolicitudes() {
     onSuccess: () => {
       utils.solicitudes.listar.invalidate();
       setModal({ type: "closed" });
+      setCalificacion("");
     },
   });
+
+  const importarCalificacionesMut = trpc.solicitudes.importarCalificaciones.useMutation();
 
   const handleAprobar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,9 +123,10 @@ export default function GestionSolicitudes() {
     });
   };
 
-  const handleCompletar = async () => {
-    if (modal.type !== "completar") return;
-    await completarMut.mutateAsync({ id: modal.solicitudId });
+  const handleCompletar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (modal.type !== "completar" || calificacion === "") return;
+    await completarMut.mutateAsync({ id: modal.solicitudId, calificacion: Number(calificacion) });
   };
 
   const inputClass =
@@ -136,14 +144,26 @@ export default function GestionSolicitudes() {
             Revisa y gestiona las solicitudes de los servidores
           </p>
         </div>
-        <div className="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-600 sm:flex">
-          <ClipboardCheck size={14} />
-          {solicitudes?.length ?? 0} solicitudes
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImportCalificaciones(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Award size={16} />
+            Importar Calificaciones
+          </button>
+          <div className="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-600 sm:flex">
+            <ClipboardCheck size={14} />
+            {solicitudes?.length ?? 0} solicitudes
+          </div>
         </div>
       </motion.div>
 
       {/* Filters */}
-      <motion.div variants={fadeUp} className="flex flex-wrap gap-2">
+      <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-2">
+        {isFetching && !isLoading && (
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-200 border-t-primary-500" />
+        )}
         {ESTADOS.map((est) => {
           const active = estadoFilter === est.value;
           return (
@@ -174,8 +194,22 @@ export default function GestionSolicitudes() {
 
       {/* Solicitudes list */}
       {isLoading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-primary-500" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-4 w-20 rounded-lg bg-slate-200/60" />
+                  <div className="h-3.5 w-40 rounded bg-slate-200/60" />
+                  <div className="h-3.5 w-56 rounded bg-slate-200/60" />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <div className="h-8 w-24 rounded-xl bg-slate-200/60" />
+                  <div className="h-8 w-24 rounded-xl bg-slate-200/60" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : !solicitudes?.length ? (
         <motion.div variants={fadeUp} className="flex flex-col items-center py-16 text-center">
@@ -198,7 +232,7 @@ export default function GestionSolicitudes() {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.04, duration: 0.3 }}
-                className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-200"
+                className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   {/* Info */}
@@ -464,7 +498,7 @@ export default function GestionSolicitudes() {
               </button>
             </div>
 
-            <div className="space-y-4 p-5">
+            <form onSubmit={handleCompletar} className="space-y-4 p-5">
               {completarMut.error && (
                 <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-600">
                   {completarMut.error.message}
@@ -479,29 +513,63 @@ export default function GestionSolicitudes() {
                 <p className="text-xs text-indigo-600 mt-0.5">{modal.cursoNombre}</p>
               </div>
 
-              <p className="text-sm text-slate-600 text-center">
-                Esto subira el nivel del usuario. Esta accion no se puede deshacer.
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Calificación (0-100) *</label>
+                <input
+                  type="number"
+                  required
+                  min={0}
+                  max={100}
+                  value={calificacion}
+                  onChange={(e) => setCalificacion(e.target.value)}
+                  className={inputClass}
+                  placeholder="Ej. 85"
+                />
+                {calificacion !== "" && (
+                  <p className={`mt-1.5 text-xs font-medium ${Number(calificacion) >= 70 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {Number(calificacion) >= 70 ? "Aprobatoria — subirá de nivel" : "No aprobatoria — no subirá de nivel"}
+                  </p>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-400 text-center">
+                Esta acción no se puede deshacer.
               </p>
 
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setModal({ type: "closed" })}
+                  onClick={() => { setModal({ type: "closed" }); setCalificacion(""); }}
                   className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleCompletar}
-                  disabled={completarMut.isPending}
+                  type="submit"
+                  disabled={completarMut.isPending || calificacion === ""}
                   className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {completarMut.isPending ? "Completando..." : "Completar"}
                 </button>
               </div>
-            </div>
+            </form>
           </motion.div>
         </div>
+      )}
+
+      {/* Import Calificaciones Modal */}
+      {showImportCalificaciones && (
+        <ImportarCSVModal
+          titulo="Calificaciones"
+          columnas={[
+            { key: "curp", label: "CURP", ejemplo: "GORC850101HDFNCS09" },
+            { key: "curso", label: "Curso", ejemplo: "Ética en el servicio público" },
+            { key: "calificacion", label: "Calificación", ejemplo: "85" },
+          ]}
+          onImportar={(registros) => importarCalificacionesMut.mutateAsync({ registros })}
+          onClose={() => setShowImportCalificaciones(false)}
+          onSuccess={() => utils.solicitudes.listar.invalidate()}
+        />
       )}
     </motion.div>
   );

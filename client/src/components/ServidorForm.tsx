@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import ComboInput from "./ComboInput";
+import { CATALOGO_ESTUDIOS, CMAO_CATALOGO } from "@shared/const";
 
 export interface ServidorFormData {
   nombreCompleto: string;
@@ -12,9 +13,18 @@ export interface ServidorFormData {
   datosContacto: string;
   grupoFuncion: "ADMO" | "TECN" | "SERV" | "COMUN" | "PROFE" | "EDU";
   upa: string;
+  cmo: string;
   cmao: string;
   ua: string;
   nivelProgresion: string;
+  preparacionAcademica: string;
+  email: string;
+  telOficina: string;
+  ext: string;
+  actividadDesempena: string;
+  jefeInmediatoCurp: string;
+  jefeInmediatoNombre: string;
+  jefeInmediatoCorreo: string;
   estatus: "activo" | "inactivo";
   observaciones: string;
 }
@@ -30,9 +40,18 @@ const emptyForm: ServidorFormData = {
   datosContacto: "",
   grupoFuncion: "ADMO",
   upa: "",
+  cmo: "",
   cmao: "",
   ua: "",
   nivelProgresion: "0",
+  preparacionAcademica: "",
+  email: "",
+  telOficina: "",
+  ext: "",
+  actividadDesempena: "",
+  jefeInmediatoCurp: "",
+  jefeInmediatoNombre: "",
+  jefeInmediatoCorreo: "",
   estatus: "activo",
   observaciones: "",
 };
@@ -235,34 +254,152 @@ export function ServidorForm({
           />
         </div>
 
-        {/* CMAO */}
+        {/* UA (Dirección) — al elegir, autocompleta la CMAO correspondiente */}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            CMAO
+            UA (Dirección)
           </label>
           <select
-            value={form.cmao}
-            onChange={(e) => set("cmao", e.target.value)}
+            value={form.ua}
+            onChange={(e) => {
+              const ua = e.target.value;
+              const match = CMAO_CATALOGO.find((c) => c.ua === ua);
+              set("ua", ua);
+              set("cmao", match?.cmao ?? "");
+            }}
             className={inputClass}
           >
-            <option value="">Seleccionar CMAO</option>
-            {Array.from({ length: 18 }, (_, i) => `CMAO${i + 1}`).map((c) => (
+            <option value="">Seleccionar UA...</option>
+            {CMAO_CATALOGO.map((c) => (
+              <option key={c.ua} value={c.ua}>{c.ua}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* CMAO — se llena automáticamente según la UA seleccionada */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Clave de la CMAO
+          </label>
+          <input
+            type="text"
+            value={form.cmao}
+            readOnly
+            className={`${inputClass} bg-gray-50 text-gray-500`}
+            placeholder="Se autocompleta al elegir UA"
+          />
+        </div>
+
+        {/* Preparación Académica */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Preparación Académica
+          </label>
+          <select
+            value={form.preparacionAcademica}
+            onChange={(e) => set("preparacionAcademica", e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Seleccionar...</option>
+            {CATALOGO_ESTUDIOS.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
         </div>
 
-        {/* UA (Dirección) */}
+        {/* Correo electrónico */}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            UA (Dirección)
+            Correo Electrónico
           </label>
-          <ComboInput
-            value={form.ua}
-            onChange={(v) => set("ua", v)}
-            options={uas}
-            placeholder="Dirección de adscripción"
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
             className={inputClass}
+            placeholder="correo@cultura.gob.mx"
+          />
+        </div>
+
+        {/* Teléfono oficina */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Tel. Oficina
+            </label>
+            <input
+              type="tel"
+              value={form.telOficina}
+              onChange={(e) => set("telOficina", e.target.value)}
+              className={inputClass}
+              placeholder="55XXXXXXXX"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Extensión
+            </label>
+            <input
+              type="text"
+              value={form.ext}
+              onChange={(e) => set("ext", e.target.value)}
+              className={inputClass}
+              placeholder="Ext."
+            />
+          </div>
+        </div>
+
+        {/* Actividad que desempeña */}
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Actividad que Desempeña
+          </label>
+          <textarea
+            value={form.actividadDesempena}
+            onChange={(e) => set("actividadDesempena", e.target.value)}
+            className={inputClass}
+            rows={2}
+            placeholder="Descripción de actividades"
+          />
+        </div>
+
+        {/* Jefe inmediato */}
+        <div className="md:col-span-2 border-t border-gray-200 pt-4 mt-2">
+          <h3 className="mb-3 text-sm font-bold text-gray-700">Información del Jefe Inmediato</h3>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            CURP del Jefe Inmediato
+          </label>
+          <input
+            type="text"
+            value={form.jefeInmediatoCurp}
+            onChange={(e) => set("jefeInmediatoCurp", e.target.value.toUpperCase())}
+            className={inputClass}
+            maxLength={18}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Nombre del Jefe Inmediato
+          </label>
+          <input
+            type="text"
+            value={form.jefeInmediatoNombre}
+            onChange={(e) => set("jefeInmediatoNombre", e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Correo del Jefe Inmediato
+          </label>
+          <input
+            type="email"
+            value={form.jefeInmediatoCorreo}
+            onChange={(e) => set("jefeInmediatoCorreo", e.target.value)}
+            className={inputClass}
+            placeholder="jefe@cultura.gob.mx"
           />
         </div>
 

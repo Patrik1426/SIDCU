@@ -8,27 +8,51 @@
 ## 1. Estado Actual del Sistema
 
 ### Módulos completados
-- Login con "Recordarme" (cookie sesión vs 30 días)
+- Login con CURP + contraseña (sin email)
 - Dashboard admin con estadísticas
-- CRUD de Servidores Públicos (alta, edición, baja, búsqueda, filtros)
-- Campos adicionales: UPA (Sector), CMAO (CMAO1-CMAO18), UA (Dirección)
-- Niveles de progresión: 0 (Nuevo ingreso), N1-N5
+- CRUD de Servidores Públicos (alta, edición, baja, búsqueda, filtros, selección múltiple)
+- Campos: UPA (Sector), CMAO (CMAO1-CMAO18), UA (Dirección), Nivel Progresión (0-N5)
+- Registro vinculado: user se registra con CURP → se vincula a servidor existente
+- Validación de CURP/RFC: bloquea duplicados y servidores dados de baja
+- Onboarding obligatorio: user no puede navegar sin completar perfil
+- Onboarding idempotente: reintentos no duplican datos
+- Constancia de registro PDF descargable desde portal del user
+- Badge Registrado/Pendiente en tabla de servidores
 - Auditoría de cambios (registro automático de toda mutación)
 - Reportes con gráficas (Recharts)
-- Exportación Excel/PDF con todos los campos (UPA, CMAO, UA, Nivel)
-- Importación masiva CSV con defaults automáticos y detección de encoding
+- Exportación Excel/PDF con todos los campos y colores institucionales
+- Importación masiva CSV con defaults, detección encoding, validación duplicados contra DB
 - Gestión de Cursos con vista cuadrícula/lista, selección múltiple, eliminación masiva
+- Máximo 2 cursos activos por usuario, validación empalme de fechas
 - Gestión de Instituciones con importación CSV
-- Gestión de Usuarios (crear, cambiar rol, activar/desactivar)
+- Gestión de Usuarios (crear, cambiar rol, activar/desactivar, eliminar)
+- Contraseñas visibles para admin
+- Al eliminar usuario: servidor queda inactivo (CURP bloqueada para re-registro)
+- Al desactivar usuario: servidor sincronizado a inactivo
+- Al reactivar usuario: servidor recreado automáticamente
 - Portal de Capacitación (onboarding, catálogo, solicitudes, progresión 0-N5)
 - Sistema de baja de servidores (solicitud por usuario + aprobación admin)
-- Sidebar colapsable con identidad gráfica institucional
+- Sidebar colapsable con identidad gráfica institucional (Gobierno de México)
+- ConfirmModal reutilizable (reemplaza confirm() nativo en todo el sistema)
+- Skeleton loading components
+- ComboInput para catálogos auto-crecientes (UPA, UA)
 - Deploy en Railway (producción)
 - Nivel de gobierno: solo federal
 
+### Seguridad e infraestructura
+- Rate limiting: login (20/15min), API (500/15min), importación (5/5min)
+- Circuit breaker: protección automática si DB se satura (5 fallos → pausa 30s)
+- Health check endpoint (`/api/health`): estado DB, memoria, uptime, circuit breaker
+- Connection pooling: 20 conexiones MySQL con keep-alive
+- Índices compuestos optimizados para queries frecuentes
+- Contraseñas hasheadas con bcrypt (12 rounds)
+- JWT httpOnly cookies
+- Bloqueo de login si cuenta desactivada
+
 ### Módulos pendientes de desarrollo
-- **Carga de archivos a S3** — la página placeholder existe, falta integración con AWS
-- **Email de recuperación de contraseña** — la generación de token existe, falta el envío de correo
+- **Bloques de cursos** — definir en siguiente reunión
+- **Carga de archivos a S3** — placeholder existe, falta integración
+- **Email de recuperación de contraseña** — token existe, falta envío
 - **Tema oscuro** — placeholder existe, no implementado
 
 ---

@@ -18,19 +18,21 @@ El sistema se encuentra funcional en ambiente de desarrollo y producción (Railw
 
 | Módulo | Estado | Descripción |
 |--------|--------|-------------|
-| Autenticación | ✅ Completo | Login, registro, sesiones, opción "Recordarme" |
-| Servidores Públicos | ✅ Completo | Alta, edición, baja, búsqueda, filtros, exportación. Campos: UPA, CMAO, UA, Nivel Progresión |
-| Importación masiva | ✅ Completo | CSV para servidores, cursos e instituciones. Defaults automáticos, detección de encoding |
-| Gestión de Cursos | ✅ Completo | CRUD, vista cuadrícula/lista, selección múltiple, eliminación masiva, importación CSV |
+| Autenticación | ✅ Completo | Login con CURP + contraseña, registro vinculado a servidor existente |
+| Servidores Públicos | ✅ Completo | CRUD, selección múltiple, UPA/CMAO/UA, Nivel 0-N5, badge Registrado/Pendiente |
+| Importación masiva | ✅ Completo | CSV con defaults, encoding auto, validación duplicados contra DB, procesamiento en lotes |
+| Gestión de Cursos | ✅ Completo | Vista cuadrícula/lista, selección múltiple, máximo 2 cursos activos, validación empalme fechas |
 | Gestión de Instituciones | ✅ Completo | CRUD, importación CSV, asignación a cursos con horarios |
+| Gestión de Usuarios | ✅ Completo | CRUD, roles, activar/desactivar/eliminar, contraseñas visibles para admin |
 | Auditoría | ✅ Completo | Registro automático de toda operación sobre servidores |
 | Reportes | ✅ Completo | Gráficas por dependencia, grupo de función, estatus |
-| Exportación | ✅ Completo | Excel y PDF con todos los campos (UPA, CMAO, UA, Nivel) |
-| Gestión de Usuarios | ✅ Completo | Crear usuarios, asignar roles, activar/desactivar cuentas |
-| Portal de Capacitación | ✅ Completo | Onboarding, catálogo, solicitudes, progresión 0 (Nuevo ingreso) a N5 |
-| Sistema de Baja | ✅ Completo | Solicitud por usuario + aprobación admin |
-| Identidad Gráfica | ✅ Completo | Paleta institucional Gob. México, tipografía Noto Sans, sidebar colapsable |
-| Deploy Producción | ✅ Completo | Railway (sigecap-production.up.railway.app) |
+| Exportación | ✅ Completo | Excel y PDF con todos los campos, colores institucionales guinda |
+| Portal de Capacitación | ✅ Completo | Onboarding obligatorio, catálogo, solicitudes, constancia PDF, progresión 0-N5 |
+| Sistema de Baja | ✅ Completo | Solicitud por usuario + aprobación admin, CURP bloqueada post-baja |
+| Seguridad | ✅ Completo | Rate limiting, circuit breaker, health check, bcrypt, JWT httpOnly |
+| Identidad Gráfica | ✅ Completo | Paleta Gob. México, Noto Sans, sidebar colapsable, imagotipo oficial |
+| Deploy Producción | ✅ Completo | Railway con health check, connection pooling, índices optimizados |
+| Bloques de cursos | ⏳ Pendiente | Definir en siguiente reunión |
 | Carga de archivos | ⏳ Pendiente | Requiere definiciones (ver sección III) |
 | Recuperación de contraseña | ⏳ Pendiente | Requiere servicio de correo (ver sección III) |
 

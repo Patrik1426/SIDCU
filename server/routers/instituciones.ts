@@ -5,6 +5,7 @@ import {
   crearInstitucion,
   actualizarInstitucion,
   toggleActivoInstitucion,
+  eliminarInstitucion,
 } from "../db";
 
 export const institucionesRouter = router({
@@ -52,6 +53,13 @@ export const institucionesRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await toggleActivoInstitucion(input.id);
+      return { success: true };
+    }),
+
+  eliminar: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await eliminarInstitucion(input.id);
       return { success: true };
     }),
 

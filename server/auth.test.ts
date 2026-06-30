@@ -21,7 +21,7 @@ describe("auth", () => {
   });
 
   it("should generate and verify JWT token", () => {
-    const user = { id: 1, email: "test@test.com", role: "admin" as const };
+    const user = { id: 1, email: "test@test.com", role: "admin" as const, nombre: "Test User" };
     const token = generateToken(user);
     expect(token).toBeTruthy();
 

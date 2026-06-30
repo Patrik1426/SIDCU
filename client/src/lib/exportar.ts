@@ -32,6 +32,7 @@ interface ServidorExport {
   cmao?: string | null;
   ua?: string | null;
   nivelProgresion?: number | null;
+  preparacionAcademica?: string | null;
   estatus: string;
   observaciones?: string | null;
 }
@@ -57,6 +58,7 @@ function prepararDatos(items: ServidorExport[]) {
     "UPA (Sector)": s.upa ?? "",
     CMAO: s.cmao ?? "",
     "UA (Dirección)": s.ua ?? "",
+    "Preparación Académica": s.preparacionAcademica ?? "",
     "Nivel Progresión": NIVEL_PROG_LABELS[s.nivelProgresion ?? 0] ?? `N${s.nivelProgresion}`,
     "Fecha de Ingreso": formatFecha(s.fechaIngreso),
     "Datos de Contacto": s.datosContacto ?? "",
@@ -79,6 +81,7 @@ export function exportarExcel(items: ServidorExport[], filename = "servidores_pu
     { wch: 15 }, // UPA
     { wch: 10 }, // CMAO
     { wch: 30 }, // UA
+    { wch: 30 }, // Preparación Académica
     { wch: 15 }, // Nivel Progresión
     { wch: 15 }, // Fecha
     { wch: 25 }, // Contacto

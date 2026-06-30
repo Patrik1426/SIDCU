@@ -83,14 +83,14 @@ function StatCard({
   return (
     <motion.div
       variants={fadeUp}
-      className="group relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+      className="group relative h-full overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-shadow hover:shadow-card-hover"
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+          <p className="text-label">
             {label}
           </p>
-          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+          <p className="text-stat mt-2 text-slate-900">
             {value}
           </p>
           {subtitle && (
@@ -119,11 +119,11 @@ function ChartCard({
   return (
     <motion.div
       variants={fadeUp}
-      className={`rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm ${className}`}
+      className={`h-full rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest ${className}`}
     >
       <div className="mb-4 flex items-center gap-2">
         <Icon size={16} className="text-primary-500" />
-        <h3 className="text-[13px] font-bold text-slate-700">{title}</h3>
+        <h3 className="text-section-title text-slate-700">{title}</h3>
       </div>
       {children}
     </motion.div>
@@ -244,7 +244,8 @@ export default function Reportes() {
       </div>
 
       {/* Row 1: Estatus pie + Nivel pie */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="bento-grid">
+        <div className="bento-md">
         <ChartCard title="Distribución por estatus" icon={PieIcon}>
           {estatusData.some((d) => d.value > 0) ? (
             <>
@@ -278,7 +279,9 @@ export default function Reportes() {
             <EmptyChart />
           )}
         </ChartCard>
+        </div>
 
+        <div className="bento-md">
         <ChartCard title="Distribución por nivel de gobierno" icon={PieIcon}>
           {nivelData.length > 0 ? (
             <>
@@ -317,6 +320,7 @@ export default function Reportes() {
             <EmptyChart />
           )}
         </ChartCard>
+        </div>
       </div>
 
       {/* Row 2: Grupo función bar */}
@@ -350,7 +354,8 @@ export default function Reportes() {
       </ChartCard>
 
       {/* Row 3: Tendencia mensual + Top dependencias */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="bento-grid">
+        <div className="bento-md">
         <ChartCard title="Tendencia de registro mensual" icon={TrendingUp}>
           {mesData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -389,7 +394,9 @@ export default function Reportes() {
             <EmptyChart />
           )}
         </ChartCard>
+        </div>
 
+        <div className="bento-md">
         <ChartCard title="Top dependencias" icon={Building2}>
           {dependenciaData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
@@ -429,6 +436,7 @@ export default function Reportes() {
             <EmptyChart />
           )}
         </ChartCard>
+        </div>
       </div>
     </motion.div>
   );

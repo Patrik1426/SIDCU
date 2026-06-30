@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import { eq, and, like, or, sql, desc } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
+import { dbCircuitBreaker } from "./middleware/circuitBreaker";
 
 let db: ReturnType<typeof drizzle> | null = null;
 let pool: mysql.Pool | null = null;
@@ -13,13 +14,18 @@ export async function getDb() {
       uri: process.env.DATABASE_URL!,
       waitForConnections: true,
       connectionLimit: 20,
-      queueLimit: 0,
+      queueLimit: 100,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
+      connectTimeout: 10000,
     });
     db = drizzle(pool, { schema, mode: "default" });
   }
   return db;
+}
+
+export async function safeQuery<T>(fn: () => Promise<T>): Promise<T> {
+  return dbCircuitBreaker.execute(fn);
 }
 
 export async function getUserByEmail(email: string) {
@@ -28,6 +34,15 @@ export async function getUserByEmail(email: string) {
     .select()
     .from(schema.users)
     .where(eq(schema.users.email, email));
+  return user ?? null;
+}
+
+export async function getUserByCurp(curp: string) {
+  const d = await getDb();
+  const [user] = await d
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.curp, curp));
   return user ?? null;
 }
 
@@ -103,8 +118,20 @@ export async function listarUsuarios(search?: string) {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  // No seleccionar passwordHash aquí — el listado se manda al frontend en cada
+  // carga de página y quedaría expuesto en el Network tab.
   const items = await d
-    .select()
+    .select({
+      id: schema.users.id,
+      nombre: schema.users.nombre,
+      curp: schema.users.curp,
+      email: schema.users.email,
+      role: schema.users.role,
+      isActive: schema.users.isActive,
+      createdAt: schema.users.createdAt,
+      updatedAt: schema.users.updatedAt,
+      lastSignedIn: schema.users.lastSignedIn,
+    })
     .from(schema.users)
     .where(where)
     .orderBy(desc(schema.users.createdAt));
@@ -137,6 +164,12 @@ export async function toggleActivoUsuario(id: number) {
     .update(schema.users)
     .set({ isActive: activar, updatedAt: new Date() })
     .where(eq(schema.users.id, id));
+
+  if (!activar) {
+    await d.update(schema.servidoresPublicos)
+      .set({ estatus: "inactivo" })
+      .where(eq(schema.servidoresPublicos.userId, id));
+  }
 
   if (activar) {
     const [srvExistente] = await d.select({ id: schema.servidoresPublicos.id })
@@ -417,8 +450,19 @@ export async function incrementarNivelProgresion(userId: number) {
 
 export async function listarSolicitudesBaja() {
   const d = await getDb();
+  // No usar select() plano aquí — el join trae users.passwordHash al JSON enviado al navegador.
   return d
-    .select()
+    .select({
+      perfiles_servidor: schema.perfilesServidor,
+      users: {
+        id: schema.users.id,
+        nombre: schema.users.nombre,
+        curp: schema.users.curp,
+        email: schema.users.email,
+        role: schema.users.role,
+        isActive: schema.users.isActive,
+      },
+    })
     .from(schema.perfilesServidor)
     .innerJoin(schema.users, eq(schema.perfilesServidor.userId, schema.users.id))
     .where(eq(schema.perfilesServidor.solicitudBaja, true))
@@ -518,6 +562,12 @@ export async function toggleActivoInstitucion(id: number) {
   await d.update(schema.instituciones).set({ activo: !inst.activo }).where(eq(schema.instituciones.id, id));
 }
 
+export async function eliminarInstitucion(id: number) {
+  const d = await getDb();
+  await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.institucionId, id));
+  await d.delete(schema.instituciones).where(eq(schema.instituciones.id, id));
+}
+
 // ─── Cursos ↔ Instituciones ──────────────────────────────────────────
 
 export async function listarCursosInstituciones(cursoId: number) {
@@ -574,8 +624,20 @@ export async function listarTodasSolicitudes(filtros?: { estado?: string }) {
     conditions.push(eq(schema.solicitudesCurso.estado, filtros.estado as any));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  // No usar select() plano aquí — el join trae users.passwordHash al JSON enviado al navegador.
   return d
-    .select()
+    .select({
+      solicitudes_curso: schema.solicitudesCurso,
+      cursos: schema.cursos,
+      users: {
+        id: schema.users.id,
+        nombre: schema.users.nombre,
+        curp: schema.users.curp,
+        email: schema.users.email,
+        role: schema.users.role,
+        isActive: schema.users.isActive,
+      },
+    })
     .from(schema.solicitudesCurso)
     .innerJoin(schema.cursos, eq(schema.solicitudesCurso.cursoId, schema.cursos.id))
     .innerJoin(schema.users, eq(schema.solicitudesCurso.userId, schema.users.id))

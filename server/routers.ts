@@ -2,8 +2,10 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import { hashPassword, verifyPassword, generateToken } from "./auth";
+import { capitalizarNombre } from "../shared/utils";
 import {
   getUserByEmail,
+  getUserByCurp,
   createUser,
   crearServidor,
   crearTokenRestablecimiento,
@@ -27,59 +29,84 @@ const authRouter = router({
   register: publicProcedure
     .input(
       z.object({
-        nombre: z.string().min(2),
-        email: z.string().email(),
-        password: z.string().min(8),
+        curp: z.string().min(18, "CURP debe tener 18 caracteres").max(18),
+        nombre: z.string().min(2, "Nombre requerido"),
+        password: z.string().min(8, "Mínimo 8 caracteres"),
       }),
     )
     .mutation(async ({ input }) => {
-      const existing = await getUserByEmail(input.email);
-      if (existing) {
+      const curp = input.curp.toUpperCase();
+      const existingUser = await getUserByCurp(curp);
+      if (existingUser) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "Email ya registrado",
+          message: "Esta CURP ya tiene una cuenta registrada",
         });
       }
+
+      const { getDb } = await import("./db");
+      const schema = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const d = await getDb();
+      const [servidor] = await d.select().from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.curp, curp));
+
+      if (servidor && servidor.estatus === "inactivo") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Esta CURP pertenece a un servidor dado de baja. Contacte al administrador.",
+        });
+      }
+
+      const nombre = capitalizarNombre(input.nombre);
       const hash = await hashPassword(input.password);
       const id = await createUser({
-        nombre: input.nombre,
-        email: input.email,
+        nombre,
+        curp,
         passwordHash: hash,
         role: "user",
       });
-      await crearServidor({
-        userId: id,
-        nombreCompleto: input.nombre,
-        rfc: `UREG${String(id).padStart(9, "0")}`,
-        curp: `UREG${String(id).padStart(14, "0")}`,
-        cargo: "Por definir",
-        dependencia: "Por definir",
-        nivel: "federal",
-        grupoFuncion: "ADMO",
-        fechaIngreso: new Date(),
-        datosContacto: input.email,
-        upa: null,
-        cmao: null,
-        ua: null,
-        nivelProgresion: 0,
-        estatus: "activo",
-        creadoPor: id,
-        actualizadoPor: id,
-      });
+
+      if (servidor) {
+        await d.update(schema.servidoresPublicos)
+          .set({ userId: id, nombreCompleto: nombre, actualizadoPor: id })
+          .where(eq(schema.servidoresPublicos.id, servidor.id));
+      } else {
+        await crearServidor({
+          userId: id,
+          nombreCompleto: nombre,
+          rfc: `UREG${String(id).padStart(9, "0")}`,
+          curp,
+          cargo: "Por definir",
+          dependencia: "Por definir",
+          nivel: "federal",
+          grupoFuncion: "ADMO",
+          fechaIngreso: new Date(),
+          datosContacto: null,
+          upa: null,
+          cmao: null,
+          ua: null,
+          nivelProgresion: 0,
+          estatus: "activo",
+          creadoPor: id,
+          actualizadoPor: id,
+        });
+      }
       return { success: true, id };
     }),
 
   login: publicProcedure
-    .input(z.object({ email: z.string().email(), password: z.string(), rememberMe: z.boolean().optional() }))
+    .input(z.object({ curp: z.string().min(1, "CURP requerido"), password: z.string(), rememberMe: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const user = await getUserByEmail(input.email);
+      const curp = input.curp.toUpperCase();
+      const user = await getUserByCurp(curp);
       if (
         !user ||
         !(await verifyPassword(input.password, user.passwordHash))
       ) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
-          message: "Credenciales invalidas",
+          message: "CURP o contraseña incorrectos",
         });
       }
       if (!user.isActive) {
@@ -92,6 +119,7 @@ const authRouter = router({
       const cookieOpts: any = {
         httpOnly: true,
         sameSite: "lax" as const,
+        secure: process.env.NODE_ENV === "production",
       };
       if (input.rememberMe) {
         cookieOpts.maxAge = 30 * 24 * 60 * 60 * 1000;
@@ -102,7 +130,7 @@ const authRouter = router({
         user: {
           id: user.id,
           nombre: user.nombre,
-          email: user.email,
+          email: user.email ?? null,
           role: user.role,
         },
       };

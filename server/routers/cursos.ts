@@ -24,6 +24,17 @@ const cursoInput = z.object({
   categoria: z.string().min(1, "Categoría requerida"),
   duracionHoras: z.number().int().positive(),
   modalidad: z.enum(["presencial", "virtual", "mixto"]),
+  tipoPrograma: z.enum(["PAC", "CERT", "SDPC", "OTRO"]).default("OTRO"),
+  bloque: z.number().int().nullable().optional(),
+  numero: z.number().int().nullable().optional(),
+  institucionResponsable: z.string().nullable().optional(),
+  finalidad: z.string().nullable().optional(),
+  fechaInicio: z.coerce.date().nullable().optional(),
+  fechaTermino: z.coerce.date().nullable().optional(),
+  horarioTexto: z.string().nullable().optional(),
+  fechaEvaluacion: z.coerce.date().nullable().optional(),
+  horarioEvaluacion: z.string().nullable().optional(),
+  duracionEvaluacion: z.string().nullable().optional(),
 });
 
 export const cursosRouter = router({
@@ -37,8 +48,6 @@ export const cursosRouter = router({
         const perfil = await obtenerPerfil(ctx.user.id);
         if (!perfil?.completado) return [];
         return listarCursos({
-          nivelMax: perfil.nivelProgresion,
-          nivelGobierno: perfil.nivelGobierno,
           categoria: input?.categoria,
           modalidad: input?.modalidad,
           soloActivos: true,
@@ -59,6 +68,14 @@ export const cursosRouter = router({
       const instituciones = await listarCursosInstituciones(input.id);
       return { ...curso, instituciones };
     }),
+
+  // Catálogos de valores ya usados, para evitar nombres/finalidades distintas para lo mismo
+  listarFinalidades: adminProcedure.query(async () => {
+    const { getDb } = await import("../db");
+    const d = await getDb();
+    const rows = await d.selectDistinct({ finalidad: schema.cursos.finalidad }).from(schema.cursos);
+    return (rows.map((r) => r.finalidad).filter(Boolean) as string[]).sort();
+  }),
 
   crear: adminProcedure
     .input(cursoInput)
@@ -130,20 +147,107 @@ export const cursosRouter = router({
       const errores: { fila: number; error: string }[] = [];
       const nombresVistos = new Set<string>();
 
+      // Excel con celdas combinadas exporta vacío en filas siguientes del mismo bloque/institución.
+      // Rellenar hacia abajo (fill-down) los campos que normalmente se combinan.
+      const camposHeredables = [
+        "bloque",
+        "institucionResponsable",
+        "finalidad",
+        "modalidad",
+        "fechaInicio",
+        "fechaTermino",
+        "horarioTexto",
+        "duracionHoras",
+        "fechaEvaluacion",
+        "horarioEvaluacion",
+        "duracionEvaluacion",
+      ];
+      const ultimoValor: Record<string, any> = {};
+      for (const row of input.registros) {
+        for (const campo of camposHeredables) {
+          const valor = row[campo];
+          const vacio = valor === undefined || valor === null || valor.toString().trim() === "";
+          if (vacio && ultimoValor[campo] !== undefined) {
+            row[campo] = ultimoValor[campo];
+          } else if (!vacio) {
+            ultimoValor[campo] = valor;
+          }
+        }
+      }
+
+      // Convierte fechas en formato DD/MM/YYYY (formato del CSV) a ISO, que sí parsea Date.
+      const parseFechaDDMMYYYY = (valor: any): string | null => {
+        if (!valor) return null;
+        const texto = valor.toString().trim();
+        if (!texto) return null;
+        const match = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        const isoCandidato = match
+          ? `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`
+          : texto;
+        return isNaN(new Date(isoCandidato).getTime()) ? null : isoCandidato;
+      };
+
+      // Helpers genéricos para normalizar valores "sucios" que llegan de CSV/Excel
+      const quitarAcentos = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+      const texto = (valor: any, porDefecto: string | null = "Por definir"): string | null => {
+        const t = (valor ?? "").toString().trim();
+        return t === "" ? porDefecto : t;
+      };
+      const soloDigitos = (valor: any): number | null => {
+        if (valor === undefined || valor === null || valor.toString().trim() === "") return null;
+        const n = Number(String(valor).replace(/\D+/g, ""));
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+      const enumPorContenido = (valor: any, opciones: { match: string[]; valor: string }[], def: string): string => {
+        const v = quitarAcentos((valor ?? "").toString().trim().toLowerCase());
+        return opciones.find((o) => o.match.some((m) => v.includes(m)))?.valor ?? def;
+      };
+
       for (let i = 0; i < input.registros.length; i++) {
         const row = input.registros[i];
-        const nombre = (row.nombre ?? "").trim();
-        const nombreFormateado = nombre.length > 0 && nombre === nombre.toUpperCase()
-          ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase()
-          : nombre;
+
+        // Saltar filas completamente vacías (líneas en blanco al final del CSV)
+        const filaVacia = Object.values(row).every((v) => !v || v.toString().trim() === "");
+        if (filaVacia) continue;
+
+        const nombreRaw = (row.nombre ?? "").toString().trim();
+        const nombreFormateado = nombreRaw.length > 0 && nombreRaw === nombreRaw.toUpperCase()
+          ? nombreRaw.charAt(0).toUpperCase() + nombreRaw.slice(1).toLowerCase()
+          : nombreRaw || "Por definir";
+
+        const tipoProgramaRaw = quitarAcentos((row.tipoPrograma || "").toString().trim().toUpperCase());
+
+        const modalidad = enumPorContenido(row.modalidad, [
+          { match: ["virtual", "en linea", "online"], valor: "virtual" },
+          { match: ["mixt", "hibrid"], valor: "mixto" },
+          { match: ["presencial"], valor: "presencial" },
+        ], "presencial");
+
+        const nivelGobierno = enumPorContenido(row.nivelGobierno, [
+          { match: ["estatal"], valor: "estatal" },
+          { match: ["municipal"], valor: "municipal" },
+          { match: ["federal"], valor: "federal" },
+        ], "federal");
+
         const parsed = cursoInput.safeParse({
           nombre: nombreFormateado,
-          descripcion: row.descripcion || "Por definir",
-          nivelRequerido: Number(row.nivelRequerido || row.nivel_requerido || 1),
-          nivelGobierno: row.nivelGobierno || row.nivel_gobierno || "federal",
-          categoria: row.categoria || "obligatorio",
-          duracionHoras: Number(row.duracionHoras || row.duracion_horas || row.duracion || 1),
-          modalidad: row.modalidad || "presencial",
+          descripcion: texto(row.descripcion),
+          nivelRequerido: soloDigitos(row.nivelRequerido) ?? 0,
+          nivelGobierno,
+          categoria: texto(row.categoria, "obligatorio"),
+          duracionHoras: soloDigitos(row.duracionHoras) ?? 1,
+          modalidad,
+          tipoPrograma: ["PAC", "CERT", "SDPC"].includes(tipoProgramaRaw) ? tipoProgramaRaw : "OTRO",
+          bloque: soloDigitos(row.bloque),
+          numero: soloDigitos(row.numero),
+          institucionResponsable: texto(row.institucionResponsable),
+          finalidad: texto(row.finalidad),
+          fechaInicio: parseFechaDDMMYYYY(row.fechaInicio),
+          fechaTermino: parseFechaDDMMYYYY(row.fechaTermino),
+          horarioTexto: texto(row.horarioTexto),
+          fechaEvaluacion: parseFechaDDMMYYYY(row.fechaEvaluacion),
+          horarioEvaluacion: texto(row.horarioEvaluacion, null),
+          duracionEvaluacion: texto(row.duracionEvaluacion, null),
         });
 
         if (!parsed.success) {
@@ -161,23 +265,56 @@ export const cursosRouter = router({
         }
         nombresVistos.add(nombreKey);
 
-        const existente = await (await import("../db")).getDb().then(d =>
-          d.select({ id: schema.cursos.id }).from(schema.cursos)
-            .where(eq(schema.cursos.nombre, parsed.data.nombre))
-            .then(r => r[0])
-        );
-        if (existente) {
-          errores.push({ fila: i + 1, error: `Curso "${parsed.data.nombre}" ya existe en el sistema` });
-          continue;
-        }
-
         try {
+          const { sql } = await import("drizzle-orm");
+          const d = await (await import("../db")).getDb();
+
+          const [existente] = await d.select({ id: schema.cursos.id }).from(schema.cursos)
+            .where(eq(schema.cursos.nombre, parsed.data.nombre));
+          if (existente) {
+            errores.push({ fila: i + 1, error: `Curso "${parsed.data.nombre}" ya existe en el sistema` });
+            continue;
+          }
+
+          // Auto-crear institución responsable si no existe (comparación case-insensitive) y enlazarla al curso
+          let institucionId: number | null = null;
+          if (parsed.data.institucionResponsable && parsed.data.institucionResponsable !== "Por definir") {
+            const nombreNormalizado = parsed.data.institucionResponsable.trim().toLowerCase();
+            const [institucionExistente] = await d.select({ id: schema.instituciones.id })
+              .from(schema.instituciones)
+              .where(sql`LOWER(TRIM(${schema.instituciones.nombre})) = ${nombreNormalizado}`);
+
+            if (institucionExistente) {
+              institucionId = institucionExistente.id;
+            } else {
+              const [resultado] = await d.insert(schema.instituciones).values({
+                nombre: parsed.data.institucionResponsable.trim(),
+                activo: true,
+              });
+              institucionId = (resultado as any).insertId;
+            }
+          }
+
           const id = await crearCurso({
             ...parsed.data,
             descripcion: parsed.data.descripcion ?? null,
             nivelGobierno: parsed.data.nivelGobierno ?? null,
             creadoPor: ctx.user.id,
           });
+
+          if (institucionId) {
+            await asignarCursoInstitucion({
+              cursoId: id,
+              institucionId,
+              cupoMaximo: 30,
+              cupoDisponible: 30,
+              horario: parsed.data.horarioTexto ?? null,
+              fechaInicio: parsed.data.fechaInicio ?? null,
+              fechaFin: parsed.data.fechaTermino ?? null,
+              activo: true,
+            });
+          }
+
           creados.push(id);
         } catch (err: any) {
           errores.push({

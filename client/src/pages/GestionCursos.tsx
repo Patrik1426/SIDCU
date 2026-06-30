@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import ConfirmModal from "@/components/ConfirmModal";
+import ComboInput from "@/components/ComboInput";
 import { SkeletonCard, SkeletonTable } from "@/components/Skeleton";
 import {
   Plus,
@@ -32,12 +33,12 @@ const fadeUp = {
 const CATEGORIAS = ["obligatorio", "optativo", "especializado"];
 const MODALIDADES = ["presencial", "virtual", "mixto"];
 const NIVELES_GOBIERNO = ["federal", "estatal", "municipal", "otro"];
+const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC", "OTRO"];
 
 type ModalState =
   | { type: "closed" }
   | { type: "create" }
-  | { type: "edit"; id: number }
-  | { type: "assign"; cursoId: number; cursoNombre: string };
+  | { type: "edit"; id: number };
 
 interface CursoFormData {
   nombre: string;
@@ -47,6 +48,17 @@ interface CursoFormData {
   categoria: string;
   duracionHoras: number;
   modalidad: string;
+  tipoPrograma: string;
+  bloque: string;
+  numero: string;
+  institucionResponsable: string;
+  finalidad: string;
+  fechaInicio: string;
+  fechaTermino: string;
+  horarioTexto: string;
+  fechaEvaluacion: string;
+  horarioEvaluacion: string;
+  duracionEvaluacion: string;
 }
 
 const emptyForm: CursoFormData = {
@@ -57,6 +69,23 @@ const emptyForm: CursoFormData = {
   categoria: "obligatorio",
   duracionHoras: 1,
   modalidad: "presencial",
+  tipoPrograma: "OTRO",
+  bloque: "",
+  numero: "",
+  institucionResponsable: "",
+  finalidad: "",
+  fechaInicio: "",
+  fechaTermino: "",
+  horarioTexto: "",
+  fechaEvaluacion: "",
+  horarioEvaluacion: "",
+  duracionEvaluacion: "",
+};
+
+const fechaInputValue = (v: any): string => {
+  if (!v) return "";
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
 
 export default function GestionCursos() {
@@ -68,6 +97,8 @@ export default function GestionCursos() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
+  const [confirmDesasignar, setConfirmDesasignar] = useState<{ id: number; nombre: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"detalles" | "instituciones">("detalles");
 
   // Assignment form state
   const [assignForm, setAssignForm] = useState({
@@ -80,13 +111,16 @@ export default function GestionCursos() {
     fechaFin: "",
   });
 
-  const { data: cursos, isLoading } = trpc.cursos.listar.useQuery();
+  const { data: cursos, isLoading } = trpc.cursos.listar.useQuery(undefined, {
+    placeholderData: (prev) => prev,
+  });
   const { data: instituciones } = trpc.instituciones.listar.useQuery({ soloActivas: true });
+  const { data: finalidades } = trpc.cursos.listarFinalidades.useQuery();
 
   // Fetch course details when editing
   const { data: cursoDetalle } = trpc.cursos.obtener.useQuery(
-    { id: modal.type === "edit" ? modal.id : modal.type === "assign" ? modal.cursoId : 0 },
-    { enabled: modal.type === "edit" || modal.type === "assign" }
+    { id: modal.type === "edit" ? modal.id : 0 },
+    { enabled: modal.type === "edit" }
   );
 
   const crearMut = trpc.cursos.crear.useMutation({
@@ -163,6 +197,7 @@ export default function GestionCursos() {
 
   const openCreate = () => {
     setForm(emptyForm);
+    setActiveTab("detalles");
     setModal({ type: "create" });
   };
 
@@ -175,7 +210,19 @@ export default function GestionCursos() {
       categoria: curso.categoria,
       duracionHoras: curso.duracionHoras,
       modalidad: curso.modalidad,
+      tipoPrograma: curso.tipoPrograma ?? "OTRO",
+      bloque: curso.bloque?.toString() ?? "",
+      numero: curso.numero?.toString() ?? "",
+      institucionResponsable: curso.institucionResponsable ?? "",
+      finalidad: curso.finalidad ?? "",
+      fechaInicio: fechaInputValue(curso.fechaInicio),
+      fechaTermino: fechaInputValue(curso.fechaTermino),
+      horarioTexto: curso.horarioTexto ?? "",
+      fechaEvaluacion: fechaInputValue(curso.fechaEvaluacion),
+      horarioEvaluacion: curso.horarioEvaluacion ?? "",
+      duracionEvaluacion: curso.duracionEvaluacion ?? "",
     });
+    setActiveTab("detalles");
     setModal({ type: "edit", id: curso.id });
   };
 
@@ -189,23 +236,34 @@ export default function GestionCursos() {
       categoria: form.categoria,
       duracionHoras: Number(form.duracionHoras),
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
+      tipoPrograma: form.tipoPrograma as "PAC" | "CERT" | "SDPC" | "OTRO",
+      bloque: form.bloque ? Number(form.bloque) : undefined,
+      numero: form.numero ? Number(form.numero) : undefined,
+      institucionResponsable: form.institucionResponsable || undefined,
+      finalidad: form.finalidad || undefined,
+      fechaInicio: form.fechaInicio ? new Date(form.fechaInicio) : undefined,
+      fechaTermino: form.fechaTermino ? new Date(form.fechaTermino) : undefined,
+      horarioTexto: form.horarioTexto || undefined,
+      fechaEvaluacion: form.fechaEvaluacion ? new Date(form.fechaEvaluacion) : undefined,
+      horarioEvaluacion: form.horarioEvaluacion || undefined,
+      duracionEvaluacion: form.duracionEvaluacion || undefined,
     };
     if (modal.type === "create") {
-      await crearMut.mutateAsync(payload);
+      await crearMut.mutateAsync(payload as any);
     } else if (modal.type === "edit") {
-      await actualizarMut.mutateAsync({ id: modal.id!, ...payload });
+      await actualizarMut.mutateAsync({ id: modal.id!, ...payload } as any);
     }
   };
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (modal.type !== "assign" || !assignForm.institucionId) return;
+    if (modal.type !== "edit" || !assignForm.institucionId) return;
     const horarioParts: string[] = [];
     if (assignForm.dias.length > 0) horarioParts.push(assignForm.dias.join(", "));
     if (assignForm.horaInicio && assignForm.horaFin) horarioParts.push(`${assignForm.horaInicio} - ${assignForm.horaFin}`);
     const horario = horarioParts.join(" · ") || undefined;
     await asignarMut.mutateAsync({
-      cursoId: modal.cursoId,
+      cursoId: modal.id,
       institucionId: assignForm.institucionId,
       cupoMaximo: assignForm.cupoMaximo,
       horario,
@@ -215,15 +273,15 @@ export default function GestionCursos() {
   };
 
   const modalidadLabel = (m: string) => {
-    const map: Record<string, string> = { presencial: "Presencial", en_linea: "En Línea", hibrido: "Híbrido" };
+    const map: Record<string, string> = { presencial: "Presencial", virtual: "Virtual", mixto: "Mixto" };
     return map[m] ?? m;
   };
 
   const modalidadColor = (m: string) => {
     const map: Record<string, string> = {
       presencial: "bg-blue-50 text-blue-700",
-      en_linea: "bg-violet-50 text-violet-700",
-      hibrido: "bg-amber-50 text-amber-700",
+      virtual: "bg-violet-50 text-violet-700",
+      mixto: "bg-amber-50 text-amber-700",
     };
     return map[m] ?? "bg-slate-50 text-slate-600";
   };
@@ -327,7 +385,7 @@ export default function GestionCursos() {
               <motion.div
                 key={curso.id}
                 variants={fadeUp}
-                className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-200"
+                className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2">
@@ -354,10 +412,6 @@ export default function GestionCursos() {
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
                   <span className="flex items-center gap-1">
-                    <BookOpen size={11} />
-                    Nivel {curso.nivelRequerido}
-                  </span>
-                  <span className="flex items-center gap-1">
                     <Clock size={11} />
                     {curso.duracionHoras}h
                   </span>
@@ -376,9 +430,6 @@ export default function GestionCursos() {
                     <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${curso.activo ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
                   <div className="flex gap-1">
-                    <button onClick={() => setModal({ type: "assign", cursoId: curso.id, cursoNombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500" title="Asignar">
-                      <Building2 size={15} />
-                    </button>
                     <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500" title="Editar">
                       <Pencil size={15} />
                     </button>
@@ -391,7 +442,7 @@ export default function GestionCursos() {
             ))}
           </motion.div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-card-rest">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50">
@@ -407,7 +458,6 @@ export default function GestionCursos() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Categoría</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Modalidad</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Duración</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Nivel</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Estado</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500">Acciones</th>
                 </tr>
@@ -431,7 +481,6 @@ export default function GestionCursos() {
                       <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${modalidadColor(curso.modalidad)}`}>{modalidadLabel(curso.modalidad)}</span>
                     </td>
                     <td className="px-3 py-2.5 text-slate-500">{curso.duracionHoras}h</td>
-                    <td className="px-3 py-2.5 text-slate-500">{curso.nivelRequerido}</td>
                     <td className="px-3 py-2.5">
                       <button
                         onClick={() => toggleActivoMut.mutate({ id: curso.id })}
@@ -442,9 +491,6 @@ export default function GestionCursos() {
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex justify-end gap-0.5">
-                        <button onClick={() => setModal({ type: "assign", cursoId: curso.id, cursoNombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-500" title="Asignar">
-                          <Building2 size={14} />
-                        </button>
                         <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-500" title="Editar">
                           <Pencil size={14} />
                         </button>
@@ -481,6 +527,30 @@ export default function GestionCursos() {
               </button>
             </div>
 
+            <div className="flex border-b border-slate-100 px-5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("detalles")}
+                className={`border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  activeTab === "detalles" ? "border-primary-600 text-primary-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Detalles del curso
+              </button>
+              <button
+                type="button"
+                onClick={() => modal.type === "edit" && setActiveTab("instituciones")}
+                disabled={modal.type !== "edit"}
+                title={modal.type !== "edit" ? "Guarda el curso primero para asignar instituciones" : undefined}
+                className={`border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  activeTab === "instituciones" ? "border-primary-600 text-primary-600" : "border-transparent text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Instituciones
+              </button>
+            </div>
+
+            {activeTab === "detalles" && (
             <form onSubmit={handleSubmit} className="space-y-4 p-5">
               {(crearMut.error || actualizarMut.error) && (
                 <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-600">
@@ -510,34 +580,16 @@ export default function GestionCursos() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Nivel Requerido *</label>
-                  <select
-                    required
-                    value={form.nivelRequerido}
-                    onChange={(e) => setForm({ ...form, nivelRequerido: Number(e.target.value) })}
-                    className={inputClass}
-                  >
-                    <option value={0}>0 - Nuevo ingreso</option>
-                    <option value={1}>N1</option>
-                    <option value={2}>N2</option>
-                    <option value={3}>N3</option>
-                    <option value={4}>N4</option>
-                    <option value={5}>N5</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Duracion (horas) *</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={form.duracionHoras}
-                    onChange={(e) => setForm({ ...form, duracionHoras: Number(e.target.value) })}
-                    className={inputClass}
-                  />
-                </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Duracion (horas) *</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={form.duracionHoras}
+                  onChange={(e) => setForm({ ...form, duracionHoras: Number(e.target.value) })}
+                  className={inputClass}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -571,36 +623,126 @@ export default function GestionCursos() {
                 </div>
               </div>
 
-              {/* Assigned institutions (edit mode only) */}
-              {modal.type === "edit" && cursoDetalle?.instituciones && cursoDetalle.instituciones.length > 0 && (
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="mb-2 block text-xs font-semibold text-slate-500">Instituciones Asignadas</label>
-                  <div className="space-y-2">
-                    {cursoDetalle.instituciones.map((inst: any) => {
-                      const ci = inst.cursos_instituciones ?? inst;
-                      const instData = inst.instituciones ?? inst;
-                      return (
-                        <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          <Building2 size={12} className="text-slate-400" />
-                          <span className="flex-1 font-medium">{instData.nombre ?? `Institución #${ci.institucionId}`}</span>
-                          <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
-                          {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!confirm(`¿Eliminar asignación de "${instData.nombre}"?`)) return;
-                              desasignarMut.mutate({ id: ci.id });
-                            }}
-                            className="ml-1 rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Tipo de Programa</label>
+                  <select
+                    value={form.tipoPrograma}
+                    onChange={(e) => setForm({ ...form, tipoPrograma: e.target.value })}
+                    className={inputClass}
+                  >
+                    {TIPOS_PROGRAMA.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Bloque</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.bloque}
+                    onChange={(e) => setForm({ ...form, bloque: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">No.</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.numero}
+                    onChange={(e) => setForm({ ...form, numero: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Institución Responsable</label>
+                <ComboInput
+                  value={form.institucionResponsable}
+                  onChange={(v) => setForm({ ...form, institucionResponsable: v })}
+                  options={(instituciones ?? []).map((i: any) => i.nombre)}
+                  className={inputClass}
+                  placeholder="Ej. INAP"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Finalidad</label>
+                <ComboInput
+                  value={form.finalidad}
+                  onChange={(v) => setForm({ ...form, finalidad: v })}
+                  options={finalidades ?? []}
+                  className={inputClass}
+                  placeholder="Finalidad del curso (opcional)"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Fecha de Inicio</label>
+                  <input
+                    type="date"
+                    value={form.fechaInicio}
+                    onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Fecha de Término</label>
+                  <input
+                    type="date"
+                    value={form.fechaTermino}
+                    onChange={(e) => setForm({ ...form, fechaTermino: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Horario</label>
+                <input
+                  type="text"
+                  value={form.horarioTexto}
+                  onChange={(e) => setForm({ ...form, horarioTexto: e.target.value })}
+                  className={inputClass}
+                  placeholder="Ej. 09:00 - 13:00"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Fecha de Evaluación</label>
+                  <input
+                    type="date"
+                    value={form.fechaEvaluacion}
+                    onChange={(e) => setForm({ ...form, fechaEvaluacion: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Horario de Evaluación</label>
+                  <input
+                    type="text"
+                    value={form.horarioEvaluacion}
+                    onChange={(e) => setForm({ ...form, horarioEvaluacion: e.target.value })}
+                    className={inputClass}
+                    placeholder="Ej. 10:00 - 12:00"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Duración Evaluación</label>
+                  <input
+                    type="text"
+                    value={form.duracionEvaluacion}
+                    onChange={(e) => setForm({ ...form, duracionEvaluacion: e.target.value })}
+                    className={inputClass}
+                    placeholder="Ej. 2"
+                  />
+                </div>
+              </div>
 
               <div className="flex gap-3 border-t border-slate-100 pt-4">
                 <button
@@ -623,59 +765,35 @@ export default function GestionCursos() {
                 </button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Assign Institution Modal */}
-      {modal.type === "assign" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white shadow-2xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Asignar Institucion</h2>
-                <p className="text-xs text-slate-400 mt-0.5">{modal.cursoNombre}</p>
-              </div>
-              <button
-                onClick={() => setModal({ type: "closed" })}
-                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Already assigned */}
-            {cursoDetalle?.instituciones && cursoDetalle.instituciones.length > 0 && (
-              <div className="border-b border-slate-100 px-5 py-4 space-y-2">
-                <p className="text-micro font-semibold uppercase tracking-widest text-slate-400">Asignaciones actuales</p>
-                {cursoDetalle.instituciones.map((inst: any) => {
-                  const ci = inst.cursos_instituciones ?? inst;
-                  const instData = inst.instituciones ?? inst;
-                  return (
-                    <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                      <Building2 size={12} className="text-slate-400" />
-                      <span className="flex-1 font-medium">{instData.nombre ?? `#${ci.institucionId}`}</span>
-                      <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
-                      {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!confirm(`¿Eliminar asignación de "${instData.nombre}"?`)) return;
-                          desasignarMut.mutate({ id: ci.id });
-                        }}
-                        className="ml-1 rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             )}
+
+            {activeTab === "instituciones" && modal.type === "edit" && (
+            <div>
+              {/* Already assigned */}
+              {cursoDetalle?.instituciones && cursoDetalle.instituciones.length > 0 && (
+                <div className="border-b border-slate-100 px-5 py-4 space-y-2">
+                  <p className="text-micro font-semibold uppercase tracking-widest text-slate-400">Asignaciones actuales</p>
+                  {cursoDetalle.instituciones.map((inst: any) => {
+                    const ci = inst.cursos_instituciones ?? inst;
+                    const instData = inst.instituciones ?? inst;
+                    return (
+                      <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <Building2 size={12} className="text-slate-400" />
+                        <span className="flex-1 font-medium">{instData.nombre ?? `Institución #${ci.institucionId}`}</span>
+                        <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
+                        {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDesasignar({ id: ci.id, nombre: instData.nombre ?? `Institución #${ci.institucionId}` })}
+                          className="ml-1 rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
             <form onSubmit={handleAssign} className="space-y-4 p-5">
               {asignarMut.error && (
@@ -802,6 +920,8 @@ export default function GestionCursos() {
                 </button>
               </div>
             </form>
+            </div>
+            )}
           </motion.div>
         </div>
       )}
@@ -809,13 +929,33 @@ export default function GestionCursos() {
       {showImport && (
         <ImportarCSVModal
           titulo="Cursos"
+          camposHeredables={[
+            "bloque",
+            "institucionResponsable",
+            "finalidad",
+            "modalidad",
+            "fechaInicio",
+            "fechaTermino",
+            "horarioTexto",
+            "duracionHoras",
+            "fechaEvaluacion",
+            "horarioEvaluacion",
+            "duracionEvaluacion",
+          ]}
           columnas={[
-            { key: "nombre", label: "Nombre", ejemplo: "Ética en el servicio público" },
-            { key: "descripcion", label: "Descripción", ejemplo: "Curso de ética profesional" },
-            { key: "categoria", label: "Categoría", ejemplo: "obligatorio" },
+            { key: "bloque", label: "Bloque", ejemplo: "1" },
+            { key: "numero", label: "No.", ejemplo: "1" },
+            { key: "nombre", label: "Nombre del Curso", ejemplo: "Ética en el servicio público" },
+            { key: "institucionResponsable", label: "Institución Responsable", ejemplo: "INAP" },
+            { key: "finalidad", label: "Finalidad", ejemplo: "Fortalecer valores institucionales" },
             { key: "modalidad", label: "Modalidad", ejemplo: "presencial" },
-            { key: "duracionHoras", label: "Duración (hrs)", ejemplo: "20" },
-            { key: "nivelRequerido", label: "Nivel requerido", ejemplo: "1" },
+            { key: "fechaInicio", label: "Fecha de Inicio", ejemplo: "2026-03-01" },
+            { key: "fechaTermino", label: "Fecha de Término", ejemplo: "2026-03-15" },
+            { key: "horarioTexto", label: "Horario", ejemplo: "09:00 - 13:00" },
+            { key: "duracionHoras", label: "Duración (Horas)", ejemplo: "20" },
+            { key: "fechaEvaluacion", label: "Fecha de Evaluación", ejemplo: "2026-03-20" },
+            { key: "horarioEvaluacion", label: "Horario de Evaluación", ejemplo: "10:00 - 12:00" },
+            { key: "duracionEvaluacion", label: "Duración de Evaluación", ejemplo: "2" },
           ]}
           onImportar={(registros) => importarCursosMut.mutateAsync({ registros })}
           onClose={() => setShowImport(false)}
@@ -845,6 +985,23 @@ export default function GestionCursos() {
           }
         }}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Confirm Desasignar Modal */}
+      <ConfirmModal
+        open={!!confirmDesasignar}
+        title="Eliminar asignación"
+        message={`¿Eliminar asignación de "${confirmDesasignar?.nombre ?? ""}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={desasignarMut.isPending}
+        onConfirm={() => {
+          if (!confirmDesasignar) return;
+          desasignarMut.mutate({ id: confirmDesasignar.id }, {
+            onSuccess: () => setConfirmDesasignar(null),
+          });
+        }}
+        onCancel={() => setConfirmDesasignar(null)}
       />
     </motion.div>
   );

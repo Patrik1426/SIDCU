@@ -44,6 +44,19 @@ const servidorInput = z.object({
   grupoFuncion: z.enum(["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]),
   estatus: z.enum(["activo", "inactivo"]).default("activo"),
   observaciones: z.string().nullable().optional(),
+  upa: z.string().nullable().optional(),
+  cmo: z.string().nullable().optional(),
+  cmao: z.string().nullable().optional(),
+  ua: z.string().nullable().optional(),
+  nivelProgresion: z.coerce.number().int().min(0).max(5).optional(),
+  preparacionAcademica: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  telOficina: z.string().nullable().optional(),
+  ext: z.string().nullable().optional(),
+  actividadDesempena: z.string().nullable().optional(),
+  jefeInmediatoCurp: z.string().nullable().optional(),
+  jefeInmediatoNombre: z.string().nullable().optional(),
+  jefeInmediatoCorreo: z.string().nullable().optional(),
 });
 
 const filtrosInput = z.object({
@@ -62,10 +75,12 @@ export const servidoresRouter = router({
   crear: requireRole("admin", "capturista")
     .input(servidorInput)
     .mutation(async ({ ctx, input }) => {
+      const folioSdpc = String(Date.now()).slice(-6);
       const id = await crearServidor({
         ...input,
         datosContacto: input.datosContacto ?? null,
         observaciones: input.observaciones ?? null,
+        folioSdpc,
         creadoPor: ctx.user.id,
         actualizadoPor: ctx.user.id,
       });
@@ -154,6 +169,16 @@ export const servidoresRouter = router({
 
       return { success: true };
     }),
+
+  miServidor: protectedProcedure.query(async ({ ctx }) => {
+    const { getDb } = await import("../db");
+    const schema = await import("../../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    const d = await getDb();
+    const [srv] = await d.select().from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
+    return srv ?? null;
+  }),
 
   listarUpas: protectedProcedure.query(async () => {
     const { getDb } = await import("../db");

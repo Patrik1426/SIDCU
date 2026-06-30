@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import {
   Plus,
   Pencil,
+  Trash2,
   X,
   Building2,
   MapPin,
@@ -13,6 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const stagger = {
   hidden: {},
@@ -49,8 +51,13 @@ export default function Instituciones() {
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [form, setForm] = useState<InstFormData>(emptyForm);
   const [showImport, setShowImport] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
 
-  const { data: instituciones, isLoading } = trpc.instituciones.listar.useQuery({ soloActivas: false });
+  const { data: instituciones, isLoading } = trpc.instituciones.listar.useQuery(
+    { soloActivas: false },
+    { placeholderData: (prev) => prev },
+  );
 
   const crearMut = trpc.instituciones.crear.useMutation({
     onSuccess: () => {
@@ -73,6 +80,38 @@ export default function Instituciones() {
   });
 
   const importarMut = trpc.instituciones.importar.useMutation();
+
+  const eliminarMut = trpc.instituciones.eliminar.useMutation({
+    onSuccess: () => {
+      utils.instituciones.listar.invalidate();
+    },
+  });
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (!instituciones) return;
+    if (selected.size === instituciones.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(instituciones.map((i: any) => i.id)));
+    }
+  };
+
+  const eliminarSeleccionadas = async () => {
+    for (const id of selected) {
+      await eliminarMut.mutateAsync({ id });
+    }
+    setSelected(new Set());
+    setConfirmDelete(null);
+  };
 
   const openCreate = () => {
     setForm(emptyForm);
@@ -139,6 +178,35 @@ export default function Instituciones() {
         </div>
       </motion.div>
 
+      {/* Selection bar */}
+      {selected.size > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5"
+        >
+          <div className="flex items-center gap-3">
+            <button
+              onClick={selectAll}
+              className="text-caption font-semibold text-primary-600 hover:underline"
+            >
+              {selected.size === instituciones?.length ? "Deseleccionar todos" : "Seleccionar todos"}
+            </button>
+            <span className="text-caption text-primary-500">
+              {selected.size} seleccionado{selected.size > 1 ? "s" : ""}
+            </span>
+          </div>
+          <button
+            onClick={() => setConfirmDelete({ type: "bulk" })}
+            disabled={eliminarMut.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-caption font-semibold text-white hover:bg-rose-600 disabled:opacity-50 transition-colors"
+          >
+            <Trash2 size={13} />
+            Eliminar {selected.size}
+          </button>
+        </motion.div>
+      )}
+
       {/* Institution list */}
       {isLoading ? (
         <div className="flex min-h-[40vh] items-center justify-center">
@@ -157,19 +225,36 @@ export default function Instituciones() {
             <motion.div
               key={inst.id}
               variants={fadeUp}
-              className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-slate-200"
+              className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
             >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-bold text-slate-800 leading-snug">
-                  {inst.nombre}
-                </h3>
-                <button
-                  onClick={() => openEdit(inst)}
-                  className="shrink-0 rounded-lg p-1.5 text-slate-400 opacity-0 transition-all hover:bg-slate-50 hover:text-primary-500 group-hover:opacity-100"
-                  title="Editar"
-                >
-                  <Pencil size={14} />
-                </button>
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(inst.id)}
+                    onChange={() => toggleSelect(inst.id)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                  />
+                  <h3 className="text-sm font-bold text-slate-800 leading-snug">
+                    {inst.nombre}
+                  </h3>
+                </div>
+                <div className="flex shrink-0 gap-0.5 opacity-0 transition-all group-hover:opacity-100">
+                  <button
+                    onClick={() => openEdit(inst)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500"
+                    title="Editar"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ type: "single", id: inst.id, nombre: inst.nombre })}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 space-y-1.5">
@@ -344,6 +429,29 @@ export default function Instituciones() {
           onSuccess={() => utils.instituciones.listar.invalidate()}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        title={confirmDelete?.type === "bulk" ? `Eliminar ${selected.size} instituciones` : "Eliminar institución"}
+        message={
+          confirmDelete?.type === "bulk"
+            ? `¿Eliminar ${selected.size} institución${selected.size > 1 ? "es" : ""} seleccionada${selected.size > 1 ? "s" : ""}? Esta acción no se puede deshacer.`
+            : `¿Eliminar "${confirmDelete?.type === "single" ? confirmDelete.nombre : ""}"? Esta acción no se puede deshacer.`
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={eliminarMut.isPending}
+        onConfirm={() => {
+          if (confirmDelete?.type === "single") {
+            eliminarMut.mutate({ id: confirmDelete.id }, {
+              onSuccess: () => setConfirmDelete(null),
+            });
+          } else {
+            eliminarSeleccionadas();
+          }
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </motion.div>
   );
 }

@@ -181,7 +181,7 @@ export default function Auditoria() {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.03, duration: 0.3 }}
-                className="group relative flex gap-4 rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-slate-200"
+                className="group relative flex gap-4 rounded-2xl border border-slate-200/60 bg-white p-4 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
               >
                 {/* Icon */}
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${config.bg}`}>
@@ -237,7 +237,7 @@ export default function Auditoria() {
       {data && data.totalPages > 1 && (
         <motion.div
           variants={fadeUp}
-          className="flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white px-4 py-3 shadow-sm"
+          className="flex items-center justify-between rounded-2xl border border-slate-200/60 bg-white px-4 py-3 shadow-card-rest"
         >
           <p className="text-xs text-slate-400">
             Página {data.page} de {data.totalPages} · {data.total} registros

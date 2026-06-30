@@ -1,6 +1,7 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import {
   LayoutDashboard,
   Users,
@@ -54,17 +55,32 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   const role = user?.role ?? "user";
   const visibleItems = navItems.filter((item) => item.roles.includes(role));
 
+  const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery(undefined, {
+    enabled: role === "user",
+  });
+
+  useEffect(() => {
+    if (role !== "user" || perfilLoading) return;
+    if (!perfil?.completado && location !== "/onboarding") {
+      navigate("/onboarding");
+    }
+  }, [role, perfil, perfilLoading, location]);
+
   const handleLogout = async () => {
     await logout({});
     window.location.href = "/";
   };
+
+  if (role === "user" && !perfilLoading && !perfil?.completado && location !== "/onboarding") {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-slate-50">

@@ -26,21 +26,19 @@ export const perfilRouter = router({
     .input(perfilInput)
     .mutation(async ({ ctx, input }) => {
       const existing = await obtenerPerfil(ctx.user.id);
-      if (existing) {
-        throw new TRPCError({ code: "CONFLICT", message: "Perfil ya existe" });
+
+      // Idempotente: si perfil ya existe y está completado, no error — retorna éxito
+      if (existing?.completado) {
+        return { success: true, id: existing.id };
       }
-      const id = await crearPerfil({
-        userId: ctx.user.id,
-        ...input,
-        datosContacto: input.datosContacto ?? null,
-        completado: true,
-      });
 
       const d = await getDb();
+
+      // Validar CURP — no debe existir en otro servidor activo (excepto temporales)
       const [curpExistente] = await d.select().from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.curp, input.curp));
 
-      if (curpExistente) {
+      if (curpExistente && curpExistente.userId !== ctx.user.id) {
         if (curpExistente.estatus === "inactivo") {
           throw new TRPCError({ code: "FORBIDDEN", message: "Este CURP pertenece a un servidor dado de baja. Contacte al administrador." });
         }
@@ -49,6 +47,31 @@ export const perfilRouter = router({
         }
       }
 
+      // Validar RFC — no debe existir en otro servidor activo (excepto temporales)
+      const [rfcExistente] = await d.select().from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.rfc, input.rfc));
+
+      if (rfcExistente && rfcExistente.userId !== ctx.user.id) {
+        if (!rfcExistente.rfc.startsWith("PEND") && !rfcExistente.rfc.startsWith("UREG")) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este RFC ya está registrado en el sistema." });
+        }
+      }
+
+      // Crear o actualizar perfil
+      let id: number;
+      if (existing) {
+        await actualizarPerfil(ctx.user.id, { ...input, datosContacto: input.datosContacto ?? null, completado: true });
+        id = existing.id;
+      } else {
+        id = await crearPerfil({
+          userId: ctx.user.id,
+          ...input,
+          datosContacto: input.datosContacto ?? null,
+          completado: true,
+        });
+      }
+
+      // Crear o actualizar servidor
       const [existingSrv] = await d.select().from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
 
@@ -66,25 +89,32 @@ export const perfilRouter = router({
           actualizadoPor: ctx.user.id,
         }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
       } else {
-        await crearServidor({
-          userId: ctx.user.id,
-          nombreCompleto: ctx.user.nombre,
-          rfc: input.rfc,
-          curp: input.curp,
-          cargo: input.cargo,
-          dependencia: input.dependencia,
-          nivel: input.nivelGobierno,
-          grupoFuncion: input.grupoFuncion,
-          fechaIngreso: input.fechaIngreso,
-          datosContacto: input.datosContacto ?? null,
-          upa: null,
-          cmao: null,
-          ua: null,
-          nivelProgresion: 0,
-          estatus: "activo",
-          creadoPor: ctx.user.id,
-          actualizadoPor: ctx.user.id,
-        });
+        try {
+          await crearServidor({
+            userId: ctx.user.id,
+            nombreCompleto: ctx.user.nombre,
+            rfc: input.rfc,
+            curp: input.curp,
+            cargo: input.cargo,
+            dependencia: input.dependencia,
+            nivel: input.nivelGobierno,
+            grupoFuncion: input.grupoFuncion,
+            fechaIngreso: input.fechaIngreso,
+            datosContacto: input.datosContacto ?? null,
+            upa: null,
+            cmao: null,
+            ua: null,
+            nivelProgresion: 0,
+            estatus: "activo",
+            creadoPor: ctx.user.id,
+            actualizadoPor: ctx.user.id,
+          });
+        } catch (err: any) {
+          // Carrera: dos requests simultáneos pasaron el check de "existente" antes de que
+          // el primero terminara. El unique constraint en curp/rfc ya evita duplicar el dato;
+          // aquí solo se evita que el segundo request reciba un error crudo de MySQL.
+          if (!err.message?.includes("Duplicate")) throw err;
+        }
       }
 
       return { success: true, id };

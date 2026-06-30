@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -95,6 +95,27 @@ export default function Onboarding() {
       navigate("/portal");
     }
   }, [perfilData, navigate]);
+
+  // Si el servidor ya fue dado de alta por el admin (import o registro previo),
+  // precarga cargo/dependencia/fecha de ingreso para no volver a capturarlos.
+  const { data: miServidor } = trpc.servidores.miServidor.useQuery();
+  const prefillApplied = useRef(false);
+
+  useEffect(() => {
+    if (!miServidor || prefillApplied.current) return;
+    const esPlaceholder = (v: string | null | undefined) => !v || v === "Por definir";
+    const tieneFecha = miServidor.fechaIngreso && !isNaN(new Date(miServidor.fechaIngreso).getTime());
+
+    if (esPlaceholder(miServidor.cargo) && esPlaceholder(miServidor.dependencia) && !tieneFecha) return;
+
+    prefillApplied.current = true;
+    setFormData((prev) => ({
+      ...prev,
+      cargo: esPlaceholder(miServidor.cargo) ? prev.cargo : miServidor.cargo,
+      dependencia: esPlaceholder(miServidor.dependencia) ? prev.dependencia : miServidor.dependencia,
+      fechaIngreso: tieneFecha ? new Date(miServidor.fechaIngreso).toISOString().slice(0, 10) : prev.fechaIngreso,
+    }));
+  }, [miServidor, prefillApplied]);
 
   const utils = trpc.useUtils();
   const crearMutation = trpc.perfil.crear.useMutation({
@@ -254,7 +275,7 @@ export default function Onboarding() {
       {/* Card */}
       <motion.div
         variants={fadeUp}
-        className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm sm:p-8"
+        className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-modal sm:p-8"
       >
         {/* Step Title */}
         <div className="mb-6">

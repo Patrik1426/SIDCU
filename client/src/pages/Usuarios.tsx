@@ -18,8 +18,10 @@ import {
   Lock,
   User,
   AlertTriangle,
+  Trash2,
   LogOut,
   Check,
+  KeyRound,
 } from "lucide-react";
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; text: string; color: string }> = {
@@ -58,7 +60,8 @@ export default function Usuarios() {
   const [search, setSearch] = useState("");
   const [roleDropdown, setRoleDropdown] = useState<number | null>(null);
   const [showCrear, setShowCrear] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ type: "toggle"; id: number; nombre: string; isActive: boolean } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: "toggle"; id: number; nombre: string; isActive: boolean } | { type: "delete"; id: number; nombre: string } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: number; nombre: string } | null>(null);
   const utils = trpc.useUtils();
 
   const { data: usuarios, isLoading } = trpc.usuarios.listar.useQuery(
@@ -83,6 +86,19 @@ export default function Usuarios() {
   const toggleActivoMut = trpc.usuarios.toggleActivo.useMutation({
     onSuccess: () => {
       utils.usuarios.listar.invalidate();
+    },
+  });
+
+  const eliminarMut = trpc.usuarios.eliminar.useMutation({
+    onSuccess: () => {
+      utils.usuarios.listar.invalidate();
+    },
+  });
+
+  const resetearPasswordMut = trpc.usuarios.resetearPassword.useMutation({
+    onSuccess: () => {
+      utils.usuarios.listar.invalidate();
+      setResetTarget(null);
     },
   });
 
@@ -133,7 +149,7 @@ export default function Usuarios() {
 
       {/* Summary */}
       <motion.div variants={fadeUp} className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-slate-200/60 bg-white p-4 text-center shadow-sm">
+        <div className="rounded-xl border border-slate-200/60 bg-white p-4 text-center shadow-card-rest">
           <p className="text-2xl font-extrabold text-slate-800">{usuarios?.length ?? 0}</p>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Total</p>
         </div>
@@ -152,7 +168,7 @@ export default function Usuarios() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
-          placeholder="Buscar por nombre o email..."
+          placeholder="Buscar por nombre o estatus..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-primary-300 focus:ring-2 focus:ring-primary-100"
@@ -188,7 +204,7 @@ export default function Usuarios() {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.03, duration: 0.3 }}
-                className={`group relative flex items-center gap-4 rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md ${
+                className={`group relative flex items-center gap-4 rounded-2xl border bg-white p-4 shadow-card-rest transition-all hover:shadow-card-hover ${
                   usr.isActive ? "border-slate-200/60" : "border-rose-200/60 bg-rose-50/30"
                 }`}
               >
@@ -216,11 +232,12 @@ export default function Usuarios() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Mail size={11} />
-                      {usr.email}
-                    </span>
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                    {usr.curp && (
+                      <span className="flex items-center gap-1 font-mono">
+                        {usr.curp}
+                      </span>
+                    )}
                     <span className="hidden items-center gap-1 sm:flex">
                       <Clock size={11} />
                       {formatFecha(usr.createdAt)}
@@ -274,6 +291,15 @@ export default function Usuarios() {
                   )}
                 </div>
 
+                {/* Restablecer contraseña */}
+                <button
+                  onClick={() => setResetTarget({ id: usr.id, nombre: usr.nombre })}
+                  title="Restablecer contraseña"
+                  className="shrink-0 rounded-lg p-2 text-slate-400 transition-all hover:bg-amber-50 hover:text-accent-600"
+                >
+                  <KeyRound size={16} />
+                </button>
+
                 {/* Toggle active */}
                 <button
                   onClick={() => handleToggleActivo(usr.id, usr.nombre, usr.isActive)}
@@ -289,6 +315,17 @@ export default function Usuarios() {
                 >
                   {usr.isActive ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
+
+                {/* Delete — solo si inactivo */}
+                {!usr.isActive && !isSelf && (
+                  <button
+                    onClick={() => setConfirmAction({ type: "delete", id: usr.id, nombre: usr.nombre })}
+                    title="Eliminar usuario"
+                    className="shrink-0 rounded-lg p-2 text-slate-700 hover:bg-rose-50 hover:text-rose-500 transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </motion.div>
             );
           })}
@@ -307,16 +344,43 @@ export default function Usuarios() {
         />
       )}
 
+      {/* Modal restablecer contraseña */}
+      {resetTarget && (
+        <ResetPasswordModal
+          nombre={resetTarget.nombre}
+          onClose={() => setResetTarget(null)}
+          onSubmit={async (password) => {
+            await resetearPasswordMut.mutateAsync({ id: resetTarget.id, password });
+          }}
+          loading={resetearPasswordMut.isPending}
+          error={resetearPasswordMut.error?.message ?? null}
+        />
+      )}
+
       <ConfirmModal
         open={!!confirmAction}
-        title={confirmAction?.isActive ? "Desactivar usuario" : "Activar usuario"}
-        message={`¿${confirmAction?.isActive ? "Desactivar" : "Activar"} a "${confirmAction?.nombre ?? ""}"?`}
-        confirmLabel={confirmAction?.isActive ? "Desactivar" : "Activar"}
-        variant={confirmAction?.isActive ? "danger" : "success"}
-        loading={toggleActivoMut.isPending}
+        title={
+          confirmAction?.type === "delete" ? "Eliminar usuario"
+            : confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar usuario"
+            : "Activar usuario"
+        }
+        message={
+          confirmAction?.type === "delete"
+            ? `¿Eliminar a "${confirmAction.nombre}" permanentemente? Se borrarán todos sus datos, servidor y solicitudes.`
+            : `¿${confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar" : "Activar"} a "${confirmAction?.nombre ?? ""}"?`
+        }
+        confirmLabel={
+          confirmAction?.type === "delete" ? "Eliminar"
+            : confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar"
+            : "Activar"
+        }
+        variant={confirmAction?.type === "delete" || (confirmAction?.type === "toggle" && confirmAction.isActive) ? "danger" : "success"}
+        loading={toggleActivoMut.isPending || eliminarMut.isPending}
         onConfirm={() => {
-          if (confirmAction) {
+          if (confirmAction?.type === "toggle") {
             toggleActivoMut.mutate({ id: confirmAction.id }, { onSuccess: () => setConfirmAction(null) });
+          } else if (confirmAction?.type === "delete") {
+            eliminarMut.mutate({ id: confirmAction.id }, { onSuccess: () => setConfirmAction(null) });
           }
         }}
         onCancel={() => setConfirmAction(null)}
@@ -552,6 +616,138 @@ function CrearUsuarioModal({
                 <>
                   <UserPlus size={14} />
                   Crear
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  nombre,
+  onClose,
+  onSubmit,
+  loading,
+  error,
+}: {
+  nombre: string;
+  onClose: () => void;
+  onSubmit: (password: string) => Promise<void>;
+  loading: boolean;
+  error: string | null;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const noCoincide = confirmar.length > 0 && password !== confirmar;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8 || password !== confirmar) return;
+    await onSubmit(password);
+  };
+
+  const inputClass =
+    "w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white shadow-modal"
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-accent-600">
+              <KeyRound size={15} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Restablecer contraseña</p>
+              <p className="text-xs text-slate-400">{nombre}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 p-5">
+          {error && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-600">
+              {error}
+            </div>
+          )}
+
+          <p className="text-xs text-slate-400">
+            No es posible recuperar la contraseña anterior — solo asignar una nueva. Esto la reemplaza de inmediato; comparte la nueva con la persona por un canal seguro.
+          </p>
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Nueva contraseña
+            </label>
+            <div className="relative">
+              <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 8 caracteres"
+                className={inputClass}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Confirmar contraseña
+            </label>
+            <div className="relative">
+              <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={confirmar}
+                onChange={(e) => setConfirmar(e.target.value)}
+                placeholder="Repite la contraseña"
+                className={`${inputClass} ${noCoincide ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : ""}`}
+              />
+            </div>
+            {noCoincide && (
+              <p className="mt-1 text-xs text-rose-500">Las contraseñas no coinciden</p>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || password.length < 8 || password !== confirmar}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-500 py-2.5 text-sm font-bold text-white shadow-sm shadow-primary-500/25 transition-colors hover:bg-primary-600 disabled:bg-primary-300 disabled:shadow-none"
+            >
+              {loading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  <KeyRound size={14} />
+                  Restablecer
                 </>
               )}
             </button>
