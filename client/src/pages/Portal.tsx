@@ -18,7 +18,6 @@ interface DatosCedula {
   ext: string;
   grupoFuncion: string;
   nivelProgresion: number;
-  cmo: string;
   cmao: string;
   ua: string;
   preparacionAcademica: string;
@@ -182,8 +181,7 @@ async function generarCedula(datos: DatosCedula) {
     styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
     head: [[{ content: "DATOS DE ADSCRIPCIÓN DEL TRABAJADOR", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
     body: [
-      [{ content: "CLAVE DE LA CMO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.cmo || "—"],
-      [{ content: "CLAVE DE LA CMAO:", styles: { fontStyle: "bold" } }, datos.cmao || "—"],
+      [{ content: "CLAVE DE LA CMAO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.cmao || "—"],
       [{ content: "UNIDAD ADMINISTRATIVA:", styles: { fontStyle: "bold" } }, datos.ua || "—"],
       [{ content: "PREPARACIÓN ACADÉMICA:", styles: { fontStyle: "bold" } }, datos.preparacionAcademica || "—"],
     ],
@@ -469,7 +467,6 @@ export default function Portal() {
               ext: servidor.ext ?? "",
               grupoFuncion: servidor.grupoFuncion,
               nivelProgresion: servidor.nivelProgresion ?? 0,
-              cmo: servidor.cmo ?? "",
               cmao: servidor.cmao ?? "",
               ua: servidor.ua ?? "",
               preparacionAcademica: servidor.preparacionAcademica ?? "",

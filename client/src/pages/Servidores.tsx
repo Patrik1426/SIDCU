@@ -175,7 +175,6 @@ export default function Servidores() {
         datosContacto: srv.datosContacto ?? "",
         grupoFuncion: srv.grupoFuncion,
         upa: srv.upa ?? "",
-        cmo: srv.cmo ?? "",
         cmao: srv.cmao ?? "",
         email: srv.email ?? "",
         telOficina: srv.telOficina ?? "",

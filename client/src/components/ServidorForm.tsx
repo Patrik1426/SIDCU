@@ -13,7 +13,6 @@ export interface ServidorFormData {
   datosContacto: string;
   grupoFuncion: "ADMO" | "TECN" | "SERV" | "COMUN" | "PROFE" | "EDU";
   upa: string;
-  cmo: string;
   cmao: string;
   ua: string;
   nivelProgresion: string;
@@ -40,7 +39,6 @@ const emptyForm: ServidorFormData = {
   datosContacto: "",
   grupoFuncion: "ADMO",
   upa: "",
-  cmo: "",
   cmao: "",
   ua: "",
   nivelProgresion: "0",

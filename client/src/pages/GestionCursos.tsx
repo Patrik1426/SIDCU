@@ -30,7 +30,6 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
 
-const CATEGORIAS = ["obligatorio", "optativo", "especializado"];
 const MODALIDADES = ["presencial", "virtual", "mixto"];
 const NIVELES_GOBIERNO = ["federal", "estatal", "municipal", "otro"];
 const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC", "OTRO"];
@@ -43,9 +42,7 @@ type ModalState =
 interface CursoFormData {
   nombre: string;
   descripcion: string;
-  nivelRequerido: number;
   nivelGobierno: string;
-  categoria: string;
   duracionHoras: number;
   modalidad: string;
   tipoPrograma: string;
@@ -64,9 +61,7 @@ interface CursoFormData {
 const emptyForm: CursoFormData = {
   nombre: "",
   descripcion: "",
-  nivelRequerido: 1,
   nivelGobierno: "federal",
-  categoria: "obligatorio",
   duracionHoras: 1,
   modalidad: "presencial",
   tipoPrograma: "OTRO",
@@ -205,9 +200,7 @@ export default function GestionCursos() {
     setForm({
       nombre: curso.nombre,
       descripcion: curso.descripcion ?? "",
-      nivelRequerido: curso.nivelRequerido,
       nivelGobierno: curso.nivelGobierno ?? "",
-      categoria: curso.categoria,
       duracionHoras: curso.duracionHoras,
       modalidad: curso.modalidad,
       tipoPrograma: curso.tipoPrograma ?? "OTRO",
@@ -231,9 +224,7 @@ export default function GestionCursos() {
     const payload = {
       nombre: form.nombre,
       descripcion: form.descripcion || undefined,
-      nivelRequerido: Number(form.nivelRequerido),
       nivelGobierno: "federal" as const,
-      categoria: form.categoria,
       duracionHoras: Number(form.duracionHoras),
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
       tipoPrograma: form.tipoPrograma as "PAC" | "CERT" | "SDPC" | "OTRO",
@@ -416,7 +407,7 @@ export default function GestionCursos() {
                     {curso.duracionHoras}h
                   </span>
                   <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-micro font-semibold text-slate-500">
-                    {curso.categoria}
+                    {curso.tipoPrograma}
                   </span>
                 </div>
 
@@ -475,7 +466,7 @@ export default function GestionCursos() {
                     </td>
                     <td className="px-3 py-2.5 font-medium text-slate-800 max-w-62.5 truncate">{curso.nombre}</td>
                     <td className="px-3 py-2.5">
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{curso.categoria}</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{curso.tipoPrograma}</span>
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${modalidadColor(curso.modalidad)}`}>{modalidadLabel(curso.modalidad)}</span>
@@ -593,20 +584,6 @@ export default function GestionCursos() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Categoria *</label>
-                  <select
-                    value={form.categoria}
-                    onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                    className={inputClass}
-                  >
-                    {CATEGORIAS.map((c) => (
-                      <option key={c} value={c}>
-                        {c.charAt(0).toUpperCase() + c.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Modalidad *</label>
                   <select
