@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { ServidorForm, type ServidorFormData } from "@/components/ServidorForm";
 import ConfirmModal from "@/components/ConfirmModal";
+import { capitalizarNombre } from "@shared/utils";
 import {
   Plus,
   Search,
@@ -382,10 +383,12 @@ export default function Servidores() {
                     {srv.curp}
                   </td>
                   <td className="hidden px-4 py-3 lg:table-cell">
-                    {srv.cargo}
+                    {capitalizarNombre(srv.cargo)}
                   </td>
-                  <td className="hidden px-4 py-3 lg:table-cell">
-                    {srv.dependencia}
+                  <td className="hidden px-4 py-3 lg:table-cell max-w-55">
+                    <span className="block truncate" title={capitalizarNombre(srv.dependencia)}>
+                      {capitalizarNombre(srv.dependencia)}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <span
