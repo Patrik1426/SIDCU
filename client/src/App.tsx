@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from "react";
 import { Route, Switch, Redirect, useLocation } from "wouter";
 import { useAuthState } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -19,6 +20,28 @@ import MisSolicitudes from "@/pages/MisSolicitudes";
 import GestionCursos from "@/pages/GestionCursos";
 import Instituciones from "@/pages/Instituciones";
 import GestionSolicitudes from "@/pages/GestionSolicitudes";
+
+class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <p className="text-sm font-semibold text-rose-500">Error al cargar la sección</p>
+          <p className="mt-1 text-xs text-slate-400">{(this.state.error as Error).message}</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -61,7 +84,9 @@ function ProtectedRoute({
   return (
     <Route path={routePath}>
       <DashboardLayout>
-        <Component />
+        <PageErrorBoundary>
+          <Component />
+        </PageErrorBoundary>
       </DashboardLayout>
     </Route>
   );
