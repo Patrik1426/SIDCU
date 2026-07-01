@@ -536,15 +536,13 @@ export default function GestionCursos() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Tipo de Programa</label>
-                  <select
+                  <ComboInput
                     value={form.tipoPrograma}
-                    onChange={(e) => setForm({ ...form, tipoPrograma: e.target.value })}
+                    onChange={(v) => setForm({ ...form, tipoPrograma: v })}
+                    options={TIPOS_PROGRAMA}
                     className={inputClass}
-                  >
-                    {TIPOS_PROGRAMA.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    placeholder="PAC, CERT, SDPC..."
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Bloque</label>
