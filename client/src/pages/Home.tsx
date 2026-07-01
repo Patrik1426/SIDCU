@@ -264,7 +264,8 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
   const [curp, setCurp] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState("");
+  const idleMsg = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("idle") === "1";
+  const [error, setError] = useState(idleMsg ? "Tu sesión se cerró por inactividad." : "");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {

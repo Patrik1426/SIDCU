@@ -1,7 +1,8 @@
-import { type ReactNode, useState, useEffect } from "react";
+import { type ReactNode, useState, useEffect, useCallback } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import {
   LayoutDashboard,
   Users,
@@ -58,6 +59,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [showIdleWarn, setShowIdleWarn] = useState(false);
 
   const role = user?.role ?? "user";
   const visibleItems = navItems.filter((item) => item.roles.includes(role));
@@ -73,10 +75,22 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [role, perfil, perfilLoading, location]);
 
-  const handleLogout = async () => {
-    await logout({});
+  const handleLogout = useCallback(async () => {
+    await logout();
     window.location.href = "/";
-  };
+  }, [logout]);
+
+  const handleIdleLogout = useCallback(async () => {
+    setShowIdleWarn(false);
+    await logout();
+    window.location.href = "/?idle=1";
+  }, [logout]);
+
+  useIdleTimeout(
+    handleIdleLogout,
+    () => setShowIdleWarn(true),
+    () => setShowIdleWarn(false),
+  );
 
   if (role === "user" && !perfilLoading && !perfil?.completado && location !== "/onboarding") {
     return null;
@@ -84,6 +98,32 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* Idle warning modal */}
+      {showIdleWarn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-1 text-2xl">⏱️</div>
+            <h2 className="mb-1 text-lg font-bold text-slate-800">¿Sigues ahí?</h2>
+            <p className="mb-5 text-sm text-slate-500">
+              Tu sesión se cerrará en 1 minuto por inactividad.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowIdleWarn(false)}
+                className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              >
+                Continuar sesión
+              </button>
+              <button
+                onClick={handleIdleLogout}
+                className="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
