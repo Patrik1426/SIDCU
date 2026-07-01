@@ -31,7 +31,7 @@ const fadeUp = {
 };
 
 const MODALIDADES = ["presencial", "virtual", "mixto"];
-const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC", "OTRO"];
+const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC"];
 
 type ModalState =
   | { type: "closed" }
