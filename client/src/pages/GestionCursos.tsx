@@ -334,7 +334,7 @@ export default function GestionCursos() {
         </motion.div>
       ) : (
         viewMode === "grid" ? (
-          <motion.div variants={stagger} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cursos.map((curso: any) => (
               <motion.div
                 key={curso.id}
