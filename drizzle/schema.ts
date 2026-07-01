@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, bigint, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, varchar, boolean, bigint, index } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -24,7 +24,7 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   cargo: varchar("cargo", { length: 255 }).notNull(),
   dependencia: varchar("dependencia", { length: 255 }).notNull(),
   nivel: mysqlEnum("nivel", ["federal", "estatal", "municipal", "otro"]).notNull(),
-  fechaIngreso: timestamp("fecha_ingreso").notNull(),
+  fechaIngreso: datetime("fecha_ingreso").notNull(),
   datosContacto: varchar("datos_contacto", { length: 255 }),
   grupoFuncion: mysqlEnum("grupo_funcion", ["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]).notNull(),
   upa: varchar("upa", { length: 100 }),
@@ -111,7 +111,7 @@ export const perfilesServidor = mysqlTable("perfiles_servidor", {
   nivelGobierno: mysqlEnum("nivel_gobierno", ["federal", "estatal", "municipal", "otro"]).notNull(),
   grupoFuncion: mysqlEnum("grupo_funcion", ["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]).notNull(),
   nivelProgresion: int("nivel_progresion").default(0).notNull(),
-  fechaIngreso: timestamp("fecha_ingreso").notNull(),
+  fechaIngreso: datetime("fecha_ingreso").notNull(),
   datosContacto: varchar("datos_contacto", { length: 255 }),
   completado: boolean("completado").default(false).notNull(),
   solicitudBaja: boolean("solicitud_baja").default(false).notNull(),
