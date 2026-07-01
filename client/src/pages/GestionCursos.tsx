@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -779,7 +779,6 @@ export default function GestionCursos() {
         </div>
       )}
       {/* Import CSV Modal */}
-      <AnimatePresence>
       {showImport && (
         <ImportarCSVModal
           titulo="Cursos"
@@ -816,7 +815,6 @@ export default function GestionCursos() {
           onSuccess={() => utils.cursos.listar.invalidate()}
         />
       )}
-      </AnimatePresence>
 
       {/* Confirm Delete Modal */}
       <ConfirmModal

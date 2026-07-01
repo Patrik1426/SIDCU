@@ -40,6 +40,7 @@ export default function Servidores() {
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [allDbSelected, setAllDbSelected] = useState(false);
 
   const { data: upas } = trpc.servidores.listarUpas.useQuery();
   const { data: uas } = trpc.servidores.listarUas.useQuery();
@@ -78,6 +79,7 @@ export default function Servidores() {
     onSuccess: () => {
       utils.servidores.listar.invalidate();
       setSelected(new Set());
+      setAllDbSelected(false);
       setConfirmDelete(null);
     },
   });
@@ -153,23 +155,28 @@ export default function Servidores() {
 
   const selectAll = async () => {
     if (!data?.items?.length) return;
-    if (selected.size > 0 && selected.size >= (data.total ?? data.items.length)) {
+    // Si "todos en BD" o ya todos seleccionados → deseleccionar todo
+    if (allDbSelected || (selected.size > 0 && selected.size >= (data.total ?? data.items.length))) {
       setSelected(new Set());
+      setAllDbSelected(false);
       return;
     }
+    // Página completa y hay más en BD → cargar todos los IDs
     if (selected.size === data.items.length && data.total && data.total > data.items.length) {
-      // ya tiene página, cargar todos los IDs
       setSeleccionandoTodos(true);
       const ids = await utils.servidores.listarTodosIds.fetch({ search: search || undefined });
       setSelected(new Set(ids));
+      setAllDbSelected(true);
       setSeleccionandoTodos(false);
       return;
     }
+    // Toggle página actual
     if (selected.size === data.items.length) {
       setSelected(new Set());
     } else {
       setSelected(new Set(data.items.map((s: any) => s.id)));
     }
+    setAllDbSelected(false);
   };
 
   const eliminarSeleccionados = async () => {
@@ -319,13 +326,13 @@ export default function Servidores() {
             <button onClick={selectAll} disabled={seleccionandoTodos} className="text-xs font-semibold text-primary-600 hover:underline disabled:opacity-50">
               {seleccionandoTodos
                 ? "Cargando..."
-                : selected.size >= (data?.total ?? 0)
+                : allDbSelected || selected.size >= (data?.total ?? 0)
                 ? "Deseleccionar todos"
                 : selected.size === data?.items?.length && data?.total && data.total > data.items.length
                 ? `Seleccionar los ${data.total} en BD`
                 : "Deseleccionar todos"}
             </button>
-            <span className="text-xs text-primary-500">{selected.size} seleccionado{selected.size > 1 ? "s" : ""}{data?.total && selected.size >= data.total ? " (todos)" : ""}</span>
+            <span className="text-xs text-primary-500">{selected.size} seleccionado{selected.size > 1 ? "s" : ""}{(allDbSelected || (data?.total && selected.size >= data.total)) ? " (todos)" : ""}</span>
           </div>
           <button
             onClick={() => setConfirmDelete({ type: "bulk" })}
