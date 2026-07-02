@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
@@ -88,6 +88,10 @@ export default function GestionCursos() {
     placeholderData: (prev) => prev,
     staleTime: 10_000,
   });
+  // Ref to keep last known data — prevents grid from unmounting during refetch
+  const cursosRef = useRef<typeof cursos>(undefined);
+  if (cursos !== undefined) cursosRef.current = cursos;
+  const displayCursos = cursosRef.current;
   const { data: instituciones } = trpc.instituciones.listar.useQuery({ soloActivas: true });
   const { data: finalidades } = trpc.cursos.listarFinalidades.useQuery();
 
@@ -134,11 +138,11 @@ export default function GestionCursos() {
   };
 
   const selectAll = () => {
-    if (!cursos) return;
-    if (selected.size === cursos.length) {
+    if (!displayCursos) return;
+    if (selected.size === displayCursos.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(cursos.map((c: any) => c.id)));
+      setSelected(new Set(displayCursos.map((c: any) => c.id)));
     }
   };
 
@@ -299,7 +303,7 @@ export default function GestionCursos() {
               onClick={selectAll}
               className="text-caption font-semibold text-primary-600 hover:underline"
             >
-              {selected.size === cursos?.length ? "Deseleccionar todos" : "Seleccionar todos"}
+              {selected.size === displayCursos?.length ? "Deseleccionar todos" : "Seleccionar todos"}
             </button>
             <span className="text-caption text-primary-500">
               {selected.size} seleccionado{selected.size > 1 ? "s" : ""}
@@ -317,7 +321,7 @@ export default function GestionCursos() {
       )}
 
       {/* Course list */}
-      {(!cursos && isFetching) ? (
+      {(!displayCursos && isFetching) ? (
         viewMode === "grid" ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -325,7 +329,7 @@ export default function GestionCursos() {
         ) : (
           <SkeletonTable rows={8} cols={8} />
         )
-      ) : !cursos?.length ? (
+      ) : !displayCursos?.length ? (
         <motion.div variants={fadeUp} className="flex flex-col items-center py-16 text-center">
           <div className="rounded-2xl bg-slate-50 p-5">
             <BookOpen size={28} className="text-slate-300" />
@@ -334,8 +338,8 @@ export default function GestionCursos() {
         </motion.div>
       ) : (
         viewMode === "grid" ? (
-          <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {cursos.map((curso: any) => (
+          <motion.div variants={stagger} initial={false} animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {displayCursos.map((curso: any) => (
               <motion.div
                 key={curso.id}
                 variants={fadeUp}
@@ -403,7 +407,7 @@ export default function GestionCursos() {
                   <th className="w-10 px-3 py-3">
                     <input
                       type="checkbox"
-                      checked={cursos.length > 0 && selected.size === cursos.length}
+                      checked={(displayCursos?.length ?? 0) > 0 && selected.size === (displayCursos?.length ?? 0)}
                       onChange={selectAll}
                       className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
                     />
@@ -417,7 +421,7 @@ export default function GestionCursos() {
                 </tr>
               </thead>
               <tbody>
-                {cursos.map((curso: any) => (
+                {displayCursos.map((curso: any) => (
                   <tr key={curso.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                     <td className="px-3 py-2.5">
                       <input

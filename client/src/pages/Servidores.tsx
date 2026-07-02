@@ -353,7 +353,7 @@ export default function Servidores() {
                 <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
-                    checked={(data?.items?.length ?? 0) > 0 && selected.size === (data?.items?.length ?? 0)}
+                    checked={(data?.items?.length ?? 0) > 0 && (data?.items?.every((s: any) => selected.has(s.id)) ?? false)}
                     onChange={selectAll}
                     className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
                   />
