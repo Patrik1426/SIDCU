@@ -581,7 +581,7 @@ export async function listarCursos(filtros?: {
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
-  return d.select().from(schema.cursos).where(where).orderBy(desc(schema.cursos.createdAt));
+  return d.select().from(schema.cursos).where(where).orderBy(desc(schema.cursos.createdAt)).limit(500);
 }
 
 export async function obtenerCursoPorId(id: number) {
@@ -652,7 +652,7 @@ export async function buscarOCrearInstitucionPorNombre(nombre: string) {
 export async function listarInstituciones(soloActivas = true) {
   const d = await getDb();
   const where = soloActivas ? eq(schema.instituciones.activo, true) : undefined;
-  return d.select().from(schema.instituciones).where(where).orderBy(desc(schema.instituciones.createdAt));
+  return d.select().from(schema.instituciones).where(where).orderBy(desc(schema.instituciones.createdAt)).limit(500);
 }
 
 export async function crearInstitucion(data: schema.InsertInstitucion) {
