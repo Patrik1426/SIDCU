@@ -9,7 +9,6 @@ import {
   obtenerSolicitud,
   actualizarSolicitud,
   tieneSolicitudActiva,
-  decrementarCupo,
   incrementarNivelProgresion,
   getUserByCurp,
   getDb,
@@ -95,12 +94,12 @@ export const solicitudesRouter = router({
         cursoInstitucionId: input.cursoInstitucionId,
         notasAdmin: input.notasAdmin ?? null,
       });
-      await decrementarCupo(input.cursoInstitucionId);
       return { success: true };
     }),
 
-  // Aprueba todas las solicitudes pendientes de golpe — para cada una elige
-  // automaticamente la primera institucion asignada al curso con cupo disponible.
+  // Aprueba todas las solicitudes pendientes de golpe — para cada una asigna
+  // automaticamente la primera institucion activa asignada al curso.
+  // Los cursos son 100% virtuales, no hay limite de cupo que validar.
   aprobarTodas: adminProcedure.mutation(async () => {
     const pendientes = await listarTodasSolicitudes({ estado: "pendiente" });
     const aprobadas: number[] = [];
@@ -109,18 +108,15 @@ export const solicitudesRouter = router({
     for (const item of pendientes) {
       const sol = item.solicitudes_curso;
       const instituciones = await listarCursosInstituciones(sol.cursoId);
-      const disponible = instituciones.find(
-        (row: any) => (row.cursos_instituciones ?? row).cupoDisponible > 0,
-      );
 
-      if (!disponible) {
-        errores.push({ id: sol.id, error: `Sin cupo disponible para "${item.cursos.nombre}"` });
+      if (instituciones.length === 0) {
+        errores.push({ id: sol.id, error: `Sin institución asignada para "${item.cursos.nombre}"` });
         continue;
       }
 
-      const ci = (disponible as any).cursos_instituciones ?? disponible;
+      const primera = instituciones[0] as any;
+      const ci = primera.cursos_instituciones ?? primera;
       await actualizarSolicitud(sol.id, { estado: "aprobada", cursoInstitucionId: ci.id });
-      await decrementarCupo(ci.id);
       aprobadas.push(sol.id);
     }
 

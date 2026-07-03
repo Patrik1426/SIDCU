@@ -703,13 +703,6 @@ export async function eliminarCursoInstitucion(id: number) {
   await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.id, id));
 }
 
-export async function decrementarCupo(cursoInstitucionId: number) {
-  const d = await getDb();
-  await d.execute(
-    sql`UPDATE cursos_instituciones SET cupo_disponible = cupo_disponible - 1 WHERE id = ${cursoInstitucionId} AND cupo_disponible > 0`,
-  );
-}
-
 // ─── Solicitudes Curso ───────────────────────────────────────────────
 
 export async function crearSolicitud(data: schema.InsertSolicitudCurso) {
