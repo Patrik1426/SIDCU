@@ -148,55 +148,57 @@ export async function cambiarRolUsuario(id: number, role: string) {
 
 export async function toggleActivoUsuario(id: number) {
   const d = await getDb();
-  const [user] = await d
-    .select()
-    .from(schema.users)
-    .where(eq(schema.users.id, id));
+  await d.transaction(async (tx) => {
+    const [user] = await tx
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, id));
 
-  if (!user) {
-    throw new Error("Usuario no encontrado");
-  }
-
-  const activar = !user.isActive;
-
-  await d
-    .update(schema.users)
-    .set({ isActive: activar, updatedAt: new Date() })
-    .where(eq(schema.users.id, id));
-
-  if (!activar) {
-    await d.update(schema.servidoresPublicos)
-      .set({ estatus: "inactivo" })
-      .where(eq(schema.servidoresPublicos.userId, id));
-  }
-
-  if (activar) {
-    const [srvExistente] = await d.select({ id: schema.servidoresPublicos.id })
-      .from(schema.servidoresPublicos)
-      .where(eq(schema.servidoresPublicos.userId, id));
-
-    if (!srvExistente) {
-      await d.insert(schema.servidoresPublicos).values({
-        userId: id,
-        nombreCompleto: user.nombre,
-        rfc: `UREG${String(id).padStart(9, "0")}`,
-        curp: `UREG${String(id).padStart(14, "0")}`,
-        cargo: "Por definir",
-        dependencia: "Por definir",
-        nivel: "federal",
-        grupoFuncion: "ADMO",
-        fechaIngreso: new Date(),
-        datosContacto: user.email,
-        estatus: "activo",
-        creadoPor: id,
-        actualizadoPor: id,
-      });
-    } else {
-      await d.update(schema.servidoresPublicos)
-        .set({ estatus: "activo" })
-        .where(eq(schema.servidoresPublicos.id, srvExistente.id));
+    if (!user) {
+      throw new Error("Usuario no encontrado");
     }
-  }
+
+    const activar = !user.isActive;
+
+    await tx
+      .update(schema.users)
+      .set({ isActive: activar, updatedAt: new Date() })
+      .where(eq(schema.users.id, id));
+
+    if (!activar) {
+      await tx.update(schema.servidoresPublicos)
+        .set({ estatus: "inactivo" })
+        .where(eq(schema.servidoresPublicos.userId, id));
+    }
+
+    if (activar) {
+      const [srvExistente] = await tx.select({ id: schema.servidoresPublicos.id })
+        .from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, id));
+
+      if (!srvExistente) {
+        await tx.insert(schema.servidoresPublicos).values({
+          userId: id,
+          nombreCompleto: user.nombre,
+          rfc: `UREG${String(id).padStart(9, "0")}`,
+          curp: `UREG${String(id).padStart(14, "0")}`,
+          cargo: "Por definir",
+          dependencia: "Por definir",
+          nivel: "federal",
+          grupoFuncion: "ADMO",
+          fechaIngreso: new Date(),
+          datosContacto: user.email,
+          estatus: "activo",
+          creadoPor: id,
+          actualizadoPor: id,
+        });
+      } else {
+        await tx.update(schema.servidoresPublicos)
+          .set({ estatus: "activo" })
+          .where(eq(schema.servidoresPublicos.id, srvExistente.id));
+      }
+    }
+  });
 }
 
 export async function servidorIdDeUsuario(userId: number): Promise<number | null> {
