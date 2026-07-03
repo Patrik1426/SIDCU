@@ -44,7 +44,8 @@ type ModalState =
   | { type: "closed" }
   | { type: "aprobar"; solicitudId: number; cursoId: number; userName: string; cursoNombre: string }
   | { type: "rechazar"; solicitudId: number; userName: string; cursoNombre: string }
-  | { type: "completar"; solicitudId: number; userName: string; cursoNombre: string };
+  | { type: "completar"; solicitudId: number; userName: string; cursoNombre: string }
+  | { type: "aprobarTodas" };
 
 function formatFecha(date: string | Date) {
   const d = new Date(date);
@@ -104,6 +105,19 @@ export default function GestionSolicitudes() {
 
   const importarCalificacionesMut = trpc.solicitudes.importarCalificaciones.useMutation();
 
+  const aprobarTodasMut = trpc.solicitudes.aprobarTodas.useMutation({
+    onSuccess: (res) => {
+      utils.solicitudes.listar.invalidate();
+      setModal({ type: "closed" });
+      if (res.errores.length > 0) {
+        alert(
+          `${res.aprobadas} solicitud(es) aprobada(s). ${res.errores.length} sin cupo disponible:\n` +
+            res.errores.map((e) => `- ${e.error}`).join("\n"),
+        );
+      }
+    },
+  });
+
   const handleAprobar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (modal.type !== "aprobar" || !cursoInstitucionId) return;
@@ -129,6 +143,10 @@ export default function GestionSolicitudes() {
     await completarMut.mutateAsync({ id: modal.solicitudId, calificacion: Number(calificacion) });
   };
 
+  const pendientesCount = (solicitudes ?? []).filter(
+    (item: any) => (item.solicitudes_curso ?? item).estado === "pendiente",
+  ).length;
+
   const inputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
 
@@ -145,6 +163,15 @@ export default function GestionSolicitudes() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {pendientesCount > 0 && (
+            <button
+              onClick={() => setModal({ type: "aprobarTodas" })}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              <CheckCircle2 size={16} />
+              Aprobar todas ({pendientesCount})
+            </button>
+          )}
           <button
             onClick={() => setShowImportCalificaciones(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
@@ -553,6 +580,65 @@ export default function GestionSolicitudes() {
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Aprobar Todas confirmation modal */}
+      {modal.type === "aprobarTodas" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-bold text-slate-800">Aprobar todas las solicitudes</h2>
+              <button
+                onClick={() => setModal({ type: "closed" })}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {aprobarTodasMut.error && (
+                <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-600">
+                  {aprobarTodasMut.error.message}
+                </div>
+              )}
+
+              <div className="rounded-xl bg-emerald-50 p-4 text-center">
+                <CheckCircle2 size={24} className="mx-auto text-emerald-500" />
+                <p className="mt-2 text-sm font-semibold text-emerald-800">
+                  {pendientesCount} solicitud{pendientesCount > 1 ? "es" : ""} pendiente{pendientesCount > 1 ? "s" : ""}
+                </p>
+              </div>
+
+              <p className="text-xs text-slate-400 text-center">
+                Se asignará automáticamente la primera institución con cupo disponible para cada curso.
+                Las solicitudes sin cupo quedarán pendientes.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setModal({ type: "closed" })}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => aprobarTodasMut.mutate()}
+                  disabled={aprobarTodasMut.isPending}
+                  className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {aprobarTodasMut.isPending ? "Aprobando..." : "Aprobar todas"}
+                </button>
+              </div>
+            </div>
           </motion.div>
         </div>
       )}
