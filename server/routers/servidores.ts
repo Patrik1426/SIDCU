@@ -7,6 +7,11 @@ import {
   obtenerServidorPorId,
   actualizarServidor,
   eliminarServidor,
+  eliminarServidoresBulk,
+  listarTodosIdsServidores,
+  obtenerServidorPorUserId,
+  listarUpasDistintas,
+  listarUasDistintas,
   getServidoresStats,
   crearAuditoria,
   listarAuditoria,
@@ -173,11 +178,7 @@ export const servidoresRouter = router({
   eliminarBulk: requireRole("admin")
     .input(z.object({ ids: z.array(z.number()).min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { getDb } = await import("../db");
-      const schema = await import("../../drizzle/schema");
-      const { inArray } = await import("drizzle-orm");
-      const d = await getDb();
-      await d.delete(schema.servidoresPublicos).where(inArray(schema.servidoresPublicos.id, input.ids));
+      await eliminarServidoresBulk(input.ids);
       await crearAuditoria({
         servidorId: null,
         usuarioId: ctx.user.id,
@@ -192,51 +193,19 @@ export const servidoresRouter = router({
   listarTodosIds: requireRole("admin")
     .input(z.object({ search: z.string().optional() }))
     .query(async ({ input }) => {
-      const { getDb } = await import("../db");
-      const schema = await import("../../drizzle/schema");
-      const { like, or } = await import("drizzle-orm");
-      const d = await getDb();
-      let query = d.select({ id: schema.servidoresPublicos.id }).from(schema.servidoresPublicos);
-      if (input.search) {
-        const s = `%${input.search}%`;
-        (query as any).where(or(
-          like(schema.servidoresPublicos.nombreCompleto, s),
-          like(schema.servidoresPublicos.rfc, s),
-          like(schema.servidoresPublicos.curp, s),
-        ));
-      }
-      const rows = await query;
-      return rows.map((r) => r.id);
+      return listarTodosIdsServidores(input.search);
     }),
 
   miServidor: protectedProcedure.query(async ({ ctx }) => {
-    const { getDb } = await import("../db");
-    const schema = await import("../../drizzle/schema");
-    const { eq } = await import("drizzle-orm");
-    const d = await getDb();
-    const [srv] = await d.select().from(schema.servidoresPublicos)
-      .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
-    return srv ?? null;
+    return obtenerServidorPorUserId(ctx.user.id);
   }),
 
   listarUpas: protectedProcedure.query(async () => {
-    const { getDb } = await import("../db");
-    const schema = await import("../../drizzle/schema");
-    const d = await getDb();
-    const rows = await d.selectDistinct({ upa: schema.servidoresPublicos.upa }).from(schema.servidoresPublicos);
-    const upas = rows.map((r) => r.upa).filter(Boolean) as string[];
-    if (!upas.includes("CULTURA")) upas.push("CULTURA");
-    if (!upas.includes("RE")) upas.push("RE");
-    if (!upas.includes("INDAUTOR")) upas.push("INDAUTOR");
-    return [...new Set(upas)].sort();
+    return listarUpasDistintas();
   }),
 
   listarUas: protectedProcedure.query(async () => {
-    const { getDb } = await import("../db");
-    const schema = await import("../../drizzle/schema");
-    const d = await getDb();
-    const rows = await d.selectDistinct({ ua: schema.servidoresPublicos.ua }).from(schema.servidoresPublicos);
-    return (rows.map((r) => r.ua).filter(Boolean) as string[]).sort();
+    return listarUasDistintas();
   }),
 
   exportarTodos: requireRole("admin", "consultor")

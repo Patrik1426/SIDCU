@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, like, or, sql, desc } from "drizzle-orm";
+import { eq, and, like, or, sql, desc, inArray } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -199,6 +199,33 @@ export async function toggleActivoUsuario(id: number) {
   }
 }
 
+export async function servidorIdDeUsuario(userId: number): Promise<number | null> {
+  const d = await getDb();
+  const [srv] = await d.select({ id: schema.servidoresPublicos.id })
+    .from(schema.servidoresPublicos)
+    .where(eq(schema.servidoresPublicos.userId, userId));
+  return srv?.id ?? null;
+}
+
+export async function resetearPasswordUsuario(id: number, passwordHash: string) {
+  const d = await getDb();
+  await d.update(schema.users)
+    .set({ passwordHash })
+    .where(eq(schema.users.id, id));
+}
+
+// Elimina el usuario y todo lo que depende exclusivamente de él (perfil, solicitudes).
+// El servidor público asociado no se borra — se desvincula y marca inactivo.
+export async function eliminarUsuarioCompleto(id: number) {
+  const d = await getDb();
+  await d.update(schema.servidoresPublicos)
+    .set({ estatus: "inactivo", userId: null })
+    .where(eq(schema.servidoresPublicos.userId, id));
+  await d.delete(schema.perfilesServidor).where(eq(schema.perfilesServidor.userId, id));
+  await d.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.userId, id));
+  await d.delete(schema.users).where(eq(schema.users.id, id));
+}
+
 // ─── Servidores Públicos ─────────────────────────────────────────────
 
 export async function crearServidor(data: InsertServidorPublico) {
@@ -298,6 +325,47 @@ export async function eliminarServidor(id: number) {
   if (srv?.userId) {
     await d.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, srv.userId));
   }
+}
+
+export async function eliminarServidoresBulk(ids: number[]) {
+  const d = await getDb();
+  await d.delete(schema.servidoresPublicos).where(inArray(schema.servidoresPublicos.id, ids));
+}
+
+export async function listarTodosIdsServidores(search?: string) {
+  const d = await getDb();
+  const where = search
+    ? or(
+        like(schema.servidoresPublicos.nombreCompleto, `%${search}%`),
+        like(schema.servidoresPublicos.rfc, `%${search}%`),
+        like(schema.servidoresPublicos.curp, `%${search}%`),
+      )
+    : undefined;
+  const rows = await d.select({ id: schema.servidoresPublicos.id }).from(schema.servidoresPublicos).where(where);
+  return rows.map((r) => r.id);
+}
+
+export async function obtenerServidorPorUserId(userId: number) {
+  const d = await getDb();
+  const [srv] = await d.select().from(schema.servidoresPublicos)
+    .where(eq(schema.servidoresPublicos.userId, userId));
+  return srv ?? null;
+}
+
+export async function listarUpasDistintas() {
+  const d = await getDb();
+  const rows = await d.selectDistinct({ upa: schema.servidoresPublicos.upa }).from(schema.servidoresPublicos);
+  const upas = rows.map((r) => r.upa).filter(Boolean) as string[];
+  if (!upas.includes("CULTURA")) upas.push("CULTURA");
+  if (!upas.includes("RE")) upas.push("RE");
+  if (!upas.includes("INDAUTOR")) upas.push("INDAUTOR");
+  return [...new Set(upas)].sort();
+}
+
+export async function listarUasDistintas() {
+  const d = await getDb();
+  const rows = await d.selectDistinct({ ua: schema.servidoresPublicos.ua }).from(schema.servidoresPublicos);
+  return (rows.map((r) => r.ua).filter(Boolean) as string[]).sort();
 }
 
 export async function getServidoresStats() {
@@ -538,6 +606,37 @@ export async function eliminarCurso(id: number) {
   const d = await getDb();
   await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.cursoId, id));
   await d.delete(schema.cursos).where(eq(schema.cursos.id, id));
+}
+
+// Catálogo de finalidades ya usadas, para evitar nombres distintos para lo mismo
+export async function listarFinalidadesCursos() {
+  const d = await getDb();
+  const rows = await d.selectDistinct({ finalidad: schema.cursos.finalidad }).from(schema.cursos);
+  return (rows.map((r) => r.finalidad).filter(Boolean) as string[]).sort();
+}
+
+export async function buscarCursoPorNombre(nombre: string) {
+  const d = await getDb();
+  const [curso] = await d.select({ id: schema.cursos.id }).from(schema.cursos)
+    .where(eq(schema.cursos.nombre, nombre));
+  return curso ?? null;
+}
+
+// Busca institución por nombre (case/espacio-insensible); si no existe, la crea.
+export async function buscarOCrearInstitucionPorNombre(nombre: string) {
+  const d = await getDb();
+  const nombreNormalizado = nombre.trim().toLowerCase();
+  const [existente] = await d.select({ id: schema.instituciones.id })
+    .from(schema.instituciones)
+    .where(sql`LOWER(TRIM(${schema.instituciones.nombre})) = ${nombreNormalizado}`);
+
+  if (existente) return existente.id;
+
+  const [resultado] = await d.insert(schema.instituciones).values({
+    nombre: nombre.trim(),
+    activo: true,
+  });
+  return (resultado as any).insertId as number;
 }
 
 // ─── Instituciones ───────────────────────────────────────────────────

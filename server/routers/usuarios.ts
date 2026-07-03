@@ -11,18 +11,10 @@ import {
   createUser,
   crearServidor,
   crearAuditoria,
-  getDb,
+  servidorIdDeUsuario,
+  resetearPasswordUsuario,
+  eliminarUsuarioCompleto,
 } from "../db";
-import { eq } from "drizzle-orm";
-import * as schema from "../../drizzle/schema";
-
-async function servidorIdDeUsuario(userId: number): Promise<number | null> {
-  const d = await getDb();
-  const [srv] = await d.select({ id: schema.servidoresPublicos.id })
-    .from(schema.servidoresPublicos)
-    .where(eq(schema.servidoresPublicos.userId, userId));
-  return srv?.id ?? null;
-}
 
 export const usuariosRouter = router({
   crear: adminProcedure
@@ -111,12 +103,8 @@ export const usuariosRouter = router({
   resetearPassword: adminProcedure
     .input(z.object({ id: z.number(), password: z.string().min(8, "Mínimo 8 caracteres") }))
     .mutation(async ({ input, ctx }) => {
-      const d = await getDb();
-
       const hash = await hashPassword(input.password);
-      await d.update(schema.users)
-        .set({ passwordHash: hash })
-        .where(eq(schema.users.id, input.id));
+      await resetearPasswordUsuario(input.id, hash);
 
       await crearAuditoria({
         servidorId: await servidorIdDeUsuario(input.id),
@@ -136,18 +124,7 @@ export const usuariosRouter = router({
       if (input.id === ctx.user.id) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminar tu propia cuenta" });
       }
-      const { getDb } = await import("../db");
-      const schema = await import("../../drizzle/schema");
-      const { eq } = await import("drizzle-orm");
-      const d = await getDb();
-
-      await d.update(schema.servidoresPublicos)
-        .set({ estatus: "inactivo", userId: null })
-        .where(eq(schema.servidoresPublicos.userId, input.id));
-
-      await d.delete(schema.perfilesServidor).where(eq(schema.perfilesServidor.userId, input.id));
-      await d.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.userId, input.id));
-      await d.delete(schema.users).where(eq(schema.users.id, input.id));
+      await eliminarUsuarioCompleto(input.id);
       return { success: true };
     }),
 });

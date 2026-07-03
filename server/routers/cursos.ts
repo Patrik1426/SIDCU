@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import * as schema from "../../drizzle/schema";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import {
@@ -14,6 +12,9 @@ import {
   asignarCursoInstitucion,
   eliminarCursoInstitucion,
   obtenerPerfil,
+  listarFinalidadesCursos,
+  buscarCursoPorNombre,
+  buscarOCrearInstitucionPorNombre,
 } from "../db";
 
 const cursoInput = z.object({
@@ -71,10 +72,7 @@ export const cursosRouter = router({
 
   // Catálogos de valores ya usados, para evitar nombres/finalidades distintas para lo mismo
   listarFinalidades: adminProcedure.query(async () => {
-    const { getDb } = await import("../db");
-    const d = await getDb();
-    const rows = await d.selectDistinct({ finalidad: schema.cursos.finalidad }).from(schema.cursos);
-    return (rows.map((r) => r.finalidad).filter(Boolean) as string[]).sort();
+    return listarFinalidadesCursos();
   }),
 
   crear: adminProcedure
@@ -266,11 +264,7 @@ export const cursosRouter = router({
         nombresVistos.add(nombreKey);
 
         try {
-          const { sql } = await import("drizzle-orm");
-          const d = await (await import("../db")).getDb();
-
-          const [existente] = await d.select({ id: schema.cursos.id }).from(schema.cursos)
-            .where(eq(schema.cursos.nombre, parsed.data.nombre));
+          const existente = await buscarCursoPorNombre(parsed.data.nombre);
           if (existente) {
             errores.push({ fila: i + 1, error: `Curso "${parsed.data.nombre}" ya existe en el sistema` });
             continue;
@@ -279,20 +273,7 @@ export const cursosRouter = router({
           // Auto-crear institución responsable si no existe (comparación case-insensitive) y enlazarla al curso
           let institucionId: number | null = null;
           if (parsed.data.institucionResponsable && parsed.data.institucionResponsable !== "Por definir") {
-            const nombreNormalizado = parsed.data.institucionResponsable.trim().toLowerCase();
-            const [institucionExistente] = await d.select({ id: schema.instituciones.id })
-              .from(schema.instituciones)
-              .where(sql`LOWER(TRIM(${schema.instituciones.nombre})) = ${nombreNormalizado}`);
-
-            if (institucionExistente) {
-              institucionId = institucionExistente.id;
-            } else {
-              const [resultado] = await d.insert(schema.instituciones).values({
-                nombre: parsed.data.institucionResponsable.trim(),
-                activo: true,
-              });
-              institucionId = (resultado as any).insertId;
-            }
+            institucionId = await buscarOCrearInstitucionPorNombre(parsed.data.institucionResponsable);
           }
 
           const id = await crearCurso({
