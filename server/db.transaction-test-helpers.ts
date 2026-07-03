@@ -1,4 +1,4 @@
-export function makeTxRecorder(selectResults: any[][] = [], trackChainedCalls = false) {
+export function makeTxRecorder(selectResults: any[][] = []) {
   const calls: string[] = [];
   let selectIndex = 0;
 
@@ -10,12 +10,7 @@ export function makeTxRecorder(selectResults: any[][] = [], trackChainedCalls = 
           const result = isSelect ? (selectResults[selectIndex++] ?? []) : undefined;
           return (resolve: (value: any) => void) => resolve(result);
         }
-        return () => {
-          if (trackChainedCalls) {
-            calls.push(prop);
-          }
-          return makeChain(methodName);
-        };
+        return () => makeChain(methodName);
       },
     });
   }
