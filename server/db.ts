@@ -218,12 +218,14 @@ export async function resetearPasswordUsuario(id: number, passwordHash: string) 
 // El servidor público asociado no se borra — se desvincula y marca inactivo.
 export async function eliminarUsuarioCompleto(id: number) {
   const d = await getDb();
-  await d.update(schema.servidoresPublicos)
-    .set({ estatus: "inactivo", userId: null })
-    .where(eq(schema.servidoresPublicos.userId, id));
-  await d.delete(schema.perfilesServidor).where(eq(schema.perfilesServidor.userId, id));
-  await d.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.userId, id));
-  await d.delete(schema.users).where(eq(schema.users.id, id));
+  await d.transaction(async (tx) => {
+    await tx.update(schema.servidoresPublicos)
+      .set({ estatus: "inactivo", userId: null })
+      .where(eq(schema.servidoresPublicos.userId, id));
+    await tx.delete(schema.perfilesServidor).where(eq(schema.perfilesServidor.userId, id));
+    await tx.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.userId, id));
+    await tx.delete(schema.users).where(eq(schema.users.id, id));
+  });
 }
 
 // ─── Servidores Públicos ─────────────────────────────────────────────
