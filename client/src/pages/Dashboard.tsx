@@ -10,8 +10,6 @@ import {
   Building2,
   TrendingUp,
   Activity,
-  Clock,
-  ArrowUpRight,
 } from "lucide-react";
 import {
   PieChart,
@@ -43,12 +41,6 @@ const GRUPO_LABELS: Record<string, string> = {
 };
 
 const CHART_COLORS = ["#6366f1", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#f59e0b"];
-
-const ACCION_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  crear: { bg: "bg-emerald-50", text: "text-emerald-600", label: "Creado" },
-  actualizar: { bg: "bg-amber-50", text: "text-amber-600", label: "Actualizado" },
-  eliminar: { bg: "bg-rose-50", text: "text-rose-600", label: "Eliminado" },
-};
 
 const stagger = {
   hidden: {},
@@ -114,20 +106,6 @@ function ChartCard({
   );
 }
 
-function formatTimeAgo(date: string | Date) {
-  const d = new Date(date);
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (mins < 1) return "Ahora";
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days < 7) return `${days}d`;
-  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
-}
-
 export default function Dashboard() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -149,11 +127,6 @@ export default function Dashboard() {
   }, [isUserRole, perfil, perfilLoading, navigate]);
 
   const { data: stats, isLoading } = trpc.servidores.estadisticas.useQuery(
-    undefined,
-    { enabled: !!canViewStats, retry: false }
-  );
-
-  const { data: actividad } = trpc.servidores.actividadReciente.useQuery(
     undefined,
     { enabled: !!canViewStats, retry: false }
   );
@@ -324,56 +297,6 @@ export default function Dashboard() {
         </ChartCard>
         </div>
       </div>
-
-      {/* Activity */}
-      <motion.div
-        variants={fadeUp}
-        className="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-section-title text-slate-700">
-            Actividad reciente
-          </h3>
-          <a href="/auditoria" className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors">
-            Ver todo
-            <ArrowUpRight size={12} />
-          </a>
-        </div>
-
-        {actividad?.items && actividad.items.length > 0 ? (
-          <div className="space-y-1">
-            {actividad.items.map((item: any) => {
-              const style = ACCION_STYLES[item.accion] ?? { bg: "bg-slate-50", text: "text-slate-500", label: item.accion };
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-slate-50"
-                >
-                  <span className={`inline-flex rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
-                    {style.label}
-                  </span>
-                  <p className="flex-1 truncate text-sm text-slate-600">
-                    {item.descripcion ?? style.label}
-                  </p>
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-slate-400 shrink-0">
-                    <Clock size={11} />
-                    {formatTimeAgo(item.createdAt)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center py-10 text-center">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <Clock size={22} className="text-slate-300" />
-            </div>
-            <p className="mt-3 text-sm text-slate-400">
-              Sin actividad registrada
-            </p>
-          </div>
-        )}
-      </motion.div>
     </motion.div>
   );
 }
