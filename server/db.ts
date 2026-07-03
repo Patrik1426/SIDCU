@@ -610,8 +610,10 @@ export async function toggleActivoCurso(id: number) {
 
 export async function eliminarCurso(id: number) {
   const d = await getDb();
-  await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.cursoId, id));
-  await d.delete(schema.cursos).where(eq(schema.cursos.id, id));
+  await d.transaction(async (tx) => {
+    await tx.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.cursoId, id));
+    await tx.delete(schema.cursos).where(eq(schema.cursos.id, id));
+  });
 }
 
 // Catálogo de finalidades ya usadas, para evitar nombres distintos para lo mismo
