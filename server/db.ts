@@ -324,11 +324,13 @@ export async function actualizarServidor(
 
 export async function eliminarServidor(id: number) {
   const d = await getDb();
-  const [srv] = await d.select({ userId: schema.servidoresPublicos.userId }).from(schema.servidoresPublicos).where(eq(schema.servidoresPublicos.id, id));
-  await d.delete(schema.servidoresPublicos).where(eq(schema.servidoresPublicos.id, id));
-  if (srv?.userId) {
-    await d.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, srv.userId));
-  }
+  await d.transaction(async (tx) => {
+    const [srv] = await tx.select({ userId: schema.servidoresPublicos.userId }).from(schema.servidoresPublicos).where(eq(schema.servidoresPublicos.id, id));
+    await tx.delete(schema.servidoresPublicos).where(eq(schema.servidoresPublicos.id, id));
+    if (srv?.userId) {
+      await tx.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, srv.userId));
+    }
+  });
 }
 
 export async function eliminarServidoresBulk(ids: number[]) {
