@@ -1,4 +1,5 @@
-import bcrypt from "bcryptjs";
+import Piscina from "piscina";
+import { fileURLToPath } from "node:url";
 import jwt from "jsonwebtoken";
 import type { User } from "../drizzle/schema";
 
@@ -7,15 +8,19 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
 }
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-prod";
 
+const bcryptPool = new Piscina({
+  filename: fileURLToPath(new URL("./workers/bcrypt-worker.mjs", import.meta.url)),
+});
+
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
+  return bcryptPool.run({ action: "hash", password, saltRounds: 12 });
 }
 
 export async function verifyPassword(
   password: string,
   hash: string,
 ): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+  return bcryptPool.run({ action: "compare", password, hash });
 }
 
 export function generateToken(
