@@ -675,8 +675,10 @@ export async function toggleActivoInstitucion(id: number) {
 
 export async function eliminarInstitucion(id: number) {
   const d = await getDb();
-  await d.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.institucionId, id));
-  await d.delete(schema.instituciones).where(eq(schema.instituciones.id, id));
+  await d.transaction(async (tx) => {
+    await tx.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.institucionId, id));
+    await tx.delete(schema.instituciones).where(eq(schema.instituciones.id, id));
+  });
 }
 
 // ─── Cursos ↔ Instituciones ──────────────────────────────────────────
