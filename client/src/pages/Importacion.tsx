@@ -28,6 +28,7 @@ const CAMPOS_OPCIONALES = [
   "dependencia",
   "grupoFuncion",
   "datosContacto",
+  "email",
   "estatus",
   "observaciones",
 ];
@@ -40,6 +41,7 @@ const CAMPO_LABELS: Record<string, string> = {
   dependencia: "Dependencia",
   fechaIngreso: "Fecha Ingreso (ANTIGÜEDAD)",
   datosContacto: "Datos Contacto",
+  email: "Correo Electrónico",
   grupoFuncion: "Grupo Función",
   upa: "UPA (UP)",
   cmao: "CMAO",
@@ -166,7 +168,8 @@ export default function Importacion() {
       "PELJ900101ABC",
       "Secretaría de Cultura",
       "ADMO",
-      "contacto@email.com",
+      "5512345678",
+      "contacto@cultura.gob.mx",
       "activo",
       "Sin observaciones",
     ].join(",");
