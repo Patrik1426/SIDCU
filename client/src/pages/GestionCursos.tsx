@@ -53,7 +53,7 @@ const emptyForm: CursoFormData = {
   nombre: "",
   descripcion: "",
   nivelGobierno: "federal",
-  duracionHoras: 1,
+  duracionHoras: 20,
   modalidad: "presencial",
   tipoPrograma: "OTRO",
   bloque: "",

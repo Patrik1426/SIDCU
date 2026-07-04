@@ -233,7 +233,7 @@ export const cursosRouter = router({
           nivelRequerido: soloDigitos(row.nivelRequerido) ?? 0,
           nivelGobierno,
           categoria: texto(row.categoria, "obligatorio"),
-          duracionHoras: soloDigitos(row.duracionHoras) ?? 1,
+          duracionHoras: soloDigitos(row.duracionHoras) ?? 20,
           modalidad,
           tipoPrograma: ["PAC", "CERT", "SDPC"].includes(tipoProgramaRaw) ? tipoProgramaRaw : "OTRO",
           bloque: soloDigitos(row.bloque),
