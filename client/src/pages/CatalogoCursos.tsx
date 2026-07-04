@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { Search, Clock, Users, X, BookOpen, CheckCircle2, AlertCircle } from "lucide-react";
+import { Search, Clock, X, BookOpen, CheckCircle2, AlertCircle } from "lucide-react";
 
 const stagger = {
   hidden: {},
@@ -309,12 +309,6 @@ export default function CatalogoCursos() {
                             <p className="font-medium text-slate-900">{inst.instituciones?.nombre ?? inst.nombre ?? `Institución ${idx + 1}`}</p>
                             {(inst.cursos_instituciones?.horario ?? inst.horario) && (
                               <p className="mt-1 text-slate-500">Horario: {inst.cursos_instituciones?.horario ?? inst.horario}</p>
-                            )}
-                            {(inst.cursos_instituciones?.cupoDisponible ?? inst.cupoDisponible) != null && (
-                              <p className="mt-1 text-slate-500">
-                                <Users className="inline h-3.5 w-3.5 mr-1" />
-                                {inst.cursos_instituciones?.cupoDisponible ?? inst.cupoDisponible} cupos disponibles
-                              </p>
                             )}
                           </div>
                         ))}
