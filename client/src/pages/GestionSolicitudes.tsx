@@ -78,6 +78,8 @@ export default function GestionSolicitudes() {
     { placeholderData: (prev) => prev },
   );
 
+  const { data: conteoAcreditacion } = trpc.solicitudes.conteoAcreditacion.useQuery();
+
   // Fetch course details for approval modal to get available institutions
   const cursoIdForModal = modal.type === "aprobar" ? modal.cursoId : 0;
   const { data: cursoDetalle } = trpc.cursos.obtener.useQuery(
@@ -192,6 +194,30 @@ export default function GestionSolicitudes() {
           </div>
         </div>
       </motion.div>
+
+      {/* Acreditacion summary */}
+      {conteoAcreditacion && conteoAcreditacion.total > 0 && (
+        <motion.div variants={fadeUp} className="grid grid-cols-2 gap-4 sm:max-w-md">
+          <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
+            <div className="rounded-xl bg-emerald-50 p-2">
+              <CheckCircle2 size={18} className="text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-lg font-extrabold text-slate-900">{conteoAcreditacion.acreditados}</p>
+              <p className="text-xs text-slate-400">Acreditados</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
+            <div className="rounded-xl bg-rose-50 p-2">
+              <XCircle size={18} className="text-rose-500" />
+            </div>
+            <div>
+              <p className="text-lg font-extrabold text-slate-900">{conteoAcreditacion.noAcreditados}</p>
+              <p className="text-xs text-slate-400">No acreditados</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Filters */}
       <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-2">

@@ -11,6 +11,7 @@ import {
   tieneSolicitudActiva,
   incrementarNivelProgresion,
   getUserByCurp,
+  contarAcreditacion,
   getDb,
 } from "../db";
 import { eq, and, or } from "drizzle-orm";
@@ -241,5 +242,11 @@ export const solicitudesRouter = router({
       requeridos: CURSOS_REQUERIDOS_ACREDITACION,
       acreditado: aprobados >= CURSOS_REQUERIDOS_ACREDITACION,
     };
+  }),
+
+  // Conteo de servidores acreditados vs no acreditados -- para el resumen
+  // que ve el admin en Solicitudes.
+  conteoAcreditacion: adminProcedure.query(async () => {
+    return contarAcreditacion();
   }),
 });

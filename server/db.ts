@@ -4,6 +4,7 @@ import { eq, and, like, or, sql, desc, inArray } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
+import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
 
 let db: ReturnType<typeof drizzle> | null = null;
 let pool: mysql.Pool | null = null;
@@ -778,4 +779,48 @@ export async function tieneSolicitudActiva(userId: number, cursoId: number) {
       ),
     );
   return !!existing;
+}
+
+// Conteo de servidores acreditados vs no acreditados, para el resumen que
+// ve el admin en Solicitudes. Acreditado = >= CURSOS_REQUERIDOS_ACREDITACION
+// cursos completados con calificacion >= CALIFICACION_APROBATORIA.
+export async function contarAcreditacion() {
+  const d = await getDb();
+
+  const usuarios = await d
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.role, "user"), eq(schema.users.isActive, true)));
+
+  if (usuarios.length === 0) {
+    return { acreditados: 0, noAcreditados: 0, total: 0 };
+  }
+
+  const ids = usuarios.map((u) => u.id);
+  const completadas = await d
+    .select({
+      userId: schema.solicitudesCurso.userId,
+      calificacion: schema.solicitudesCurso.calificacion,
+    })
+    .from(schema.solicitudesCurso)
+    .where(
+      and(
+        eq(schema.solicitudesCurso.estado, "completada"),
+        inArray(schema.solicitudesCurso.userId, ids),
+      ),
+    );
+
+  const aprobadasPorUsuario = new Map<number, number>();
+  for (const c of completadas) {
+    if ((c.calificacion ?? 0) >= CALIFICACION_APROBATORIA) {
+      aprobadasPorUsuario.set(c.userId, (aprobadasPorUsuario.get(c.userId) ?? 0) + 1);
+    }
+  }
+
+  let acreditados = 0;
+  for (const id of ids) {
+    if ((aprobadasPorUsuario.get(id) ?? 0) >= CURSOS_REQUERIDOS_ACREDITACION) acreditados++;
+  }
+
+  return { acreditados, noAcreditados: ids.length - acreditados, total: ids.length };
 }
