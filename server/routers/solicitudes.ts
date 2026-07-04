@@ -2,10 +2,9 @@ import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import {
-  crearSolicitud,
+  crearSolicitudConAsignacion,
   listarSolicitudesUsuario,
   listarTodasSolicitudes,
-  listarCursosInstituciones,
   obtenerSolicitud,
   actualizarSolicitud,
   tieneSolicitudActiva,
@@ -61,12 +60,14 @@ export const solicitudesRouter = router({
         });
       }
 
-      const id = await crearSolicitud({
-        userId: ctx.user.id,
-        cursoId: input.cursoId,
-        estado: "pendiente",
-      });
-      return { success: true, id };
+      const resultado = await crearSolicitudConAsignacion(ctx.user.id, input.cursoId);
+      if (!resultado.ok) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No hay ninguna institución configurada en el sistema",
+        });
+      }
+      return { success: true, id: resultado.id };
     }),
 
   misSolicitudes: protectedProcedure.query(async ({ ctx }) => {
@@ -77,67 +78,6 @@ export const solicitudesRouter = router({
     .input(z.object({ estado: z.string().optional() }).optional())
     .query(async ({ input }) => {
       return listarTodasSolicitudes({ estado: input?.estado });
-    }),
-
-  aprobar: adminProcedure
-    .input(z.object({
-      id: z.number(),
-      cursoInstitucionId: z.number(),
-      notasAdmin: z.string().optional(),
-    }))
-    .mutation(async ({ input }) => {
-      const sol = await obtenerSolicitud(input.id);
-      if (!sol) throw new TRPCError({ code: "NOT_FOUND", message: "Solicitud no encontrada" });
-      if (sol.estado !== "pendiente") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Solicitud no está pendiente" });
-      }
-      await actualizarSolicitud(input.id, {
-        estado: "aprobada",
-        cursoInstitucionId: input.cursoInstitucionId,
-        notasAdmin: input.notasAdmin ?? null,
-      });
-      return { success: true };
-    }),
-
-  // Aprueba todas las solicitudes pendientes de golpe — para cada una asigna
-  // automaticamente la primera institucion activa asignada al curso.
-  // Los cursos son 100% virtuales, no hay limite de cupo que validar.
-  aprobarTodas: adminProcedure.mutation(async () => {
-    const pendientes = await listarTodasSolicitudes({ estado: "pendiente" });
-    const aprobadas: number[] = [];
-    const errores: { id: number; error: string }[] = [];
-
-    for (const item of pendientes) {
-      const sol = item.solicitudes_curso;
-      const instituciones = await listarCursosInstituciones(sol.cursoId);
-
-      if (instituciones.length === 0) {
-        errores.push({ id: sol.id, error: `Sin institución asignada para "${item.cursos.nombre}"` });
-        continue;
-      }
-
-      const primera = instituciones[0] as any;
-      const ci = primera.cursos_instituciones ?? primera;
-      await actualizarSolicitud(sol.id, { estado: "aprobada", cursoInstitucionId: ci.id });
-      aprobadas.push(sol.id);
-    }
-
-    return { aprobadas: aprobadas.length, errores };
-  }),
-
-  rechazar: adminProcedure
-    .input(z.object({
-      id: z.number(),
-      notasAdmin: z.string().min(1, "Motivo de rechazo requerido"),
-    }))
-    .mutation(async ({ input }) => {
-      const sol = await obtenerSolicitud(input.id);
-      if (!sol) throw new TRPCError({ code: "NOT_FOUND", message: "Solicitud no encontrada" });
-      await actualizarSolicitud(input.id, {
-        estado: "rechazada",
-        notasAdmin: input.notasAdmin,
-      });
-      return { success: true };
     }),
 
   completar: adminProcedure
