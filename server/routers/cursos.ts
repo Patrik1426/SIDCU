@@ -213,11 +213,9 @@ export const cursosRouter = router({
 
         const tipoProgramaRaw = quitarAcentos((row.tipoPrograma || "").toString().trim().toUpperCase());
 
-        const modalidad = enumPorContenido(row.modalidad, [
-          { match: ["virtual", "en linea", "online"], valor: "virtual" },
-          { match: ["mixt", "hibrid"], valor: "mixto" },
-          { match: ["presencial"], valor: "presencial" },
-        ], "presencial");
+        // Todos los cursos son virtuales (decision de negocio) -- se ignora
+        // cualquier valor de modalidad que traiga el CSV.
+        const modalidad = "virtual";
 
         const nivelGobierno = enumPorContenido(row.nivelGobierno, [
           { match: ["estatal"], valor: "estatal" },

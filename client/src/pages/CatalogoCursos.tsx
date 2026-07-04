@@ -31,12 +31,9 @@ const MODALIDAD_COLORS: Record<string, string> = {
   mixto: "bg-purple-50 text-purple-700",
 };
 
-const MODALIDAD_OPTIONS = ["Todos", "Presencial", "Virtual", "Mixto"] as const;
-
 export default function CatalogoCursos() {
   const [, navigate] = useLocation();
   const [categoria, setCategoria] = useState("");
-  const [modalidad, setModalidad] = useState("");
   const [bloqueSeleccionado, setBloqueSeleccionado] = useState<number | null>(null);
   const [selectedCursoId, setSelectedCursoId] = useState<number | null>(null);
   const [solicitudMsg, setSolicitudMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -50,7 +47,6 @@ export default function CatalogoCursos() {
 
   const { data: cursos, isLoading: cursosLoading } = trpc.cursos.listar.useQuery({
     categoria: categoria || undefined,
-    modalidad: modalidad || undefined,
   }, { placeholderData: (prev) => prev });
 
   const { data: cursoDetalle, isLoading: detalleLoading } = trpc.cursos.obtener.useQuery(
@@ -152,36 +148,15 @@ export default function CatalogoCursos() {
       </motion.div>
 
       {/* Filters */}
-      <motion.div variants={fadeUp} className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por categoría..."
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
-          />
-        </div>
-        <div className="flex gap-2">
-          {MODALIDAD_OPTIONS.map((opt) => {
-            const val = opt === "Todos" ? "" : opt.toLowerCase();
-            const isActive = modalidad === val;
-            return (
-              <button
-                key={opt}
-                onClick={() => setModalidad(val)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
+      <motion.div variants={fadeUp} className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Buscar por categoría..."
+          value={categoria}
+          onChange={(e) => setCategoria(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+        />
       </motion.div>
 
       {/* Block selector */}

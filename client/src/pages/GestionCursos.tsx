@@ -45,7 +45,11 @@ function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaF
   return `Hasta ${formatFecha(fechaFin!)}`;
 }
 
-const MODALIDADES = ["presencial", "virtual", "mixto"];
+// Todos los cursos son virtuales (decision de negocio). El selector de
+// modalidad se oculta y se predetermina a "virtual"; si algun dia se
+// necesita presencial/mixto de nuevo, se reactiva el <select> abajo
+// (misma logica que se aplico a horario/cupo).
+const MODALIDAD_DEFAULT = "virtual";
 const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC"];
 
 type ModalState =
@@ -69,7 +73,7 @@ const emptyForm: CursoFormData = {
   descripcion: "",
   nivelGobierno: "federal",
   duracionHoras: 20,
-  modalidad: "presencial",
+  modalidad: MODALIDAD_DEFAULT,
   tipoPrograma: "OTRO",
   bloque: "",
   finalidad: "",
@@ -569,32 +573,16 @@ export default function GestionCursos() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Modalidad *</label>
-                  <select
-                    value={form.modalidad}
-                    onChange={(e) => setForm({ ...form, modalidad: e.target.value })}
-                    className={inputClass}
-                  >
-                    {MODALIDADES.map((m) => (
-                      <option key={m} value={m}>
-                        {modalidadLabel(m)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Duración (horas) *</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={form.duracionHoras}
-                    onChange={(e) => setForm({ ...form, duracionHoras: Number(e.target.value) })}
-                    className={inputClass}
-                  />
-                </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Duración (horas) *</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={form.duracionHoras}
+                  onChange={(e) => setForm({ ...form, duracionHoras: Number(e.target.value) })}
+                  className={inputClass}
+                />
               </div>
 
               <div>
@@ -735,7 +723,6 @@ export default function GestionCursos() {
             "bloque",
             "institucionResponsable",
             "finalidad",
-            "modalidad",
             "fechaInicio",
             "fechaTermino",
             "horarioTexto",
@@ -750,7 +737,6 @@ export default function GestionCursos() {
             { key: "nombre", label: "Nombre del Curso", ejemplo: "Ética en el servicio público" },
             { key: "institucionResponsable", label: "Institución Responsable", ejemplo: "INAP" },
             { key: "finalidad", label: "Finalidad", ejemplo: "Fortalecer valores institucionales" },
-            { key: "modalidad", label: "Modalidad", ejemplo: "presencial" },
             { key: "fechaInicio", label: "Fecha de Inicio", ejemplo: "2026-03-01" },
             { key: "fechaTermino", label: "Fecha de Término", ejemplo: "2026-03-15" },
             { key: "horarioTexto", label: "Horario", ejemplo: "09:00 - 13:00" },
