@@ -70,6 +70,8 @@ export default function GestionSolicitudes() {
   const completarMut = trpc.solicitudes.completar.useMutation({
     onSuccess: () => {
       utils.solicitudes.listar.invalidate();
+      utils.solicitudes.conteoAcreditacion.invalidate();
+      utils.solicitudes.conteoPorBloque.invalidate();
       setModal({ type: "closed" });
       setCalificacion("");
     },
@@ -409,7 +411,11 @@ export default function GestionSolicitudes() {
           ]}
           onImportar={(registros) => importarCalificacionesMut.mutateAsync({ registros })}
           onClose={() => setShowImportCalificaciones(false)}
-          onSuccess={() => utils.solicitudes.listar.invalidate()}
+          onSuccess={() => {
+            utils.solicitudes.listar.invalidate();
+            utils.solicitudes.conteoAcreditacion.invalidate();
+            utils.solicitudes.conteoPorBloque.invalidate();
+          }}
         />
       )}
     </motion.div>
