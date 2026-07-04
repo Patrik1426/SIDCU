@@ -824,3 +824,34 @@ export async function contarAcreditacion() {
 
   return { acreditados, noAcreditados: ids.length - acreditados, total: ids.length };
 }
+
+// Conteo de aprobados/reprobados por bloque -- solo considera solicitudes en
+// estado "completada" (calificacion >= CALIFICACION_APROBATORIA = pasan).
+export async function contarAprobacionPorBloque() {
+  const d = await getDb();
+  const rows = await d
+    .select({
+      bloque: schema.cursos.bloque,
+      calificacion: schema.solicitudesCurso.calificacion,
+    })
+    .from(schema.solicitudesCurso)
+    .innerJoin(schema.cursos, eq(schema.solicitudesCurso.cursoId, schema.cursos.id))
+    .where(eq(schema.solicitudesCurso.estado, "completada"));
+
+  const porBloque = new Map<number | null, { pasan: number; noPasan: number }>();
+  for (const row of rows) {
+    const key = row.bloque ?? null;
+    if (!porBloque.has(key)) porBloque.set(key, { pasan: 0, noPasan: 0 });
+    const entry = porBloque.get(key)!;
+    if ((row.calificacion ?? 0) >= CALIFICACION_APROBATORIA) entry.pasan++;
+    else entry.noPasan++;
+  }
+
+  return [...porBloque.entries()]
+    .sort(([a], [b]) => {
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return a - b;
+    })
+    .map(([bloque, counts]) => ({ bloque, ...counts }));
+}

@@ -12,6 +12,7 @@ import {
   incrementarNivelProgresion,
   getUserByCurp,
   contarAcreditacion,
+  contarAprobacionPorBloque,
   getDb,
 } from "../db";
 import { eq, and, or } from "drizzle-orm";
@@ -248,5 +249,10 @@ export const solicitudesRouter = router({
   // que ve el admin en Solicitudes.
   conteoAcreditacion: adminProcedure.query(async () => {
     return contarAcreditacion();
+  }),
+
+  // Aprobados/reprobados por bloque -- solo cuenta solicitudes completadas.
+  conteoPorBloque: adminProcedure.query(async () => {
+    return contarAprobacionPorBloque();
   }),
 });

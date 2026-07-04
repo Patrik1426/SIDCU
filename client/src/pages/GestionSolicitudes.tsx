@@ -79,6 +79,7 @@ export default function GestionSolicitudes() {
   );
 
   const { data: conteoAcreditacion } = trpc.solicitudes.conteoAcreditacion.useQuery();
+  const { data: conteoPorBloque } = trpc.solicitudes.conteoPorBloque.useQuery();
 
   // Fetch course details for approval modal to get available institutions
   const cursoIdForModal = modal.type === "aprobar" ? modal.cursoId : 0;
@@ -215,6 +216,35 @@ export default function GestionSolicitudes() {
               <p className="text-lg font-extrabold text-slate-900">{conteoAcreditacion.noAcreditados}</p>
               <p className="text-xs text-slate-400">No acreditados</p>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Aprobacion por bloque */}
+      {conteoPorBloque && conteoPorBloque.length > 0 && (
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
+          <p className="mb-3 text-micro font-semibold uppercase tracking-widest text-slate-400">
+            Aprobacion por bloque
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {conteoPorBloque.map(({ bloque, pasan, noPasan }) => (
+              <div
+                key={bloque ?? "sin-bloque"}
+                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm"
+              >
+                <span className="font-medium text-slate-700">
+                  {bloque != null ? `Bloque ${bloque}` : "Sin bloque"}
+                </span>
+                <span className="flex items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                    <CheckCircle2 size={12} /> {pasan}
+                  </span>
+                  <span className="flex items-center gap-1 text-rose-500 font-semibold">
+                    <XCircle size={12} /> {noPasan}
+                  </span>
+                </span>
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
