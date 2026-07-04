@@ -244,6 +244,26 @@ export default function Portal() {
   const { data: progresoAcreditacion } = trpc.solicitudes.progresoAcreditacion.useQuery();
   const utils = trpc.useUtils();
 
+  // Para la cedula: periodo de realizacion viene de la institucion asignada
+  // al CURSO (fechaInicio/fechaFin), no de la solicitud -- esa solo se liga a
+  // una institucion especifica hasta que el admin la aprueba, y la cedula debe
+  // mostrar el periodo aunque la solicitud siga pendiente.
+  const solicitudesOrdenadas = [...(solicitudes ?? [])].sort((a: any, b: any) => {
+    const solA = a.solicitudes_curso ?? a;
+    const solB = b.solicitudes_curso ?? b;
+    return new Date(solA.createdAt).getTime() - new Date(solB.createdAt).getTime();
+  });
+  const cursoIdCedula1 = solicitudesOrdenadas[0]?.cursos?.id;
+  const cursoIdCedula2 = solicitudesOrdenadas[1]?.cursos?.id;
+  const { data: cursoDetalleCedula1 } = trpc.cursos.obtener.useQuery(
+    { id: cursoIdCedula1! },
+    { enabled: !!cursoIdCedula1 }
+  );
+  const { data: cursoDetalleCedula2 } = trpc.cursos.obtener.useQuery(
+    { id: cursoIdCedula2! },
+    { enabled: !!cursoIdCedula2 }
+  );
+
   const solicitarBajaMut = trpc.perfil.solicitarBaja.useMutation({
     onSuccess: () => {
       setBajaMsg({ type: "success", text: "Solicitud de baja enviada. El administrador la revisará." });
@@ -459,15 +479,12 @@ export default function Portal() {
 
             // Cursos seleccionados por el usuario, en orden de solicitud (mas antiguo
             // primero). Sin calificacion aun -> 0. Sin cursos seleccionados -> seccion vacia.
-            const cursosOrdenados = [...(solicitudes ?? [])].sort((a: any, b: any) => {
-              const solA = a.solicitudes_curso ?? a;
-              const solB = b.solicitudes_curso ?? b;
-              return new Date(solA.createdAt).getTime() - new Date(solB.createdAt).getTime();
-            });
-            const cursos = cursosOrdenados.slice(0, 2).map((item: any) => {
+            const detallesPorCurso = [cursoDetalleCedula1, cursoDetalleCedula2];
+            const cursos = solicitudesOrdenadas.slice(0, 2).map((item: any, idx: number) => {
               const sol = item.solicitudes_curso ?? item;
               const curso = item.cursos ?? {};
-              const ci = item.cursos_instituciones;
+              const inst = detallesPorCurso[idx]?.instituciones?.[0] as any;
+              const ci = inst?.cursos_instituciones ?? inst;
               return {
                 nombre: curso.nombre ?? "",
                 periodo: ci?.fechaInicio && ci?.fechaFin
