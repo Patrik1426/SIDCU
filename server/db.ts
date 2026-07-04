@@ -635,20 +635,19 @@ export async function buscarCursoPorNombre(nombre: string) {
 }
 
 // Busca institución por nombre (case/espacio-insensible); si no existe, la crea.
-export async function buscarOCrearInstitucionPorNombre(nombre: string) {
+// Solo busca -- no crea instituciones nuevas. Mientras el sistema tenga una
+// sola institucion, altas nuevas se hacen a mano (pagina Instituciones) y la
+// asignacion por bloque tambien a mano (Gestion de Cursos); la importacion
+// masiva de cursos no debe poder generar instituciones duplicadas por un
+// nombre en el CSV que no coincida exactamente.
+export async function buscarInstitucionPorNombre(nombre: string) {
   const d = await getDb();
   const nombreNormalizado = nombre.trim().toLowerCase();
   const [existente] = await d.select({ id: schema.instituciones.id })
     .from(schema.instituciones)
     .where(sql`LOWER(TRIM(${schema.instituciones.nombre})) = ${nombreNormalizado}`);
 
-  if (existente) return existente.id;
-
-  const [resultado] = await d.insert(schema.instituciones).values({
-    nombre: nombre.trim(),
-    activo: true,
-  });
-  return (resultado as any).insertId as number;
+  return existente?.id ?? null;
 }
 
 // ─── Instituciones ───────────────────────────────────────────────────

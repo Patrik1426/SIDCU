@@ -14,7 +14,7 @@ import {
   obtenerPerfil,
   listarFinalidadesCursos,
   buscarCursoPorNombre,
-  buscarOCrearInstitucionPorNombre,
+  buscarInstitucionPorNombre,
 } from "../db";
 
 const cursoInput = z.object({
@@ -265,10 +265,12 @@ export const cursosRouter = router({
             continue;
           }
 
-          // Auto-crear institución responsable si no existe (comparación case-insensitive) y enlazarla al curso
+          // Busca la institucion por nombre -- no la crea. Si no coincide con
+          // ninguna existente, el curso queda sin institucion asignada; el
+          // admin la asigna despues a mano (Gestion de Cursos > Instituciones).
           let institucionId: number | null = null;
           if (parsed.data.institucionResponsable && parsed.data.institucionResponsable !== "Por definir") {
-            institucionId = await buscarOCrearInstitucionPorNombre(parsed.data.institucionResponsable);
+            institucionId = await buscarInstitucionPorNombre(parsed.data.institucionResponsable);
           }
 
           const id = await crearCurso({
