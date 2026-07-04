@@ -22,7 +22,10 @@ export async function getDb() {
     });
     db = drizzle(pool, { schema, mode: "default" });
   }
-  return db;
+  // TS pierde el narrowing de esta variable module-level tras el await de
+  // arriba (no puede probar que otra llamada concurrente no la reasigno a
+  // null) -- el invariante real es que en este punto siempre esta asignada.
+  return db!;
 }
 
 export async function safeQuery<T>(fn: () => Promise<T>): Promise<T> {

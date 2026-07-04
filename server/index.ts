@@ -39,8 +39,9 @@ app.get("/api/health", async (_req, res) => {
   try {
     const { getDb } = await import("./db");
     const { dbCircuitBreaker } = await import("./middleware/circuitBreaker");
+    const { sql } = await import("drizzle-orm");
     const d = await getDb();
-    await d.execute(import("drizzle-orm").then(m => m.sql`SELECT 1`));
+    await d.execute(sql`SELECT 1`);
     const circuit = dbCircuitBreaker.getState();
     res.json({
       status: "ok",
