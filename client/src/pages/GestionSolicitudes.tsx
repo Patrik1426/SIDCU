@@ -198,54 +198,75 @@ export default function GestionSolicitudes() {
 
       {/* Acreditacion summary */}
       {conteoAcreditacion && conteoAcreditacion.total > 0 && (
-        <motion.div variants={fadeUp} className="grid grid-cols-2 gap-4 sm:max-w-md">
-          <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
-            <div className="rounded-xl bg-emerald-50 p-2">
-              <CheckCircle2 size={18} className="text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-lg font-extrabold text-slate-900">{conteoAcreditacion.acreditados}</p>
-              <p className="text-xs text-slate-400">Acreditados</p>
-            </div>
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-5 shadow-card-rest border border-slate-200/60">
+          <div className="flex items-baseline justify-between">
+            <p className="text-micro font-semibold uppercase tracking-widest text-slate-400">
+              Progreso de acreditación
+            </p>
+            <p className="text-xs text-slate-400">
+              {conteoAcreditacion.acreditados} de {conteoAcreditacion.total} servidores
+            </p>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
-            <div className="rounded-xl bg-rose-50 p-2">
-              <XCircle size={18} className="text-rose-500" />
-            </div>
-            <div>
-              <p className="text-lg font-extrabold text-slate-900">{conteoAcreditacion.noAcreditados}</p>
-              <p className="text-xs text-slate-400">No acreditados</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
 
-      {/* Aprobacion por bloque */}
-      {conteoPorBloque && conteoPorBloque.length > 0 && (
-        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-4 shadow-card-rest border border-slate-200/60">
-          <p className="mb-3 text-micro font-semibold uppercase tracking-widest text-slate-400">
-            Aprobacion por bloque
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {conteoPorBloque.map(({ bloque, pasan, noPasan }) => (
-              <div
-                key={bloque ?? "sin-bloque"}
-                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm"
-              >
-                <span className="font-medium text-slate-700">
-                  {bloque != null ? `Bloque ${bloque}` : "Sin bloque"}
-                </span>
-                <span className="flex items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1 text-emerald-600 font-semibold">
-                    <CheckCircle2 size={12} /> {pasan}
-                  </span>
-                  <span className="flex items-center gap-1 text-rose-500 font-semibold">
-                    <XCircle size={12} /> {noPasan}
-                  </span>
-                </span>
-              </div>
-            ))}
+          <div className="mt-3 flex items-end gap-2">
+            <span className="text-3xl font-extrabold tracking-tight text-slate-900">
+              {Math.round((conteoAcreditacion.acreditados / conteoAcreditacion.total) * 100)}%
+            </span>
+            <span className="mb-1 text-xs text-slate-400">acreditados</span>
           </div>
+
+          <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-rose-100">
+            <motion.div
+              className="h-full rounded-full bg-emerald-500"
+              initial={{ width: 0 }}
+              animate={{ width: `${(conteoAcreditacion.acreditados / conteoAcreditacion.total) * 100}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+            />
+          </div>
+
+          <div className="mt-2 flex items-center gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {conteoAcreditacion.acreditados} acreditados
+            </span>
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <span className="h-2 w-2 rounded-full bg-rose-300" />
+              {conteoAcreditacion.noAcreditados} no acreditados
+            </span>
+          </div>
+
+          {/* Aprobacion por bloque */}
+          {conteoPorBloque && conteoPorBloque.length > 0 && (
+            <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+              <p className="text-micro font-semibold uppercase tracking-widest text-slate-400">
+                Por bloque
+              </p>
+              {conteoPorBloque.map(({ bloque, pasan, noPasan }) => {
+                const totalBloque = pasan + noPasan;
+                const pct = totalBloque > 0 ? (pasan / totalBloque) * 100 : 0;
+                return (
+                  <div key={bloque ?? "sin-bloque"}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-700">
+                        {bloque != null ? `Bloque ${bloque}` : "Sin bloque"}
+                      </span>
+                      <span className="text-slate-400">
+                        {pasan} pasan · {noPasan} no pasan
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-rose-100">
+                      <motion.div
+                        className="h-full rounded-full bg-emerald-500"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
       )}
 
