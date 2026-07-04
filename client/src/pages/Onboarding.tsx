@@ -55,6 +55,7 @@ interface FormData {
   nivelGobierno: string;
   grupoFuncion: string;
   contacto: string;
+  email: string;
 }
 
 const initialFormData: FormData = {
@@ -66,6 +67,7 @@ const initialFormData: FormData = {
   nivelGobierno: "federal",
   grupoFuncion: "",
   contacto: "",
+  email: "",
 };
 
 const inputClass =
@@ -203,6 +205,7 @@ export default function Onboarding() {
       nivelGobierno: "federal" as const,
       grupoFuncion: formData.grupoFuncion as "ADMO" | "TECN" | "SERV" | "COMUN" | "PROFE" | "EDU",
       datosContacto: formData.contacto.trim() || null,
+      email: formData.email.trim() || null,
     });
   }
 
@@ -405,6 +408,21 @@ export default function Onboarding() {
                   placeholder="Ej. 55-1234-5678"
                   value={formData.contacto}
                   onChange={(e) => updateField("contacto", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="email" className={labelClass}>
+                  Correo Electrónico{" "}
+                  <span className="font-normal text-slate-400">(opcional)</span>
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  className={inputClass}
+                  placeholder="Ej. correo@cultura.gob.mx"
+                  value={formData.email}
+                  onChange={(e) => updateField("email", e.target.value)}
                 />
               </div>
             </motion.div>

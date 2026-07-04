@@ -23,7 +23,7 @@ export const perfilRouter = router({
   }),
 
   crear: protectedProcedure
-    .input(perfilInput)
+    .input(perfilInput.extend({ email: z.string().nullable().optional() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await obtenerPerfil(ctx.user.id);
 
@@ -86,6 +86,7 @@ export const perfilRouter = router({
           grupoFuncion: input.grupoFuncion,
           fechaIngreso: input.fechaIngreso,
           datosContacto: input.datosContacto ?? null,
+          email: input.email ?? existingSrv.email,
           actualizadoPor: ctx.user.id,
         }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
       } else {
@@ -101,6 +102,7 @@ export const perfilRouter = router({
             grupoFuncion: input.grupoFuncion,
             fechaIngreso: input.fechaIngreso,
             datosContacto: input.datosContacto ?? null,
+            email: input.email ?? null,
             upa: null,
             cmao: null,
             ua: null,
