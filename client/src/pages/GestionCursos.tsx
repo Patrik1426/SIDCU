@@ -16,7 +16,6 @@ import {
   Building2,
   Calendar,
   Clock,
-  Users,
   Upload,
 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
@@ -29,6 +28,10 @@ const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
+
+// Cursos son 100% virtuales: no hay limite real de cupo. Se manda un valor
+// alto fijo para satisfacer la columna NOT NULL sin exponer el concepto en UI.
+const CUPO_SIN_LIMITE = 9999;
 
 const MODALIDADES = ["presencial", "virtual", "mixto"];
 const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC"];
@@ -76,7 +79,7 @@ export default function GestionCursos() {
   // Assignment form state
   const [assignForm, setAssignForm] = useState({
     institucionId: 0,
-    cupoMaximo: 30,
+    cupoMaximo: CUPO_SIN_LIMITE,
     dias: [] as string[],
     horaInicio: "09:00",
     horaFin: "11:00",
@@ -157,7 +160,7 @@ export default function GestionCursos() {
   const asignarMut = trpc.cursos.asignarInstitucion.useMutation({
     onSuccess: () => {
       utils.cursos.obtener.invalidate();
-      setAssignForm({ institucionId: 0, cupoMaximo: 30, dias: [], horaInicio: "09:00", horaFin: "11:00", fechaInicio: "", fechaFin: "" });
+      setAssignForm({ institucionId: 0, cupoMaximo: CUPO_SIN_LIMITE, dias: [], horaInicio: "09:00", horaFin: "11:00", fechaInicio: "", fechaFin: "" });
     },
   });
 
@@ -637,7 +640,6 @@ export default function GestionCursos() {
                       <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
                         <Building2 size={12} className="text-slate-400" />
                         <span className="flex-1 font-medium">{instData.nombre ?? `Institución #${ci.institucionId}`}</span>
-                        <span className="text-slate-400">· Cupo: {ci.cupoMaximo}</span>
                         {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
                         <button
                           type="button"
@@ -674,18 +676,6 @@ export default function GestionCursos() {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Cupo Máximo *</label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={assignForm.cupoMaximo}
-                  onChange={(e) => setAssignForm({ ...assignForm, cupoMaximo: Number(e.target.value) })}
-                  className={inputClass}
-                />
               </div>
 
               <div>

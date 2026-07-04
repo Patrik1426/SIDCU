@@ -287,8 +287,8 @@ export const cursosRouter = router({
             await asignarCursoInstitucion({
               cursoId: id,
               institucionId,
-              cupoMaximo: 30,
-              cupoDisponible: 30,
+              cupoMaximo: 9999,
+              cupoDisponible: 9999,
               horario: parsed.data.horarioTexto ?? null,
               fechaInicio: parsed.data.fechaInicio ?? null,
               fechaFin: parsed.data.fechaTermino ?? null,

@@ -111,7 +111,7 @@ export default function GestionSolicitudes() {
       setModal({ type: "closed" });
       if (res.errores.length > 0) {
         alert(
-          `${res.aprobadas} solicitud(es) aprobada(s). ${res.errores.length} sin cupo disponible:\n` +
+          `${res.aprobadas} solicitud(es) aprobada(s). ${res.errores.length} con error:\n` +
             res.errores.map((e) => `- ${e.error}`).join("\n"),
         );
       }
@@ -402,7 +402,6 @@ export default function GestionSolicitudes() {
                         <option key={ci.id} value={ci.id}>
                           {inst.nombre ?? `Institución #${ci.institucionId}`}
                           {ci.horario ? ` — ${ci.horario}` : ""}
-                          {ci.cupoMaximo ? ` (Cupo: ${ci.cupoMaximo})` : ""}
                         </option>
                       );
                     })}
@@ -617,8 +616,8 @@ export default function GestionSolicitudes() {
               </div>
 
               <p className="text-xs text-slate-400 text-center">
-                Se asignará automáticamente la primera institución con cupo disponible para cada curso.
-                Las solicitudes sin cupo quedarán pendientes.
+                Se asignará automáticamente la primera institución activa para cada curso.
+                Las solicitudes sin institución asignada quedarán pendientes.
               </p>
 
               <div className="flex gap-3">
