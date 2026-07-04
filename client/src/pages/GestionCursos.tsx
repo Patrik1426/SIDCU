@@ -17,6 +17,8 @@ import {
   Calendar,
   Clock,
   Upload,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 
@@ -108,6 +110,39 @@ export default function GestionCursos() {
   const cursosRef = useRef<typeof cursos>(undefined);
   if (cursos !== undefined) cursosRef.current = cursos;
   const displayCursos = cursosRef.current;
+
+  // Agrupa cursos por bloque -- el bloque es la secuencia curricular real
+  // (Bloque 1 antes que Bloque 2), por eso el numero encabeza cada seccion.
+  const grupos = (() => {
+    if (!displayCursos) return [] as { key: string; label: string; cursos: any[] }[];
+    const porBloque = new Map<number | null, any[]>();
+    for (const curso of displayCursos) {
+      const key = curso.bloque ?? null;
+      if (!porBloque.has(key)) porBloque.set(key, []);
+      porBloque.get(key)!.push(curso);
+    }
+    return [...porBloque.entries()]
+      .sort(([a], [b]) => {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      })
+      .map(([bloque, cursosDelBloque]) => ({
+        key: bloque != null ? `bloque-${bloque}` : "sin-bloque",
+        label: bloque != null ? `Bloque ${bloque}` : "Sin bloque",
+        cursos: cursosDelBloque,
+      }));
+  })();
+
+  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  const toggleColapso = (key: string) => {
+    setColapsados((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const { data: instituciones } = trpc.instituciones.listar.useQuery({ soloActivas: true });
   const { data: finalidades } = trpc.cursos.listarFinalidades.useQuery();
 
@@ -348,132 +383,173 @@ export default function GestionCursos() {
           <p className="mt-4 text-sm font-medium text-slate-400">No hay cursos registrados</p>
         </motion.div>
       ) : (
-        viewMode === "grid" ? (
-          <motion.div variants={stagger} initial={false} animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {displayCursos.map((curso: any) => (
-              <motion.div
-                key={curso.id}
-                variants={fadeUp}
-                className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(curso.id)}
-                      onChange={() => toggleSelect(curso.id)}
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
-                    />
-                    <h3 className="text-sm font-bold text-slate-800 leading-snug">
-                      {curso.nombre}
-                    </h3>
-                  </div>
-                  <span className={`shrink-0 rounded-lg px-2 py-0.5 text-micro font-bold uppercase tracking-wider ${modalidadColor(curso.modalidad)}`}>
-                    {modalidadLabel(curso.modalidad)}
+        <div className="space-y-8">
+          {grupos.map((grupo) => {
+            const isCollapsed = colapsados.has(grupo.key);
+            return (
+              <motion.div key={grupo.key} variants={fadeUp}>
+                <button
+                  type="button"
+                  onClick={() => toggleColapso(grupo.key)}
+                  className="mb-3 flex w-full items-center gap-2.5 text-left"
+                >
+                  {isCollapsed ? (
+                    <ChevronRight size={16} className="shrink-0 text-slate-400" />
+                  ) : (
+                    <ChevronDown size={16} className="shrink-0 text-slate-400" />
+                  )}
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
+                    {grupo.label}
+                  </h2>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                    {grupo.cursos.length}
                   </span>
-                </div>
+                  <div className="h-px flex-1 bg-slate-100" />
+                </button>
 
-                {curso.descripcion && (
-                  <p className="mt-2 line-clamp-2 text-xs text-slate-400">
-                    {curso.descripcion}
-                  </p>
+                {!isCollapsed && (
+                  viewMode === "grid" ? (
+                    <motion.div variants={stagger} initial={false} animate="show" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {grupo.cursos.map((curso: any) => (
+                        <motion.div
+                          key={curso.id}
+                          variants={fadeUp}
+                          className="group rounded-2xl border border-slate-200/60 bg-white p-5 shadow-card-rest transition-all hover:shadow-card-hover hover:border-slate-200"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(curso.id)}
+                                onChange={() => toggleSelect(curso.id)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                              />
+                              <h3 className="text-sm font-bold text-slate-800 leading-snug">
+                                {curso.nombre}
+                              </h3>
+                            </div>
+                            <span className={`shrink-0 rounded-lg px-2 py-0.5 text-micro font-bold uppercase tracking-wider ${modalidadColor(curso.modalidad)}`}>
+                              {modalidadLabel(curso.modalidad)}
+                            </span>
+                          </div>
+
+                          {curso.descripcion && (
+                            <p className="mt-2 line-clamp-2 text-xs text-slate-400">
+                              {curso.descripcion}
+                            </p>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                            <span className="flex items-center gap-1">
+                              <Clock size={11} />
+                              {curso.duracionHoras}h
+                            </span>
+                            <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-micro font-semibold text-slate-500">
+                              {curso.tipoPrograma}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                            <button
+                              onClick={() => toggleActivoMut.mutate({ id: curso.id })}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                                curso.activo ? "bg-emerald-500" : "bg-slate-200"
+                              }`}
+                            >
+                              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${curso.activo ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
+                            <div className="flex gap-1">
+                              <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500" title="Editar">
+                                <Pencil size={15} />
+                              </button>
+                              <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-card-rest">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/50">
+                            <th className="w-10 px-3 py-3">
+                              <input
+                                type="checkbox"
+                                checked={grupo.cursos.length > 0 && grupo.cursos.every((c: any) => selected.has(c.id))}
+                                onChange={() => {
+                                  const grupoIds = grupo.cursos.map((c: any) => c.id);
+                                  const todosSeleccionados = grupoIds.every((id: number) => selected.has(id));
+                                  setSelected((prev) => {
+                                    const next = new Set(prev);
+                                    for (const id of grupoIds) {
+                                      if (todosSeleccionados) next.delete(id);
+                                      else next.add(id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                              />
+                            </th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Nombre</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Categoría</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Modalidad</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Duración</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Estado</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {grupo.cursos.map((curso: any) => (
+                            <tr key={curso.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                              <td className="px-3 py-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(curso.id)}
+                                  onChange={() => toggleSelect(curso.id)}
+                                  className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-3 py-2.5 font-medium text-slate-800 max-w-62.5 truncate">{curso.nombre}</td>
+                              <td className="px-3 py-2.5">
+                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{curso.tipoPrograma}</span>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${modalidadColor(curso.modalidad)}`}>{modalidadLabel(curso.modalidad)}</span>
+                              </td>
+                              <td className="px-3 py-2.5 text-slate-500">{curso.duracionHoras}h</td>
+                              <td className="px-3 py-2.5">
+                                <button
+                                  onClick={() => toggleActivoMut.mutate({ id: curso.id })}
+                                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${curso.activo ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`}
+                                >
+                                  {curso.activo ? "Activo" : "Inactivo"}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex justify-end gap-0.5">
+                                  <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-500" title="Editar">
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
                 )}
-
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} />
-                    {curso.duracionHoras}h
-                  </span>
-                  <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-micro font-semibold text-slate-500">
-                    {curso.tipoPrograma}
-                  </span>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                  <button
-                    onClick={() => toggleActivoMut.mutate({ id: curso.id })}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                      curso.activo ? "bg-emerald-500" : "bg-slate-200"
-                    }`}
-                  >
-                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${curso.activo ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-primary-500" title="Editar">
-                      <Pencil size={15} />
-                    </button>
-                    <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
               </motion.div>
-            ))}
-          </motion.div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200/60 bg-white shadow-card-rest">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50">
-                  <th className="w-10 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={(displayCursos?.length ?? 0) > 0 && selected.size === (displayCursos?.length ?? 0)}
-                      onChange={selectAll}
-                      className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
-                    />
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Nombre</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Categoría</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Modalidad</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Duración</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">Estado</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayCursos.map((curso: any) => (
-                  <tr key={curso.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(curso.id)}
-                        onChange={() => toggleSelect(curso.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500/20 cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 font-medium text-slate-800 max-w-62.5 truncate">{curso.nombre}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{curso.tipoPrograma}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${modalidadColor(curso.modalidad)}`}>{modalidadLabel(curso.modalidad)}</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-500">{curso.duracionHoras}h</td>
-                    <td className="px-3 py-2.5">
-                      <button
-                        onClick={() => toggleActivoMut.mutate({ id: curso.id })}
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${curso.activo ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`}
-                      >
-                        {curso.activo ? "Activo" : "Inactivo"}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex justify-end gap-0.5">
-                        <button onClick={() => openEdit(curso)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-500" title="Editar">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => setConfirmDelete({ type: "single", id: curso.id, nombre: curso.nombre })} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500" title="Eliminar">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
+            );
+          })}
+        </div>
       )}
 
       {/* Create/Edit Modal */}
