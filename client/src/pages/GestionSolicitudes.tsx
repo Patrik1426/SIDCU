@@ -56,6 +56,13 @@ function formatFecha(date: string | Date) {
   });
 }
 
+function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {
+  if (!fechaInicio && !fechaFin) return null;
+  if (fechaInicio && fechaFin) return `${formatFecha(fechaInicio)} - ${formatFecha(fechaFin)}`;
+  if (fechaInicio) return `Desde ${formatFecha(fechaInicio)}`;
+  return `Hasta ${formatFecha(fechaFin!)}`;
+}
+
 export default function GestionSolicitudes() {
   const utils = trpc.useUtils();
   const [estadoFilter, setEstadoFilter] = useState<Estado>("");
@@ -385,7 +392,7 @@ export default function GestionSolicitudes() {
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-500">
-                  Institucion y Horario *
+                  Institucion y Fechas *
                 </label>
                 {cursoDetalle?.instituciones && cursoDetalle.instituciones.length > 0 ? (
                   <select
@@ -401,7 +408,7 @@ export default function GestionSolicitudes() {
                       return (
                         <option key={ci.id} value={ci.id}>
                           {inst.nombre ?? `Institución #${ci.institucionId}`}
-                          {ci.horario ? ` — ${ci.horario}` : ""}
+                          {formatRangoFechas(ci.fechaInicio, ci.fechaFin) ? ` — ${formatRangoFechas(ci.fechaInicio, ci.fechaFin)}` : ""}
                         </option>
                       );
                     })}

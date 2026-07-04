@@ -13,6 +13,18 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
 
+function formatFecha(date: string | Date) {
+  const d = new Date(date);
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {
+  if (!fechaInicio && !fechaFin) return null;
+  if (fechaInicio && fechaFin) return `${formatFecha(fechaInicio)} - ${formatFecha(fechaFin)}`;
+  if (fechaInicio) return `Desde ${formatFecha(fechaInicio)}`;
+  return `Hasta ${formatFecha(fechaFin!)}`;
+}
+
 const MODALIDAD_COLORS: Record<string, string> = {
   presencial: "bg-emerald-50 text-emerald-700",
   virtual: "bg-blue-50 text-blue-700",
@@ -307,8 +319,16 @@ export default function CatalogoCursos() {
                         {cursoDetalle.instituciones.map((inst: any, idx: number) => (
                           <div key={idx} className="rounded-xl bg-slate-50 p-4 text-sm">
                             <p className="font-medium text-slate-900">{inst.instituciones?.nombre ?? inst.nombre ?? `Institución ${idx + 1}`}</p>
-                            {(inst.cursos_instituciones?.horario ?? inst.horario) && (
-                              <p className="mt-1 text-slate-500">Horario: {inst.cursos_instituciones?.horario ?? inst.horario}</p>
+                            {formatRangoFechas(
+                              inst.cursos_instituciones?.fechaInicio ?? inst.fechaInicio,
+                              inst.cursos_instituciones?.fechaFin ?? inst.fechaFin
+                            ) && (
+                              <p className="mt-1 text-slate-500">
+                                {formatRangoFechas(
+                                  inst.cursos_instituciones?.fechaInicio ?? inst.fechaInicio,
+                                  inst.cursos_instituciones?.fechaFin ?? inst.fechaFin
+                                )}
+                              </p>
                             )}
                           </div>
                         ))}

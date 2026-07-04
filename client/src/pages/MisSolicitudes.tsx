@@ -12,6 +12,18 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
 
+function formatFecha(date: string | Date) {
+  const d = new Date(date);
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {
+  if (!fechaInicio && !fechaFin) return null;
+  if (fechaInicio && fechaFin) return `${formatFecha(fechaInicio)} - ${formatFecha(fechaFin)}`;
+  if (fechaInicio) return `Desde ${formatFecha(fechaInicio)}`;
+  return `Hasta ${formatFecha(fechaFin!)}`;
+}
+
 const ESTATUS_CONFIG: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
   pendiente: { label: "Pendiente", bg: "bg-amber-50", text: "text-amber-700", icon: Clock },
   aprobada: { label: "Aprobada", bg: "bg-emerald-50", text: "text-emerald-700", icon: CheckCircle2 },
@@ -105,8 +117,8 @@ export default function MisSolicitudes() {
                         {item.instituciones ? (
                           <div>
                             <p className="font-medium">{item.instituciones.nombre}</p>
-                            {item.cursos_instituciones?.horario && (
-                              <p className="mt-1">Horario: {item.cursos_instituciones.horario}</p>
+                            {formatRangoFechas(item.cursos_instituciones?.fechaInicio, item.cursos_instituciones?.fechaFin) && (
+                              <p className="mt-1">{formatRangoFechas(item.cursos_instituciones?.fechaInicio, item.cursos_instituciones?.fechaFin)}</p>
                             )}
                           </div>
                         ) : (

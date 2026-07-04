@@ -33,6 +33,18 @@ const fadeUp = {
 // alto fijo para satisfacer la columna NOT NULL sin exponer el concepto en UI.
 const CUPO_SIN_LIMITE = 9999;
 
+function formatFecha(date: string | Date) {
+  const d = new Date(date);
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {
+  if (!fechaInicio && !fechaFin) return null;
+  if (fechaInicio && fechaFin) return `${formatFecha(fechaInicio)} - ${formatFecha(fechaFin)}`;
+  if (fechaInicio) return `Desde ${formatFecha(fechaInicio)}`;
+  return `Hasta ${formatFecha(fechaFin!)}`;
+}
+
 const MODALIDADES = ["presencial", "virtual", "mixto"];
 const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC"];
 
@@ -640,7 +652,9 @@ export default function GestionCursos() {
                       <div key={ci.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
                         <Building2 size={12} className="text-slate-400" />
                         <span className="flex-1 font-medium">{instData.nombre ?? `Institución #${ci.institucionId}`}</span>
-                        {ci.horario && <span className="text-slate-400">· {ci.horario}</span>}
+                        {formatRangoFechas(ci.fechaInicio, ci.fechaFin) && (
+                          <span className="text-slate-400">· {formatRangoFechas(ci.fechaInicio, ci.fechaFin)}</span>
+                        )}
                         <button
                           type="button"
                           onClick={() => setConfirmDesasignar({ id: ci.id, nombre: instData.nombre ?? `Institución #${ci.institucionId}` })}
