@@ -14,7 +14,7 @@ import {
   obtenerPerfil,
   listarFinalidadesCursos,
   buscarCursoPorNombre,
-  buscarInstitucionPorNombre,
+  obtenerInstitucionPredeterminada,
 } from "../db";
 
 const cursoInput = z.object({
@@ -142,6 +142,7 @@ export const cursosRouter = router({
       const creados: number[] = [];
       const errores: { fila: number; error: string }[] = [];
       const nombresVistos = new Set<string>();
+      const institucionPredeterminadaId = await obtenerInstitucionPredeterminada();
 
       // Excel con celdas combinadas exporta vacío en filas siguientes del mismo bloque/institución.
       // Rellenar hacia abajo (fill-down) los campos que normalmente se combinan.
@@ -265,14 +266,6 @@ export const cursosRouter = router({
             continue;
           }
 
-          // Busca la institucion por nombre -- no la crea. Si no coincide con
-          // ninguna existente, el curso queda sin institucion asignada; el
-          // admin la asigna despues a mano (Gestion de Cursos > Instituciones).
-          let institucionId: number | null = null;
-          if (parsed.data.institucionResponsable && parsed.data.institucionResponsable !== "Por definir") {
-            institucionId = await buscarInstitucionPorNombre(parsed.data.institucionResponsable);
-          }
-
           const id = await crearCurso({
             ...parsed.data,
             descripcion: parsed.data.descripcion ?? null,
@@ -280,10 +273,10 @@ export const cursosRouter = router({
             creadoPor: ctx.user.id,
           });
 
-          if (institucionId) {
+          if (institucionPredeterminadaId) {
             await asignarCursoInstitucion({
               cursoId: id,
-              institucionId,
+              institucionId: institucionPredeterminadaId,
               cupoMaximo: 9999,
               cupoDisponible: 9999,
               fechaInicio: parsed.data.fechaInicio ?? null,
