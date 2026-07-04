@@ -82,7 +82,7 @@ export default function CatalogoCursos() {
 
   const solicitarMut = trpc.solicitudes.crear.useMutation({
     onSuccess: () => {
-      setSolicitudMsg({ type: "success", text: "Solicitud enviada exitosamente. Puedes ver el estado en 'Mis Solicitudes'." });
+      setSolicitudMsg({ type: "success", text: "¡Inscripción confirmada! Ya puedes verla en 'Mis Solicitudes'." });
       utils.solicitudes.misSolicitudes.invalidate();
     },
     onError: (err) => {
@@ -92,6 +92,8 @@ export default function CatalogoCursos() {
         ? "Solo puedes tener 2 cursos activos. Completa o cancela uno antes de solicitar otro."
         : err.message.includes("empalman")
         ? "Las fechas de este curso se empalman con otro curso inscrito."
+        : err.message.includes("institución configurada")
+        ? "El sistema no tiene ninguna institución configurada todavía. Contacta al administrador."
         : err.message;
       setSolicitudMsg({ type: "error", text: msg });
     },
@@ -352,7 +354,7 @@ export default function CatalogoCursos() {
                         ) : (
                           <CheckCircle2 className="h-4 w-4" />
                         )}
-                        Solicitar Inscripción
+                        Inscribirme
                       </button>
                     )}
                   </div>
