@@ -709,10 +709,57 @@ export async function eliminarCursoInstitucion(id: number) {
 
 // ─── Solicitudes Curso ───────────────────────────────────────────────
 
-export async function crearSolicitud(data: schema.InsertSolicitudCurso) {
+// Inscripcion directa: no hay paso de aprobacion de admin. Se resuelve (o
+// crea) la liga curso-institucion usando la unica institucion activa del
+// sistema, y la solicitud queda directo en estado "aprobada".
+export async function crearSolicitudConAsignacion(
+  userId: number,
+  cursoId: number,
+): Promise<{ ok: true; id: number } | { ok: false; error: "SIN_INSTITUCION" }> {
   const d = await getDb();
-  const [result] = await d.insert(schema.solicitudesCurso).values(data);
-  return result.insertId;
+  return d.transaction(async (tx) => {
+    const [institucion] = await tx
+      .select({ id: schema.instituciones.id })
+      .from(schema.instituciones)
+      .where(eq(schema.instituciones.activo, true))
+      .limit(1);
+
+    if (!institucion) {
+      return { ok: false, error: "SIN_INSTITUCION" };
+    }
+
+    const [ligaExistente] = await tx
+      .select({ id: schema.cursosInstituciones.id })
+      .from(schema.cursosInstituciones)
+      .where(and(
+        eq(schema.cursosInstituciones.cursoId, cursoId),
+        eq(schema.cursosInstituciones.institucionId, institucion.id),
+        eq(schema.cursosInstituciones.activo, true),
+      ));
+
+    let cursoInstitucionId: number;
+    if (ligaExistente) {
+      cursoInstitucionId = ligaExistente.id;
+    } else {
+      const [nuevaLiga] = await tx.insert(schema.cursosInstituciones).values({
+        cursoId,
+        institucionId: institucion.id,
+        cupoMaximo: 9999,
+        cupoDisponible: 9999,
+        activo: true,
+      });
+      cursoInstitucionId = nuevaLiga.insertId;
+    }
+
+    const [nuevaSolicitud] = await tx.insert(schema.solicitudesCurso).values({
+      userId,
+      cursoId,
+      estado: "aprobada",
+      cursoInstitucionId,
+    });
+
+    return { ok: true, id: nuevaSolicitud.insertId };
+  });
 }
 
 export async function listarSolicitudesUsuario(userId: number) {
