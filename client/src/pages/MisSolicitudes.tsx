@@ -116,7 +116,7 @@ export default function MisSolicitudes() {
                       <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
                         {item.instituciones ? (
                           <div>
-                            <p className="font-medium">{item.instituciones.nombre}</p>
+                            <p className="font-medium">¡Vas muy bien! Sigue así</p>
                             {formatRangoFechas(item.cursos_instituciones?.fechaInicio, item.cursos_instituciones?.fechaFin) && (
                               <p className="mt-1">{formatRangoFechas(item.cursos_instituciones?.fechaInicio, item.cursos_instituciones?.fechaFin)}</p>
                             )}
