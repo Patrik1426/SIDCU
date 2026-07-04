@@ -612,6 +612,9 @@ export async function toggleActivoCurso(id: number) {
 export async function eliminarCurso(id: number) {
   const d = await getDb();
   await d.transaction(async (tx) => {
+    // Sin esto, las solicitudes de este curso quedan huerfanas (cursoId ya no
+    // existe) pero siguen contando en contarAcreditacion/contarAprobacionPorBloque.
+    await tx.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.cursoId, id));
     await tx.delete(schema.cursosInstituciones).where(eq(schema.cursosInstituciones.cursoId, id));
     await tx.delete(schema.cursos).where(eq(schema.cursos.id, id));
   });

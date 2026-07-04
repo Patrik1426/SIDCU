@@ -15,7 +15,7 @@ describe("eliminarCurso", () => {
     vi.resetModules();
   });
 
-  it("borra asignaciones y curso en una sola transaccion", async () => {
+  it("borra solicitudes, asignaciones y curso en una sola transaccion", async () => {
     const { tx, calls } = makeTxRecorder();
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
 
@@ -26,6 +26,6 @@ describe("eliminarCurso", () => {
     await eliminarCurso(5);
 
     expect(fakeDb.transaction).toHaveBeenCalledTimes(1);
-    expect(calls).toEqual(["delete", "delete"]);
+    expect(calls).toEqual(["delete", "delete", "delete"]);
   });
 });
