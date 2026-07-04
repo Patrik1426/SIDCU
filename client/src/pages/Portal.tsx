@@ -470,7 +470,9 @@ export default function Portal() {
               cmao: servidor.cmao ?? "",
               ua: servidor.ua ?? "",
               preparacionAcademica: servidor.preparacionAcademica ?? "",
-              actividadDesempena: servidor.actividadDesempena ?? "",
+              // La cedula pide "actividad que desempena" == el puesto/cargo del servidor,
+              // no el campo actividadDesempena (texto libre distinto, capturado aparte).
+              actividadDesempena: servidor.cargo ?? "",
               jefeInmediatoCurp: servidor.jefeInmediatoCurp ?? "",
               jefeInmediatoNombre: servidor.jefeInmediatoNombre ?? "",
               jefeInmediatoCorreo: servidor.jefeInmediatoCorreo ?? "",
