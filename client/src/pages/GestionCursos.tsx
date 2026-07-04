@@ -92,9 +92,6 @@ export default function GestionCursos() {
   const [assignForm, setAssignForm] = useState({
     institucionId: 0,
     cupoMaximo: CUPO_SIN_LIMITE,
-    dias: [] as string[],
-    horaInicio: "09:00",
-    horaFin: "11:00",
     fechaInicio: "",
     fechaFin: "",
   });
@@ -172,7 +169,7 @@ export default function GestionCursos() {
   const asignarMut = trpc.cursos.asignarInstitucion.useMutation({
     onSuccess: () => {
       utils.cursos.obtener.invalidate();
-      setAssignForm({ institucionId: 0, cupoMaximo: CUPO_SIN_LIMITE, dias: [], horaInicio: "09:00", horaFin: "11:00", fechaInicio: "", fechaFin: "" });
+      setAssignForm({ institucionId: 0, cupoMaximo: CUPO_SIN_LIMITE, fechaInicio: "", fechaFin: "" });
     },
   });
 
@@ -231,15 +228,10 @@ export default function GestionCursos() {
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (modal.type !== "edit" || !assignForm.institucionId) return;
-    const horarioParts: string[] = [];
-    if (assignForm.dias.length > 0) horarioParts.push(assignForm.dias.join(", "));
-    if (assignForm.horaInicio && assignForm.horaFin) horarioParts.push(`${assignForm.horaInicio} - ${assignForm.horaFin}`);
-    const horario = horarioParts.join(" · ") || undefined;
     await asignarMut.mutateAsync({
       cursoId: modal.id,
       institucionId: assignForm.institucionId,
       cupoMaximo: assignForm.cupoMaximo,
-      horario,
       fechaInicio: assignForm.fechaInicio ? new Date(assignForm.fechaInicio) : undefined,
       fechaFin: assignForm.fechaFin ? new Date(assignForm.fechaFin) : undefined,
     } as any);
@@ -690,57 +682,6 @@ export default function GestionCursos() {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Días</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((dia) => {
-                    const selected = assignForm.dias.includes(dia);
-                    return (
-                      <button
-                        key={dia}
-                        type="button"
-                        onClick={() => {
-                          setAssignForm({
-                            ...assignForm,
-                            dias: selected
-                              ? assignForm.dias.filter((d) => d !== dia)
-                              : [...assignForm.dias, dia],
-                          });
-                        }}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                          selected
-                            ? "bg-primary-500 text-white shadow-sm"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                        }`}
-                      >
-                        {dia}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Hora Inicio</label>
-                  <input
-                    type="time"
-                    value={assignForm.horaInicio}
-                    onChange={(e) => setAssignForm({ ...assignForm, horaInicio: e.target.value })}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Hora Fin</label>
-                  <input
-                    type="time"
-                    value={assignForm.horaFin}
-                    onChange={(e) => setAssignForm({ ...assignForm, horaFin: e.target.value })}
-                    className={inputClass}
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

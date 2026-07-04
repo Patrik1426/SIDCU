@@ -114,7 +114,6 @@ export const cursosRouter = router({
       cursoId: z.number(),
       institucionId: z.number(),
       cupoMaximo: z.number().int().positive(),
-      horario: z.string().optional(),
       fechaInicio: z.coerce.date().optional(),
       fechaFin: z.coerce.date().optional(),
     }))
@@ -124,7 +123,6 @@ export const cursosRouter = router({
         institucionId: input.institucionId,
         cupoMaximo: input.cupoMaximo,
         cupoDisponible: input.cupoMaximo,
-        horario: input.horario ?? null,
         fechaInicio: input.fechaInicio ?? null,
         fechaFin: input.fechaFin ?? null,
       });
@@ -289,7 +287,6 @@ export const cursosRouter = router({
               institucionId,
               cupoMaximo: 9999,
               cupoDisponible: 9999,
-              horario: parsed.data.horarioTexto ?? null,
               fechaInicio: parsed.data.fechaInicio ?? null,
               fechaFin: parsed.data.fechaTermino ?? null,
               activo: true,
