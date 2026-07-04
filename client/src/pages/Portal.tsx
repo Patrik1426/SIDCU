@@ -9,22 +9,28 @@ import autoTable from "jspdf-autotable";
 
 const NIVEL_LABELS_PROG: Record<number, string> = { 0: "Nuevo ingreso", 1: "N1", 2: "N2", 3: "N3", 4: "N4", 5: "N5" };
 
+interface CursoCedula {
+  nombre: string;
+  periodo: string;
+  calificacion: number;
+}
+
 interface DatosCedula {
   nombre: string;
   curp: string;
-  folioSdpc: string;
   email: string;
-  telOficina: string;
-  ext: string;
+  cargo: string;
   grupoFuncion: string;
   nivelProgresion: number;
+  upa: string;
   cmao: string;
   ua: string;
-  preparacionAcademica: string;
-  actividadDesempena: string;
-  jefeInmediatoCurp: string;
-  jefeInmediatoNombre: string;
-  jefeInmediatoCorreo: string;
+  cursos: CursoCedula[]; // 0-2 entradas -- vacio hasta que el usuario seleccione cursos
+}
+
+function formatFechaCedula(date: string | Date) {
+  const d = new Date(date);
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function loadImageBase64(url: string, trim = false): Promise<{ data: string; w: number; h: number }> {
@@ -151,7 +157,7 @@ async function generarCedula(datos: DatosCedula) {
   doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
   doc.text(
-    `CÉDULA DE INSCRIPCIÓN A NUEVO INGRESO Y PROMOCIÓN ${new Date().getFullYear()}`,
+    "CÉDULA DE INSCRIPCIÓN A CAPACITACIÓN",
     w / 2, 51, { align: "center" }
   );
 
@@ -164,54 +170,46 @@ async function generarCedula(datos: DatosCedula) {
     styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
     head: [[{ content: "DATOS PERSONALES", colSpan: 4, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
     body: [
-      [{ content: "NOMBRE:", styles: { fontStyle: "bold" } }, datos.nombre, { content: "FOLIO SDPC:", styles: { fontStyle: "bold" } }, datos.folioSdpc || "—"],
-      [{ content: "CURP:", styles: { fontStyle: "bold" } }, datos.curp, { content: "TEL. OFICINA:", styles: { fontStyle: "bold" } }, datos.telOficina || "—"],
-      [{ content: "CORREO ELECTRÓNICO:", styles: { fontStyle: "bold" } }, datos.email || "—", { content: "EXT:", styles: { fontStyle: "bold" } }, datos.ext || "—"],
-      [{ content: "GRUPO/FUNCIÓN:", styles: { fontStyle: "bold" } }, datos.grupoFuncion, { content: "NIVEL:", styles: { fontStyle: "bold" } }, NIVEL_LABELS_PROG[datos.nivelProgresion] ?? `N${datos.nivelProgresion}`],
+      [{ content: "NOMBRE:", styles: { fontStyle: "bold" } }, datos.nombre, { content: "CORREO ELECTRÓNICO:", styles: { fontStyle: "bold" } }, datos.email || "—"],
+      [{ content: "CURP:", styles: { fontStyle: "bold" } }, datos.curp, { content: "CARGO:", styles: { fontStyle: "bold" } }, datos.cargo || "—"],
+      [{ content: "GRUPO/FUNCIÓN:", styles: { fontStyle: "bold" } }, datos.grupoFuncion, { content: "NIVEL ACTUAL:", styles: { fontStyle: "bold" } }, NIVEL_LABELS_PROG[datos.nivelProgresion] ?? `N${datos.nivelProgresion}`],
+    ],
+    columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 75 }, 2: { cellWidth: 38 }, 3: { cellWidth: "auto" } },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    head: [[{ content: "DATOS DE ADSCRIPCIÓN", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
+    body: [
+      [{ content: "UNIDAD DE PAGO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.upa || "—"],
+      [{ content: "CLAVE DE LA CMAO:", styles: { fontStyle: "bold" } }, datos.cmao || "—"],
+      [{ content: "UNIDAD ADMINISTRATIVA:", styles: { fontStyle: "bold" } }, datos.ua || "—"],
+    ],
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  const curso1 = datos.cursos[0];
+  const curso2 = datos.cursos[1];
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
+    head: [[{ content: "DATOS DE CURSO", colSpan: 4, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
+    body: [
+      [{ content: "CURSO 1", styles: { fontStyle: "bold" } }, { content: curso1?.nombre ?? "", colSpan: 3 }],
+      [{ content: "PERIODO DE REALIZACIÓN", styles: { fontStyle: "bold" } }, curso1?.periodo ?? "", { content: "CALIF.", styles: { fontStyle: "bold", cellWidth: 22 } }, curso1 ? String(curso1.calificacion) : ""],
+      [{ content: "CURSO 2", styles: { fontStyle: "bold" } }, { content: curso2?.nombre ?? "", colSpan: 3 }],
+      [{ content: "PERIODO DE REALIZACIÓN", styles: { fontStyle: "bold" } }, curso2?.periodo ?? "", { content: "CALIF.", styles: { fontStyle: "bold", cellWidth: 22 } }, curso2 ? String(curso2.calificacion) : ""],
     ],
     columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 75 }, 2: { cellWidth: 30 }, 3: { cellWidth: "auto" } },
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 4;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    theme: "grid",
-    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
-    head: [[{ content: "DATOS DE ADSCRIPCIÓN DEL TRABAJADOR", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
-    body: [
-      [{ content: "CLAVE DE LA CMAO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.cmao || "—"],
-      [{ content: "UNIDAD ADMINISTRATIVA:", styles: { fontStyle: "bold" } }, datos.ua || "—"],
-      [{ content: "PREPARACIÓN ACADÉMICA:", styles: { fontStyle: "bold" } }, datos.preparacionAcademica || "—"],
-    ],
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 4;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    theme: "grid",
-    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
-    body: [
-      [{ content: "ACTIVIDAD QUE DESEMPEÑA:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.actividadDesempena || "—"],
-    ],
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 4;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    theme: "grid",
-    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [20, 20, 20] },
-    head: [[{ content: "INFORMACIÓN DEL JEFE INMEDIATO", colSpan: 2, styles: { fillColor: [97, 18, 50], textColor: 255, halign: "center", fontStyle: "bold" } }]],
-    body: [
-      [{ content: "CURP DEL JEFE INMEDIATO:", styles: { fontStyle: "bold", cellWidth: 50 } }, datos.jefeInmediatoCurp || "—"],
-      [{ content: "NOMBRE DEL JEFE INMEDIATO:", styles: { fontStyle: "bold" } }, datos.jefeInmediatoNombre || "—"],
-      [{ content: "CORREO DEL JEFE INMEDIATO:", styles: { fontStyle: "bold" } }, datos.jefeInmediatoCorreo || "—"],
-    ],
   });
 
   doc.save(`cedula_inscripcion_${datos.curp}.pdf`);
@@ -458,24 +456,38 @@ export default function Portal() {
         <button
           onClick={() => {
             if (!servidor || !user) return;
+
+            // Cursos seleccionados por el usuario, en orden de solicitud (mas antiguo
+            // primero). Sin calificacion aun -> 0. Sin cursos seleccionados -> seccion vacia.
+            const cursosOrdenados = [...(solicitudes ?? [])].sort((a: any, b: any) => {
+              const solA = a.solicitudes_curso ?? a;
+              const solB = b.solicitudes_curso ?? b;
+              return new Date(solA.createdAt).getTime() - new Date(solB.createdAt).getTime();
+            });
+            const cursos = cursosOrdenados.slice(0, 2).map((item: any) => {
+              const sol = item.solicitudes_curso ?? item;
+              const curso = item.cursos ?? {};
+              const ci = item.cursos_instituciones;
+              return {
+                nombre: curso.nombre ?? "",
+                periodo: ci?.fechaInicio && ci?.fechaFin
+                  ? `${formatFechaCedula(ci.fechaInicio)} - ${formatFechaCedula(ci.fechaFin)}`
+                  : "",
+                calificacion: sol.calificacion ?? 0,
+              };
+            });
+
             generarCedula({
               nombre: user.nombre ?? servidor.nombreCompleto ?? "Sin nombre",
               curp: servidor.curp,
-              folioSdpc: servidor.folioSdpc ?? "",
               email: servidor.email ?? "",
-              telOficina: servidor.telOficina ?? "",
-              ext: servidor.ext ?? "",
+              cargo: servidor.cargo ?? "",
               grupoFuncion: servidor.grupoFuncion,
               nivelProgresion: servidor.nivelProgresion ?? 0,
+              upa: servidor.upa ?? "",
               cmao: servidor.cmao ?? "",
               ua: servidor.ua ?? "",
-              preparacionAcademica: servidor.preparacionAcademica ?? "",
-              // La cedula pide "actividad que desempena" == el puesto/cargo del servidor,
-              // no el campo actividadDesempena (texto libre distinto, capturado aparte).
-              actividadDesempena: servidor.cargo ?? "",
-              jefeInmediatoCurp: servidor.jefeInmediatoCurp ?? "",
-              jefeInmediatoNombre: servidor.jefeInmediatoNombre ?? "",
-              jefeInmediatoCorreo: servidor.jefeInmediatoCorreo ?? "",
+              cursos,
             });
           }}
           className="flex items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-600 hover:bg-primary-100 transition-colors"
