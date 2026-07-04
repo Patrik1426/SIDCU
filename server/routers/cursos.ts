@@ -149,7 +149,6 @@ export const cursosRouter = router({
         "bloque",
         "institucionResponsable",
         "finalidad",
-        "modalidad",
         "fechaInicio",
         "fechaTermino",
         "horarioTexto",
