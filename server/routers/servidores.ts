@@ -219,12 +219,13 @@ export const servidoresRouter = router({
       }).optional(),
     )
     .query(async ({ input }) => {
+      const limite = 10000;
       const result = await listarServidores({
         ...input,
         page: 1,
-        limit: 10000,
+        limit: limite,
       });
-      return result.items;
+      return { items: result.items, total: result.total, truncado: result.total > limite };
     }),
 
   estadisticas: requireRole("admin", "capturista", "consultor").query(async () => {

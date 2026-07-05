@@ -94,18 +94,23 @@ export default function Servidores() {
   const handleExport = async (tipo: "excel" | "pdf") => {
     setExportando(tipo);
     try {
-      const datos = await utils.servidores.exportarTodos.fetch({
+      const { items, total, truncado } = await utils.servidores.exportarTodos.fetch({
         search: search || undefined,
         dependencia: dependencia || undefined,
         nivel: "federal",
         estatus: estatus || undefined,
         grupoFuncion: grupoFuncion || undefined,
       });
-      if (datos && datos.length > 0) {
+      if (truncado) {
+        alert(
+          `Hay ${total} servidores que cumplen el filtro, pero solo se exportarán los primeros ${items.length}. Reduce el filtro para exportar el resto.`,
+        );
+      }
+      if (items.length > 0) {
         if (tipo === "excel") {
-          exportarExcel(datos as any);
+          exportarExcel(items as any);
         } else {
-          exportarPDF(datos as any);
+          exportarPDF(items as any);
         }
       } else {
         alert("No hay datos para exportar");
