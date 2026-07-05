@@ -451,6 +451,7 @@ export async function listarAuditoria(filtros?: {
   servidorId?: number;
   usuarioId?: number;
   accion?: string;
+  search?: string;
   page?: number;
   limit?: number;
 }) {
@@ -465,6 +466,15 @@ export async function listarAuditoria(filtros?: {
   }
   if (filtros?.accion) {
     conditions.push(eq(schema.auditoria.accion, filtros.accion as any));
+  }
+  if (filtros?.search) {
+    const termino = `%${filtros.search}%`;
+    const busqueda = [like(schema.auditoria.descripcion, termino)];
+    const comoNumero = Number(filtros.search);
+    if (Number.isFinite(comoNumero)) {
+      busqueda.push(eq(schema.auditoria.servidorId, comoNumero));
+    }
+    conditions.push(or(...busqueda));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -642,6 +652,7 @@ export async function obtenerInstitucionPredeterminada() {
     .select({ id: schema.instituciones.id })
     .from(schema.instituciones)
     .where(eq(schema.instituciones.activo, true))
+    .orderBy(schema.instituciones.id)
     .limit(1);
 
   return institucion?.id ?? null;

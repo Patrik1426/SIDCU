@@ -69,18 +69,12 @@ export default function Auditoria() {
       page,
       limit: 15,
       accion: accionFilter || undefined,
+      search: searchTerm || undefined,
     },
     { retry: false, placeholderData: (prev: any) => prev }
   );
 
-  const filteredItems = data?.items?.filter((item: any) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      item.descripcion?.toLowerCase().includes(term) ||
-      String(item.servidorId).includes(term)
-    );
-  }) ?? [];
+  const filteredItems = data?.items ?? [];
 
   return (
     <motion.div
@@ -116,7 +110,7 @@ export default function Auditoria() {
             type="text"
             placeholder="Buscar en descripciones..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-primary-300 focus:ring-2 focus:ring-primary-100"
           />
         </div>

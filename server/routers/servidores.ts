@@ -241,6 +241,7 @@ export const servidoresRouter = router({
         servidorId: z.number().optional(),
         usuarioId: z.number().optional(),
         accion: z.string().optional(),
+        search: z.string().optional(),
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
       }),

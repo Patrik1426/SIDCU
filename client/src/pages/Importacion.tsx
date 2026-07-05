@@ -118,16 +118,13 @@ export default function Importacion() {
         return;
       }
       setRegistros(parsed);
-      setValidacion({
-        total: parsed.length,
-        validos: parsed.length,
-        invalidos: 0,
-        resultados: parsed.map((r, i) => ({ fila: i + 1, valido: true as const, data: r, errores: [] })),
-      });
-      setPaso("preview");
+      // Validacion real contra el server (curp/nombre reconocibles) -- antes
+      // esto marcaba todas las filas como validas sin checar nada.
+      validarMut.mutate({ registros: parsed });
     };
     reader.readAsText(file, "UTF-8");
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validarMut]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {

@@ -6,7 +6,6 @@ import {
   listarUsuarios,
   cambiarRolUsuario,
   toggleActivoUsuario,
-  getUserByEmail,
   getUserByCurp,
   createUser,
   crearServidor,
