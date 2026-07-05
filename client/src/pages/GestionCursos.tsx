@@ -86,6 +86,7 @@ export default function GestionCursos() {
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [form, setForm] = useState<CursoFormData>(emptyForm);
   const [showImport, setShowImport] = useState(false);
+  const [tipoImportacion, setTipoImportacion] = useState<"PAC" | "CERT" | "SDPC">("CERT");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
@@ -319,6 +320,16 @@ export default function GestionCursos() {
               <List size={15} />
             </button>
           </div>
+          <select
+            value={tipoImportacion}
+            onChange={(e) => setTipoImportacion(e.target.value as "PAC" | "CERT" | "SDPC")}
+            title="Tipo de programa de los cursos a importar"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600"
+          >
+            <option value="PAC">PAC</option>
+            <option value="CERT">SPC</option>
+            <option value="SDPC">SDPC</option>
+          </select>
           <button
             onClick={() => setShowImport(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
@@ -795,12 +806,11 @@ export default function GestionCursos() {
       {/* Import CSV Modal */}
       {showImport && (
         <ImportarCSVModal
-          titulo="Cursos"
+          titulo={`Cursos — ${tipoProgramaLabel(tipoImportacion)}`}
           camposHeredables={[
             "bloque",
             "institucionResponsable",
-            "tipoPrograma",
-            "finalidad",
+            ...(tipoImportacion === "PAC" ? ["finalidad"] : []),
             "fechaInicio",
             "fechaTermino",
             "horarioTexto",
@@ -814,8 +824,9 @@ export default function GestionCursos() {
             { key: "numero", label: "No.", ejemplo: "1" },
             { key: "nombre", label: "Nombre del Curso", ejemplo: "Ética en el servicio público" },
             { key: "institucionResponsable", label: "Institución Responsable", ejemplo: "INAP" },
-            { key: "tipoPrograma", label: "Tipo de Programa (PAC, SPC, SDPC)", ejemplo: "PAC" },
-            { key: "finalidad", label: "Finalidad (solo aplica a PAC: Actualizar/Desarrollar/Sensibilizar/Fortalecer)", ejemplo: "Fortalecer" },
+            ...(tipoImportacion === "PAC"
+              ? [{ key: "finalidad", label: "Finalidad (Actualizar/Desarrollar/Sensibilizar/Fortalecer)", ejemplo: "Fortalecer" }]
+              : []),
             { key: "fechaInicio", label: "Fecha de Inicio", ejemplo: "2026-03-01" },
             { key: "fechaTermino", label: "Fecha de Término", ejemplo: "2026-03-15" },
             { key: "horarioTexto", label: "Horario", ejemplo: "09:00 - 13:00" },
@@ -824,7 +835,7 @@ export default function GestionCursos() {
             { key: "horarioEvaluacion", label: "Horario de Evaluación", ejemplo: "10:00 - 12:00" },
             { key: "duracionEvaluacion", label: "Duración de Evaluación", ejemplo: "2" },
           ]}
-          onImportar={(registros) => importarCursosMut.mutateAsync({ registros })}
+          onImportar={(registros) => importarCursosMut.mutateAsync({ registros, tipoPrograma: tipoImportacion })}
           onClose={() => setShowImport(false)}
           onSuccess={() => utils.cursos.listar.invalidate()}
         />

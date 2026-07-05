@@ -151,7 +151,13 @@ export const cursosRouter = router({
     }),
 
   importar: adminProcedure
-    .input(z.object({ registros: z.array(z.record(z.string(), z.any())) }))
+    .input(z.object({
+      registros: z.array(z.record(z.string(), z.any())),
+      // Todo el archivo es de un solo tipoPrograma -- se elige antes de
+      // subir el CSV, no fila por fila (simplifica: sin columna ni alias
+      // que parsear, la finalidad ya se sabe si es fija o hay que leerla).
+      tipoPrograma: z.enum(["PAC", "CERT", "SDPC"]),
+    }))
     .mutation(async ({ ctx, input }) => {
       const creados: number[] = [];
       const errores: { fila: number; error: string }[] = [];
@@ -225,11 +231,7 @@ export const cursosRouter = router({
           ? nombreRaw.charAt(0).toUpperCase() + nombreRaw.slice(1).toLowerCase()
           : nombreRaw || "Por definir";
 
-        // "SPC" es el nombre visible para el usuario del valor de enum "CERT"
-        // (no se toca el schema/DB, solo se acepta el alias en el CSV).
-        const tipoProgramaCrudo = quitarAcentos((row.tipoPrograma || "").toString().trim().toUpperCase());
-        const tipoProgramaRaw = tipoProgramaCrudo === "SPC" ? "CERT" : tipoProgramaCrudo;
-        const tipoPrograma = ["PAC", "CERT", "SDPC"].includes(tipoProgramaRaw) ? tipoProgramaRaw : "OTRO";
+        const tipoPrograma = input.tipoPrograma;
 
         // Todos los cursos son virtuales (decision de negocio) -- se ignora
         // cualquier valor de modalidad que traiga el CSV.
