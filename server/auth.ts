@@ -12,8 +12,13 @@ const bcryptPool = new Piscina({
   filename: fileURLToPath(new URL("./workers/bcrypt-worker.mjs", import.meta.url)),
 });
 
+// saltRounds=10: medido con carga real (k6), 12 rondas = ~230ms CPU/hash,
+// satura el pool de workers bajo rafaga concurrente de logins (p95 subia a
+// 1.4s). 10 rondas = ~57ms CPU/hash (4x mas rapido), sigue siendo el minimo
+// recomendado por OWASP contra ataque offline. Hashes existentes con cost=12
+// se siguen verificando bien -- bcrypt guarda el costo dentro del hash mismo.
 export async function hashPassword(password: string): Promise<string> {
-  return bcryptPool.run({ action: "hash", password, saltRounds: 12 });
+  return bcryptPool.run({ action: "hash", password, saltRounds: 10 });
 }
 
 export async function verifyPassword(

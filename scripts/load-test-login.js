@@ -45,8 +45,35 @@ export function login() {
   sleep(1);
 }
 
+// No confiar en una bandera de modulo para saber si "ya hay sesion" -- entre
+// iteraciones de una misma VU el estado de esa bandera puede desincronizarse
+// del cookie jar real (se vio en la practica: la bandera decia sesion
+// establecida pero el jar ya no traia la cookie, dando 401 "No autenticado").
+// La fuente de verdad es el jar mismo: se pregunta en cada iteracion si ya
+// tiene la cookie de sesion antes de decidir si hace falta login.
+function tieneSesion() {
+  const cookies = http.cookieJar().cookiesForURL(BASE_URL);
+  return Object.prototype.hasOwnProperty.call(cookies, "casa_cultura_session");
+}
+
 export function readDashboard() {
-  const res = http.get(`${BASE_URL}/api/trpc/servidores.estadisticas`);
-  check(res, { "dashboard status 200 or 401": (r) => r.status === 200 || r.status === 401 });
+  if (!tieneSesion()) {
+    const idx = (__VU - 1) % 300;
+    const curp = `PWTS900101HDF${String(idx).padStart(3, "0")}01`;
+    const loginRes = http.post(
+      `${BASE_URL}/api/trpc/auth.login`,
+      JSON.stringify({ json: { curp, password: "LoadTest12345" } }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+    if (loginRes.status !== 200) {
+      sleep(1);
+      return;
+    }
+  }
+  // servidores.estadisticas es admin-only (403 para role=user, que es el rol
+  // real de los usuarios sembrados aqui) -- perfil.obtener es lo que de
+  // verdad lee un servidor publico al entrar a /portal.
+  const res = http.get(`${BASE_URL}/api/trpc/perfil.obtener`);
+  check(res, { "portal status 200": (r) => r.status === 200 });
   sleep(1);
 }

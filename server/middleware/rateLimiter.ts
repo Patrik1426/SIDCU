@@ -1,11 +1,24 @@
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request } from "express";
+import { verifyToken } from "../auth";
+import { COOKIE_NAME } from "../../shared/const";
+
+// Con sesion, la key es la cuenta (userId) -- cada usuario tiene su propio
+// presupuesto, sin importar cuantos compartan la misma IP/NAT de oficina.
+// Sin sesion (aun no logueado), cae a IP como respaldo -- ese trafico es
+// minimo (solo llamadas publicas antes de login) y sigue protegido.
+export function keyPorCuentaOIp(req: Request): string {
+  const token = req.cookies?.[COOKIE_NAME];
+  const user = token ? verifyToken(token) : null;
+  return user ? `user:${user.id}` : ipKeyGenerator(req.ip ?? "unknown");
+}
 
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  max: 800,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: keyPorCuentaOIp,
   message: { error: "Demasiadas solicitudes. Intente de nuevo en unos minutos." },
 });
 
@@ -35,13 +48,27 @@ export const authLimiter = rateLimit({
 
 // Capa 2: respaldo por IP contra abuso de volumen bruto (ej. enumeracion de
 // CURPs validos probando muchas cuentas distintas desde una sola maquina).
-// Techo alto a proposito -- no debe frenar trafico normal de oficina
-// compartiendo NAT, solo volumen fuera de cualquier rango razonable.
+// La defensa real contra fuerza bruta es authLimiter (por CURP); esta capa
+// solo debe frenar volumen fuera de cualquier rango razonable, nunca trafico
+// legitimo.
+//
+// Techo alto (no 150): express-rate-limit incrementa el contador de forma
+// SINCRONA al llegar cada request y decide bloquear con ESE conteo antes de
+// saber si la request tendra exito -- el decremento de skipSuccessfulRequests
+// llega despues, de forma asincrona, cuando la respuesta termina. Bajo una
+// rafaga concurrente real (ej. 20+ empleados iniciando sesion casi al mismo
+// tiempo a las 9am), muchas requests se cuentan TODAS antes de que ninguna
+// termine -- un techo de 150 se agota por la rafaga instantanea, no por
+// volumen sostenido, y los 429 resultantes nunca se "perdonan" (no son
+// exitosos), quedandose pegados los 15 minutos completos. skipSuccessfulRequests
+// sigue siendo correcto para trafico sostenido, pero no alcanza para
+// proteger de una rafaga concurrente -- el techo debe ser generoso de por si.
 export const authIpBackstopLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 150,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { error: "Demasiadas solicitudes desde esta red. Intente de nuevo en 15 minutos." },
 });
 
