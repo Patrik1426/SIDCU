@@ -48,8 +48,15 @@ sin que nadie se dé cuenta.
 Pasos:
 1. Crear sitio en el dashboard de Cloudflare Turnstile (gratis).
 2. Poner `TURNSTILE_SECRET_KEY` (server, secreta) y
-   `VITE_TURNSTILE_SITE_KEY` (client, pública) en el `.env` de producción.
-3. Confirmar en logs de arranque que no aparece el warning
+   `VITE_TURNSTILE_SITE_KEY` (client, pública) en Railway → servicio →
+   pestaña **Variables** (igual que `DATABASE_URL`/`JWT_SECRET`, nunca en
+   el repo).
+3. **Ojo con el orden en Railway:** `VITE_TURNSTILE_SITE_KEY` la incrusta
+   Vite en el build del cliente en tiempo de compilación, no en runtime.
+   Tiene que estar puesta en Railway **antes** de que corra `pnpm build`
+   — si se agrega después de un build ya hecho, hay que forzar un
+   redeploy/rebuild para que quede incrustada.
+4. Confirmar en logs de arranque que no aparece el warning
    `[turnstile] TURNSTILE_SECRET_KEY no configurada`.
 
 ## 3. Verificar DATABASE_URL / variables de entorno de producción
