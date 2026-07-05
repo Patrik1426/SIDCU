@@ -6,25 +6,7 @@ Documento vivo. Cada entrada: qué es, por qué importa, cómo se detectó, cóm
 
 ## 🔴 Alta prioridad
 
-### 1. Rate-limiter por IP bloqueará usuarios reales en carga masiva
-
-**Qué es:** `server/middleware/rateLimiter.ts` — `authLimiter` (20 requests/15min en `/api/trpc/auth.login`) y `generalLimiter` (500 requests/15min en todo `/api/trpc`) están **keyed por IP de origen** (default de `express-rate-limit`, sin `keyGenerator` custom). Confirmado en `server/index.ts:58` (orden de montaje: `authLimiter` antes que `generalLimiter`).
-
-**Por qué importa:** Si varios servidores públicos comparten salida a internet (NAT de oficina de gobierno — escenario típico), todos cuentan como una sola IP. El usuario #21 que intenta loguearse en la misma ventana de 15 minutos recibe `429 "Demasiados intentos de acceso"` sin importar que sea una persona distinta con credenciales válidas. Arreglar el cuello de botella de CPU en bcrypt (ver sección "Resuelto") no sirve de nada si el rate-limiter bloquea antes de llegar ahí.
-
-**Cómo se detectó:** Load test con k6 (`scripts/load-test-login.js`) corrido desde una sola máquina/IP — de ~300-500 logins intentados, solo 20 pasaron el rate-limiter (el resto recibió 429 en milisegundos, lo cual además *infló artificialmente* el p95 medido, haciendo parecer que el sistema aguanta más de lo que realmente se probó). Ver `.superpowers/sdd/task-3-report.md` para el análisis completo con matemática verificada (20 + 480 = exactamente los topes configurados, no coincidencia).
-
-**Opciones para resolver (pendiente decisión de negocio, no es un fix mecánico):**
-- Key por CURP en vez de (o además de) IP — pero abre puerta a que un atacante rote CURPs si no hay control adicional.
-- Exceptuar/subir el límite para rangos de IP conocidos de oficina (requiere saber esas IPs de antemano — frágil si cambian).
-- Límite por cuenta individual (ej. Redis con contador por `userId` tras el primer intento fallido) en vez de límite ciego pre-autenticación por IP.
-- Subir el límite general (ej. 20 → 200) asumiendo que el riesgo de fuerza bruta es bajo para este tipo de sistema interno — más simple, menos seguro.
-
-**Estado:** Sin resolver. Reportado explícitamente al usuario 2026-07-03, decisión pendiente.
-
----
-
-### 2. `exportarTodos` trunca silenciosamente a 10,000 filas
+### 1. `exportarTodos` trunca silenciosamente a 10,000 filas
 
 **Qué es:** `server/routers/servidores.ts` → `exportarTodos` llama `listarServidores({ ...input, page: 1, limit: 10000 })`. Es un límite fijo, no hay aviso al usuario si se excede.
 
@@ -40,7 +22,7 @@ Documento vivo. Cada entrada: qué es, por qué importa, cómo se detectó, cóm
 
 ## 🟡 Media prioridad
 
-### 3. `db.ts` concentra queries de 6 dominios distintos (764+ líneas)
+### 2. `db.ts` concentra queries de 6 dominios distintos (764+ líneas)
 
 **Qué es:** `server/db.ts` es un archivo único con funciones de acceso a datos para usuarios, servidores públicos, auditoría, cursos, instituciones y solicitudes — todos mezclados.
 
@@ -54,7 +36,7 @@ Documento vivo. Cada entrada: qué es, por qué importa, cómo se detectó, cóm
 
 ---
 
-### 4. Choque de tipos `Pool` en `server/db.ts` (1 error de `tsc`)
+### 3. Choque de tipos `Pool` en `server/db.ts` (1 error de `tsc`)
 
 **Qué es:** `let db: ReturnType<typeof drizzle> | null` (sin generic) no coincide con el tipo real que devuelve `drizzle(pool, { schema, mode: "default" })` — TS reporta `Type 'Pool' is missing the following properties from type 'Pool': promise, [Symbol.dispose]`, es decir dos declaraciones de tipo `Pool` distintas (probablemente dos copias de `mysql2`/`@types` en el árbol de `pnpm`).
 
@@ -80,7 +62,7 @@ Documento vivo. Cada entrada: qué es, por qué importa, cómo se detectó, cóm
 
 ### ✅ Cuello de botella de CPU en login — bcrypt en el hilo principal (2026-07-03)
 
-`bcryptjs` (JS puro, sin bindings nativos) a factor de costo 12, corriendo en el hilo principal de un proceso Node de un solo hilo — serializaba comparaciones de password bajo un burst de logins. Corregido: `bcrypt` nativo + pool `piscina` de worker threads, mismo proceso (sin `cluster`, sin romper el estado en memoria del rate-limiter/circuit-breaker). p95 medido: 397ms bajo la carga real que sí pasó el rate-limiter (ver deuda #1 arriba — la medición completa a 300-500 usuarios sigue pendiente hasta resolver el rate-limiter). Ver `docs/superpowers/plans/2026-07-03-login-scale-readiness.md`.
+`bcryptjs` (JS puro, sin bindings nativos) a factor de costo 12, corriendo en el hilo principal de un proceso Node de un solo hilo — serializaba comparaciones de password bajo un burst de logins. Corregido: `bcrypt` nativo + pool `piscina` de worker threads, mismo proceso (sin `cluster`, sin romper el estado en memoria del rate-limiter/circuit-breaker). p95 medido: 397ms bajo la carga real que sí pasó el rate-limiter de aquel momento (20/15min por IP — ver rediseño del rate-limiter más abajo en 🟢 Resuelto; la medición completa a 300-500 usuarios con el rate-limiter ya corregido sigue pendiente de repetirse). Ver `docs/superpowers/plans/2026-07-03-login-scale-readiness.md`.
 
 ### ✅ Queries sin límite en `listarCursos`/`listarInstituciones` (2026-07-03)
 
@@ -97,6 +79,15 @@ Causa raíz de la inmensa mayoría de los `TS18047 'd' is possibly null'` repart
 ### ✅ Health-check `/api/health` siempre reportaba "disconnected" (2026-07-04)
 
 `server/index.ts` pasaba una `Promise` sin resolver a `d.execute()` (`d.execute(import("drizzle-orm").then(m => m.sql\`SELECT 1\`))`), en vez de resolver `sql` primero y ejecutar el query ya construido. El `SELECT 1` nunca corría de verdad — el endpoint caía siempre al `catch` y reportaba la DB como desconectada sin importar su estado real. Encontrado de rebote al perseguir el error de `tsc` que señalaba el bug de tipos (`Promise<SQL<unknown>>` no es `string | SQLWrapper`). Corregido resolviendo `sql` antes de construir el query.
+
+### ✅ Rate-limiter de login/registro rediseñado: por CURP, no por IP (2026-07-04)
+
+`authLimiter` estaba keyed por IP (default de `express-rate-limit`) — cualquier oficina compartiendo NAT topaba el límite (20/15min) entre todos sus empleados, sin importar que fueran cuentas distintas con credenciales válidas. Rediseño de dos capas:
+
+- **Capa 1 (`authLimiter`):** key = CURP normalizado (extraído del body de la llamada tRPC, incluso batched con superjson — `extraerCurp()` en `server/middleware/rateLimiter.ts`), 8 intentos/15min, `skipSuccessfulRequests: true` (solo cuentan los fallos, un login exitoso no gasta el margen de nadie). Ataca el problema real: fuerza bruta contra UNA cuenta, sin importar la IP de origen.
+- **Capa 2 (`authIpBackstopLimiter`):** key = IP (con `ipKeyGenerator` de `express-rate-limit` v8 para normalizar IPv6), techo alto (150/15min) — respaldo contra enumeración de CURPs válidos en volumen desde una sola máquina, no contra tráfico normal de oficina.
+
+Se descartó lockout permanente de cuenta (sin 2FA ni recuperación por email funcional, sería un vector de DoS: cualquiera tumba la cuenta de otro fallando su CURP a propósito) y descartar el límite por IP por completo (un dispositivo comprometido dentro de la oficina podría entonces hacer fuerza bruta sin ningún freno). Tests: `server/rateLimiter.test.ts` (7 tests, cubre `extraerCurp` con body directo, batched, sin body, sin curp reconocible, normalización).
 
 ---
 

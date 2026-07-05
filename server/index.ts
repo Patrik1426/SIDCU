@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext } from "./middleware/auth";
-import { generalLimiter, authLimiter } from "./middleware/rateLimiter";
+import { generalLimiter, authLimiter, authIpBackstopLimiter } from "./middleware/rateLimiter";
 
 const app = express();
 // Railway (y la mayoría de PaaS) ponen la app detrás de un solo proxy reverso.
@@ -56,8 +56,8 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-app.use("/api/trpc/auth.login", authLimiter);
-app.use("/api/trpc/auth.register", authLimiter);
+app.use("/api/trpc/auth.login", authIpBackstopLimiter, authLimiter);
+app.use("/api/trpc/auth.register", authIpBackstopLimiter, authLimiter);
 
 app.use("/api/trpc", generalLimiter);
 
