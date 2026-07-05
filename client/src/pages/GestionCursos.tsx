@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import ConfirmModal from "@/components/ConfirmModal";
-import ComboInput from "@/components/ComboInput";
 import { SkeletonCard, SkeletonTable } from "@/components/Skeleton";
 import {
   Plus,
@@ -19,6 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
+import { TIPO_PROGRAMA_LABELS, FINALIDAD_POR_TIPO_PROGRAMA } from "@shared/const";
 
 const stagger = {
   hidden: {},
@@ -50,7 +50,7 @@ function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaF
 // necesita presencial/mixto de nuevo, se reactiva el <select> abajo
 // (misma logica que se aplico a horario/cupo).
 const MODALIDAD_DEFAULT = "virtual";
-const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC"];
+const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC", "OTRO"];
 
 type ModalState =
   | { type: "closed" }
@@ -139,7 +139,6 @@ export default function GestionCursos() {
   const grupoActivo = grupos.find((g) => g.key === bloqueActivo);
   const cursosDelBloque = grupoActivo?.cursos ?? [];
   const { data: instituciones } = trpc.instituciones.listar.useQuery({ soloActivas: true });
-  const { data: finalidades } = trpc.cursos.listarFinalidades.useQuery();
 
   // Fetch course details when editing
   const { data: cursoDetalle } = trpc.cursos.obtener.useQuery(
@@ -250,7 +249,9 @@ export default function GestionCursos() {
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
       tipoPrograma: form.tipoPrograma as "PAC" | "CERT" | "SDPC" | "OTRO",
       bloque: form.bloque ? Number(form.bloque) : undefined,
-      finalidad: form.finalidad || undefined,
+      // finalidad siempre se deriva de tipoPrograma -- el backend la
+      // recalcula igual, se manda por consistencia si algun consumidor la lee.
+      finalidad: FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? undefined,
     };
     if (modal.type === "create") {
       await crearMut.mutateAsync(payload as any);
@@ -284,6 +285,8 @@ export default function GestionCursos() {
     };
     return map[m] ?? "bg-slate-50 text-slate-600";
   };
+
+  const tipoProgramaLabel = (t: string) => TIPO_PROGRAMA_LABELS[t] ?? t;
 
   const inputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none transition-all focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
@@ -437,7 +440,7 @@ export default function GestionCursos() {
                     {curso.duracionHoras}h
                   </span>
                   <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-micro font-semibold text-slate-500">
-                    {curso.tipoPrograma}
+                    {tipoProgramaLabel(curso.tipoPrograma)}
                   </span>
                 </div>
 
@@ -507,7 +510,7 @@ export default function GestionCursos() {
                     </td>
                     <td className="px-3 py-2.5 font-medium text-slate-800 max-w-62.5 truncate">{curso.nombre}</td>
                     <td className="px-3 py-2.5">
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{curso.tipoPrograma}</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{tipoProgramaLabel(curso.tipoPrograma)}</span>
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${modalidadColor(curso.modalidad)}`}>{modalidadLabel(curso.modalidad)}</span>
@@ -615,13 +618,15 @@ export default function GestionCursos() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Tipo de Programa</label>
-                  <ComboInput
+                  <select
                     value={form.tipoPrograma}
-                    onChange={(v) => setForm({ ...form, tipoPrograma: v })}
-                    options={TIPOS_PROGRAMA}
+                    onChange={(e) => setForm({ ...form, tipoPrograma: e.target.value })}
                     className={inputClass}
-                    placeholder="PAC, CERT, SDPC..."
-                  />
+                  >
+                    {TIPOS_PROGRAMA.map((t) => (
+                      <option key={t} value={t}>{tipoProgramaLabel(t)}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Bloque</label>
@@ -650,13 +655,9 @@ export default function GestionCursos() {
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-500">Finalidad</label>
-                <ComboInput
-                  value={form.finalidad}
-                  onChange={(v) => setForm({ ...form, finalidad: v })}
-                  options={finalidades ?? []}
-                  className={inputClass}
-                  placeholder="Finalidad del curso (opcional)"
-                />
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
+                  {FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? "Sin finalidad predeterminada para OTRO"}
+                </p>
               </div>
 
               <div className="flex gap-3 border-t border-slate-100 pt-4">
@@ -785,7 +786,7 @@ export default function GestionCursos() {
           camposHeredables={[
             "bloque",
             "institucionResponsable",
-            "finalidad",
+            "tipoPrograma",
             "fechaInicio",
             "fechaTermino",
             "horarioTexto",
@@ -799,7 +800,7 @@ export default function GestionCursos() {
             { key: "numero", label: "No.", ejemplo: "1" },
             { key: "nombre", label: "Nombre del Curso", ejemplo: "Ética en el servicio público" },
             { key: "institucionResponsable", label: "Institución Responsable", ejemplo: "INAP" },
-            { key: "finalidad", label: "Finalidad", ejemplo: "Fortalecer valores institucionales" },
+            { key: "tipoPrograma", label: "Tipo de Programa (PAC, SPC, SDPC)", ejemplo: "PAC" },
             { key: "fechaInicio", label: "Fecha de Inicio", ejemplo: "2026-03-01" },
             { key: "fechaTermino", label: "Fecha de Término", ejemplo: "2026-03-15" },
             { key: "horarioTexto", label: "Horario", ejemplo: "09:00 - 13:00" },

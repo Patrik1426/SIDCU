@@ -5,6 +5,23 @@ export const NIVELES = ["federal", "estatal", "municipal", "otro"] as const;
 export const CALIFICACION_APROBATORIA = 70;
 export const CURSOS_REQUERIDOS_ACREDITACION = 2;
 
+// La finalidad de un curso se deriva siempre de su tipoPrograma -- no se
+// captura por separado en ningun flujo (form manual ni importacion CSV).
+// El valor del enum en DB sigue siendo "CERT" (no se toca el schema); el
+// nombre visible para el usuario es "SPC".
+export const TIPO_PROGRAMA_LABELS: Record<string, string> = {
+  PAC: "PAC",
+  CERT: "SPC",
+  SDPC: "SDPC",
+  OTRO: "Otro",
+};
+
+export const FINALIDAD_POR_TIPO_PROGRAMA: Record<string, string> = {
+  PAC: "Actualizar, Desarrollar, Sensibilizar, Fortalecer",
+  CERT: "Certificar",
+  SDPC: "FACTOR FCAP (Factor Formación, Capacitación y Actualización Profesional)",
+};
+
 export const CATALOGO_ESTUDIOS = [
   "SIN ESTUDIOS",
   "PRIMARIA INCOMPLETA",

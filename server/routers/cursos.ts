@@ -12,10 +12,10 @@ import {
   asignarCursoInstitucion,
   eliminarCursoInstitucion,
   obtenerPerfil,
-  listarFinalidadesCursos,
   buscarCursoPorNombre,
   obtenerInstitucionPredeterminada,
 } from "../db";
+import { FINALIDAD_POR_TIPO_PROGRAMA } from "../../shared/const";
 
 const cursoInput = z.object({
   nombre: z.string().min(2, "Nombre requerido"),
@@ -70,11 +70,6 @@ export const cursosRouter = router({
       return { ...curso, instituciones };
     }),
 
-  // Catálogos de valores ya usados, para evitar nombres/finalidades distintas para lo mismo
-  listarFinalidades: adminProcedure.query(async () => {
-    return listarFinalidadesCursos();
-  }),
-
   crear: adminProcedure
     .input(cursoInput)
     .mutation(async ({ ctx, input }) => {
@@ -82,6 +77,9 @@ export const cursosRouter = router({
         ...input,
         descripcion: input.descripcion ?? null,
         nivelGobierno: input.nivelGobierno ?? null,
+        // La finalidad siempre se deriva de tipoPrograma -- no se acepta
+        // como dato independiente, evita inconsistencia entre ambos.
+        finalidad: FINALIDAD_POR_TIPO_PROGRAMA[input.tipoPrograma] ?? null,
         creadoPor: ctx.user.id,
       });
       return { success: true, id };
@@ -91,6 +89,11 @@ export const cursosRouter = router({
     .input(z.object({ id: z.number() }).merge(cursoInput.partial()))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
+      // Si esta actualizacion trae tipoPrograma, la finalidad se recalcula
+      // junto con el; si no viene, se deja intacta la finalidad ya guardada.
+      if (data.tipoPrograma) {
+        data.finalidad = FINALIDAD_POR_TIPO_PROGRAMA[data.tipoPrograma] ?? null;
+      }
       await actualizarCurso(id, data);
       return { success: true };
     }),
@@ -211,7 +214,11 @@ export const cursosRouter = router({
           ? nombreRaw.charAt(0).toUpperCase() + nombreRaw.slice(1).toLowerCase()
           : nombreRaw || "Por definir";
 
-        const tipoProgramaRaw = quitarAcentos((row.tipoPrograma || "").toString().trim().toUpperCase());
+        // "SPC" es el nombre visible para el usuario del valor de enum "CERT"
+        // (no se toca el schema/DB, solo se acepta el alias en el CSV).
+        const tipoProgramaCrudo = quitarAcentos((row.tipoPrograma || "").toString().trim().toUpperCase());
+        const tipoProgramaRaw = tipoProgramaCrudo === "SPC" ? "CERT" : tipoProgramaCrudo;
+        const tipoPrograma = ["PAC", "CERT", "SDPC"].includes(tipoProgramaRaw) ? tipoProgramaRaw : "OTRO";
 
         // Todos los cursos son virtuales (decision de negocio) -- se ignora
         // cualquier valor de modalidad que traiga el CSV.
@@ -231,11 +238,11 @@ export const cursosRouter = router({
           categoria: texto(row.categoria, "obligatorio"),
           duracionHoras: soloDigitos(row.duracionHoras) ?? 20,
           modalidad,
-          tipoPrograma: ["PAC", "CERT", "SDPC"].includes(tipoProgramaRaw) ? tipoProgramaRaw : "OTRO",
+          tipoPrograma,
           bloque: soloDigitos(row.bloque),
           numero: soloDigitos(row.numero),
           institucionResponsable: texto(row.institucionResponsable),
-          finalidad: texto(row.finalidad),
+          finalidad: FINALIDAD_POR_TIPO_PROGRAMA[tipoPrograma] ?? null,
           fechaInicio: parseFechaDDMMYYYY(row.fechaInicio),
           fechaTermino: parseFechaDDMMYYYY(row.fechaTermino),
           horarioTexto: texto(row.horarioTexto),

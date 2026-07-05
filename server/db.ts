@@ -623,13 +623,6 @@ export async function eliminarCurso(id: number) {
   });
 }
 
-// Catálogo de finalidades ya usadas, para evitar nombres distintos para lo mismo
-export async function listarFinalidadesCursos() {
-  const d = await getDb();
-  const rows = await d.selectDistinct({ finalidad: schema.cursos.finalidad }).from(schema.cursos);
-  return (rows.map((r) => r.finalidad).filter(Boolean) as string[]).sort();
-}
-
 export async function buscarCursoPorNombre(nombre: string) {
   const d = await getDb();
   const [curso] = await d.select({ id: schema.cursos.id }).from(schema.cursos)
