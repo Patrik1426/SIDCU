@@ -1,4 +1,4 @@
-# Deuda Técnica — SIGECAP
+# Deuda Técnica — SIDCU (Sistema Informático de SPDC)
 
 Documento vivo. Cada entrada: qué es, por qué importa, cómo se detectó, cómo se soluciona. Se actualiza conforme se detecta o se resuelve deuda — no es un log histórico, es el estado actual.
 
