@@ -18,7 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
-import { TIPO_PROGRAMA_LABELS, FINALIDAD_POR_TIPO_PROGRAMA } from "@shared/const";
+import { TIPO_PROGRAMA_LABELS, FINALIDAD_POR_TIPO_PROGRAMA, FINALIDADES_PAC } from "@shared/const";
 
 const stagger = {
   hidden: {},
@@ -249,9 +249,10 @@ export default function GestionCursos() {
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
       tipoPrograma: form.tipoPrograma as "PAC" | "CERT" | "SDPC" | "OTRO",
       bloque: form.bloque ? Number(form.bloque) : undefined,
-      // finalidad siempre se deriva de tipoPrograma -- el backend la
-      // recalcula igual, se manda por consistencia si algun consumidor la lee.
-      finalidad: FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? undefined,
+      // El backend resuelve/valida la finalidad final segun tipoPrograma
+      // (fija para SPC/SDPC, una de las 4 opciones para PAC) -- aqui solo
+      // se manda lo que el usuario eligio/ve en pantalla.
+      finalidad: form.finalidad || undefined,
     };
     if (modal.type === "create") {
       await crearMut.mutateAsync(payload as any);
@@ -655,9 +656,21 @@ export default function GestionCursos() {
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-500">Finalidad</label>
-                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
-                  {FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? "Sin finalidad predeterminada para OTRO"}
-                </p>
+                {form.tipoPrograma === "PAC" ? (
+                  <select
+                    value={FINALIDADES_PAC.includes(form.finalidad as any) ? form.finalidad : FINALIDADES_PAC[0]}
+                    onChange={(e) => setForm({ ...form, finalidad: e.target.value })}
+                    className={inputClass}
+                  >
+                    {FINALIDADES_PAC.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
+                    {FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? "Sin finalidad predeterminada para OTRO"}
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-3 border-t border-slate-100 pt-4">
@@ -787,6 +800,7 @@ export default function GestionCursos() {
             "bloque",
             "institucionResponsable",
             "tipoPrograma",
+            "finalidad",
             "fechaInicio",
             "fechaTermino",
             "horarioTexto",
@@ -801,6 +815,7 @@ export default function GestionCursos() {
             { key: "nombre", label: "Nombre del Curso", ejemplo: "Ética en el servicio público" },
             { key: "institucionResponsable", label: "Institución Responsable", ejemplo: "INAP" },
             { key: "tipoPrograma", label: "Tipo de Programa (PAC, SPC, SDPC)", ejemplo: "PAC" },
+            { key: "finalidad", label: "Finalidad (solo aplica a PAC: Actualizar/Desarrollar/Sensibilizar/Fortalecer)", ejemplo: "Fortalecer" },
             { key: "fechaInicio", label: "Fecha de Inicio", ejemplo: "2026-03-01" },
             { key: "fechaTermino", label: "Fecha de Término", ejemplo: "2026-03-15" },
             { key: "horarioTexto", label: "Horario", ejemplo: "09:00 - 13:00" },

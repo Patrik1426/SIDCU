@@ -15,7 +15,20 @@ import {
   buscarCursoPorNombre,
   obtenerInstitucionPredeterminada,
 } from "../db";
-import { FINALIDAD_POR_TIPO_PROGRAMA } from "../../shared/const";
+import { FINALIDAD_POR_TIPO_PROGRAMA, FINALIDADES_PAC } from "../../shared/const";
+
+// SPC/SDPC: finalidad fija segun catalogo. PAC: cada curso trae la suya
+// (una de las 4 de FINALIDADES_PAC) -- se respeta lo que venga si es una
+// coincidencia valida, si no cae a la primera opcion como default seguro.
+function resolverFinalidad(tipoPrograma: string, finalidadEntrante: string | null | undefined): string | null {
+  if (tipoPrograma === "PAC") {
+    const match = FINALIDADES_PAC.find(
+      (f) => f.toLowerCase() === (finalidadEntrante ?? "").toString().trim().toLowerCase(),
+    );
+    return match ?? FINALIDADES_PAC[0];
+  }
+  return FINALIDAD_POR_TIPO_PROGRAMA[tipoPrograma] ?? null;
+}
 
 const cursoInput = z.object({
   nombre: z.string().min(2, "Nombre requerido"),
@@ -77,9 +90,7 @@ export const cursosRouter = router({
         ...input,
         descripcion: input.descripcion ?? null,
         nivelGobierno: input.nivelGobierno ?? null,
-        // La finalidad siempre se deriva de tipoPrograma -- no se acepta
-        // como dato independiente, evita inconsistencia entre ambos.
-        finalidad: FINALIDAD_POR_TIPO_PROGRAMA[input.tipoPrograma] ?? null,
+        finalidad: resolverFinalidad(input.tipoPrograma, input.finalidad),
         creadoPor: ctx.user.id,
       });
       return { success: true, id };
@@ -92,7 +103,7 @@ export const cursosRouter = router({
       // Si esta actualizacion trae tipoPrograma, la finalidad se recalcula
       // junto con el; si no viene, se deja intacta la finalidad ya guardada.
       if (data.tipoPrograma) {
-        data.finalidad = FINALIDAD_POR_TIPO_PROGRAMA[data.tipoPrograma] ?? null;
+        data.finalidad = resolverFinalidad(data.tipoPrograma, data.finalidad);
       }
       await actualizarCurso(id, data);
       return { success: true };
@@ -242,7 +253,7 @@ export const cursosRouter = router({
           bloque: soloDigitos(row.bloque),
           numero: soloDigitos(row.numero),
           institucionResponsable: texto(row.institucionResponsable),
-          finalidad: FINALIDAD_POR_TIPO_PROGRAMA[tipoPrograma] ?? null,
+          finalidad: resolverFinalidad(tipoPrograma, texto(row.finalidad)),
           fechaInicio: parseFechaDDMMYYYY(row.fechaInicio),
           fechaTermino: parseFechaDDMMYYYY(row.fechaTermino),
           horarioTexto: texto(row.horarioTexto),
