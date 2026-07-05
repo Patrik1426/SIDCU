@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import { hashPassword, verifyPassword, generateToken } from "./auth";
+import { verificarTurnstile } from "./turnstile";
 import { capitalizarNombre } from "../shared/utils";
 import {
   getUserByEmail,
@@ -32,9 +33,18 @@ const authRouter = router({
         curp: z.string().min(18, "CURP debe tener 18 caracteres").max(18),
         nombre: z.string().min(2, "Nombre requerido"),
         password: z.string().min(8, "Mínimo 8 caracteres"),
+        turnstileToken: z.string().min(1, "Verificación de seguridad requerida"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const turnstileOk = await verificarTurnstile(input.turnstileToken, ctx.req.ip);
+      if (!turnstileOk) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Verificación de seguridad fallida. Intenta de nuevo.",
+        });
+      }
+
       const curp = input.curp.toUpperCase();
       const existingUser = await getUserByCurp(curp);
       if (existingUser) {

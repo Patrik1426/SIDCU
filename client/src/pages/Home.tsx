@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, ArrowRight, Eye, EyeOff } from "lucide-react";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
 export default function Home() {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -332,12 +332,9 @@ function LoginForm({ onSwitchTab }: { onSwitchTab: () => void }) {
           />
           Recordarme
         </label>
-        <Link
-          href="/recuperar-contrasena"
-          className="text-caption font-semibold text-primary-500 hover:text-primary-600 transition-colors"
-        >
-          ¿Olvidaste tu contraseña?
-        </Link>
+        {/* "Olvidaste tu contraseña" oculto: no hay correo remitente para enviar
+            el token de recuperacion. Reactivar cuando exista ese envio.
+            Mientras tanto, un admin reasigna la contraseña desde Usuarios. */}
       </div>
 
       <SubmitButton loading={loading}>
@@ -361,6 +358,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [nombre, setNombre] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -383,9 +381,13 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       setError("Las contraseñas no coinciden");
       return;
     }
+    if (!turnstileToken) {
+      setError("Completa la verificación de seguridad");
+      return;
+    }
     setLoading(true);
     try {
-      await register({ curp: curp.toUpperCase(), nombre: nombre.trim(), password });
+      await register({ curp: curp.toUpperCase(), nombre: nombre.trim(), password, turnstileToken });
       onSuccess();
     } catch (err: any) {
       const msg = err.message ?? "";
@@ -449,6 +451,8 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           placeholder="Repetir"
         />
       </div>
+
+      <TurnstileWidget onVerify={setTurnstileToken} />
 
       <SubmitButton loading={loading}>
         Crear cuenta

@@ -37,22 +37,27 @@ LEFT JOIN cursos c ON sc.curso_id = c.id
 WHERE c.id IS NULL;
 ```
 
-## 2. Rate-limiter por IP (pendiente de decisión de negocio)
+## 2. Configurar llaves de Cloudflare Turnstile (CAPTCHA en registro)
 
-**Por qué:** `authLimiter` y `generalLimiter` (`express-rate-limit`) usan
-la IP de origen como key. Varios servidores públicos detrás del mismo NAT
-de oficina comparten IP — el límite actual (20 req/15min para login)
-puede bloquear usuarios legítimos en un login burst real de oficina.
+**Por qué:** el registro público (`auth.register`) ahora exige un token de
+Turnstile válido. Sin `TURNSTILE_SECRET_KEY` en el servidor, el código
+**omite la verificación** (para no romper desarrollo local) — si esto
+llega a producción sin la llave puesta, el registro queda sin CAPTCHA real,
+sin que nadie se dé cuenta.
 
-Ver detalle y opciones en `DEUDA_TECNICA.md` (sección 🔴 alta prioridad).
-Requiere decisión de negocio antes de tocar código (¿key por CURP?
-¿exentar rango de IP de oficinas?).
+Pasos:
+1. Crear sitio en el dashboard de Cloudflare Turnstile (gratis).
+2. Poner `TURNSTILE_SECRET_KEY` (server, secreta) y
+   `VITE_TURNSTILE_SITE_KEY` (client, pública) en el `.env` de producción.
+3. Confirmar en logs de arranque que no aparece el warning
+   `[turnstile] TURNSTILE_SECRET_KEY no configurada`.
 
 ## 3. Verificar DATABASE_URL / variables de entorno de producción
 
 Confirmar `.env` de producción antes del primer deploy real:
 `DATABASE_URL`, `JWT_SECRET` (cambiar el de desarrollo), `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`.
+`AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`,
+`TURNSTILE_SECRET_KEY`, `VITE_TURNSTILE_SITE_KEY`.
 
 ## 4. exportarTodos trunca en 10,000 filas
 
