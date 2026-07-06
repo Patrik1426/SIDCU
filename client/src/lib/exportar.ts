@@ -39,10 +39,14 @@ interface ServidorExport {
 
 function formatFecha(date: string | Date): string {
   const d = new Date(date);
+  // timeZone: "UTC" -- fechaIngreso es fecha de calendario pura guardada
+  // como medianoche UTC, sin esto se desfasa un dia segun la timezone del
+  // navegador (mismo bug que fechaInicio/fechaFin de cursos, ver server/db.ts).
   return d.toLocaleDateString("es-MX", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
