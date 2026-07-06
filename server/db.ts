@@ -396,7 +396,7 @@ export async function listarUasDistintas() {
 
 export async function getServidoresStats() {
   const d = await getDb();
-  const [byEstatus, byNivel, byGrupo, totalResult, byDependencia, byMes, solicitudesPendientesResult] = await Promise.all([
+  const [byEstatus, byNivel, byGrupo, totalResult, byDependencia, byMes, solicitudesActivasResult] = await Promise.all([
     d
       .select({
         estatus: schema.servidoresPublicos.estatus,
@@ -443,10 +443,15 @@ export async function getServidoresStats() {
       .groupBy(sql`DATE_FORMAT(created_at, '%Y-%m')`)
       .orderBy(sql`DATE_FORMAT(created_at, '%Y-%m') ASC`)
       .limit(12),
+    // "pendiente" nunca ocurre en la practica -- la inscripcion es directa
+    // (crearSolicitudConAsignacion siempre inserta estado "aprobada").
+    // "aprobada" = en curso, todavia sin calificar (calificacion se pone
+    // junto con el cambio a "completada" en solicitudes.ts) -- es la cola
+    // real de trabajo del admin, no un contador que nunca se mueve.
     d
       .select({ count: sql<number>`count(*)` })
       .from(schema.solicitudesCurso)
-      .where(eq(schema.solicitudesCurso.estado, "pendiente")),
+      .where(eq(schema.solicitudesCurso.estado, "aprobada")),
   ]);
 
   return {
@@ -456,7 +461,7 @@ export async function getServidoresStats() {
     byGrupo,
     byDependencia,
     byMes,
-    solicitudesPendientes: solicitudesPendientesResult[0]?.count ?? 0,
+    solicitudesActivas: solicitudesActivasResult[0]?.count ?? 0,
   };
 }
 

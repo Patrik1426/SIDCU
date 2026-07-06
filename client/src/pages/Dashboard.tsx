@@ -204,8 +204,8 @@ export default function Dashboard() {
           gradient="bg-gradient-to-br from-rose-500 to-rose-600 shadow-rose-500/25"
         />
         <StatCard
-          label="Sol. Pendientes"
-          value={stats?.solicitudesPendientes ?? 0}
+          label="Sol. Activas"
+          value={stats?.solicitudesActivas ?? 0}
           icon={Building2}
           gradient="bg-gradient-to-br from-accent-500 to-accent-600 shadow-accent-500/25"
         />
