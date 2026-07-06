@@ -299,9 +299,14 @@ export default function Portal() {
     );
   }
 
-  const pendientes = solicitudes?.filter((s: any) => (s.solicitudes_curso ?? s).estado === "pendiente").length ?? 0;
+  // "pendiente" nunca ocurre en la practica -- la inscripcion es directa
+  // (server/db.ts: crearSolicitudConAsignacion siempre inserta estado
+  // "aprobada", nunca "pendiente"). En su lugar mostramos cupos disponibles:
+  // max 1 curso activo por bloque, 2 bloques -- max 2 activos a la vez.
+  const MAX_CURSOS_ACTIVOS = 2;
   const aprobadas = solicitudes?.filter((s: any) => (s.solicitudes_curso ?? s).estado === "aprobada").length ?? 0;
   const completados = solicitudes?.filter((s: any) => (s.solicitudes_curso ?? s).estado === "completada").length ?? 0;
+  const disponibles = Math.max(0, MAX_CURSOS_ACTIVOS - aprobadas);
 
   const nivelActual = perfil?.nivelProgresion ?? 0;
 
@@ -408,8 +413,8 @@ export default function Portal() {
               <Clock className="h-5 w-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-stat text-slate-900">{pendientes}</p>
-              <p className="text-label">Pendientes</p>
+              <p className="text-stat text-slate-900">{disponibles}</p>
+              <p className="text-label">Cupos disponibles</p>
             </div>
           </div>
         </div>
