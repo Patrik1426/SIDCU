@@ -19,6 +19,13 @@ export async function getDb() {
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
       connectTimeout: 10000,
+      // Sin esto, mysql2 convierte Date objects usando la timezone LOCAL del
+      // proceso Node al guardar/leer TIMESTAMP -- si el server no corre en
+      // UTC (ej. America/Mexico_City), z.coerce.date() en fechaInicio/fechaFin
+      // de cursos_instituciones se guarda desfasado un dia (medianoche UTC
+      // se interpreta como hora local y se resta el offset). "Z" fuerza UTC
+      // fijo sin importar en que timezone corra el proceso.
+      timezone: "Z",
     });
     db = drizzle(pool, { schema, mode: "default" });
   }

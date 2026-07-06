@@ -30,7 +30,10 @@ interface DatosCedula {
 
 function formatFechaCedula(date: string | Date) {
   const d = new Date(date);
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  // timeZone: "UTC" -- fechaInicio/fechaFin son fechas de calendario puras
+  // guardadas como medianoche UTC, sin esto se desfasan un dia segun la
+  // timezone del navegador (ver server/db.ts, mismo bug del lado servidor).
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function loadImageBase64(url: string, trim = false): Promise<{ data: string; w: number; h: number }> {

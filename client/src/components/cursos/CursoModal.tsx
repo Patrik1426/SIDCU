@@ -38,7 +38,11 @@ export const emptyForm: CursoFormData = {
 
 function formatFecha(date: string | Date) {
   const d = new Date(date);
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  // timeZone: "UTC" -- fechaInicio/fechaFin son fechas de calendario puras
+  // (sin hora real), guardadas como medianoche UTC. Sin forzar UTC aqui,
+  // el navegador del admin las muestra en su timezone local y puede
+  // desfasar un dia (ej. Mexico_City, UTC-6, muestra el dia anterior).
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {

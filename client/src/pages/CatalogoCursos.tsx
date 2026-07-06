@@ -15,7 +15,10 @@ const fadeUp = {
 
 function formatFecha(date: string | Date) {
   const d = new Date(date);
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  // timeZone: "UTC" -- fechaInicio/fechaFin son fechas de calendario puras
+  // guardadas como medianoche UTC, sin esto se desfasan un dia segun la
+  // timezone del navegador (ver server/db.ts, mismo bug del lado servidor).
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaFin: string | Date | null | undefined) {
