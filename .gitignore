@@ -6,6 +6,7 @@ dist/
 .DS_Store
 drizzle/migrations/
 *.zip
+backups/
 registro-servidores-publicos/
 registro_servidores_publicos/
 servidores-publicos/
