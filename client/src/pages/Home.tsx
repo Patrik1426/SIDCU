@@ -381,7 +381,8 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       setError("Las contraseñas no coinciden");
       return;
     }
-    if (!turnstileToken) {
+    const turnstileConfigurado = Boolean((import.meta as any).env.VITE_TURNSTILE_SITE_KEY);
+    if (turnstileConfigurado && !turnstileToken) {
       setError("Completa la verificación de seguridad");
       return;
     }

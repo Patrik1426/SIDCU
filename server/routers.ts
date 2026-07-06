@@ -33,7 +33,11 @@ const authRouter = router({
         curp: z.string().min(18, "CURP debe tener 18 caracteres").max(18),
         nombre: z.string().min(2, "Nombre requerido"),
         password: z.string().min(8, "Mínimo 8 caracteres"),
-        turnstileToken: z.string().min(1, "Verificación de seguridad requerida"),
+        // Sin min(1): la validacion real vive en verificarTurnstile() -- ahi
+        // se decide si un token vacio es aceptable (solo cuando no hay
+        // TURNSTILE_SECRET_KEY, ej. dev local) o debe rechazarse (con
+        // secret configurada, token vacio siempre falla).
+        turnstileToken: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
