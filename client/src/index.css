@@ -133,3 +133,15 @@ body {
 .bento-lg { @apply col-span-4 row-span-2 sm:col-span-2; }
 .bento-md { @apply col-span-4 sm:col-span-2; }
 .bento-sm { @apply col-span-2 sm:col-span-1; }
+
+/* WCAG 2.3.3 -- las animaciones de framer-motion (stagger/fadeUp en todas
+   las paginas) ya se desactivan via MotionConfig reducedMotion="user" en
+   main.tsx. Esto cubre las animaciones CSS puras de arriba (decoraciones
+   de fondo en loop infinito), que MotionConfig no toca. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-geo-drift,
+  .animate-geo-drift-alt,
+  .animate-glow-pulse {
+    animation: none;
+  }
+}
