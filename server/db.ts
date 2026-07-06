@@ -430,12 +430,16 @@ export async function getServidoresStats() {
       .groupBy(schema.servidoresPublicos.dependencia)
       .orderBy(sql`count(*) DESC`)
       .limit(10),
+    // Tendencia de registro mensual = cuando el usuario completo su
+    // auto-registro de 3 pasos (perfiles_servidor.created_at), NO cuando
+    // el admin creo/importo el servidor (servidores_publicos.created_at,
+    // que es un evento distinto -- carga masiva por CSV, no auto-registro).
     d
       .select({
         mes: sql<string>`DATE_FORMAT(created_at, '%Y-%m')`,
         count: sql<number>`count(*)`,
       })
-      .from(schema.servidoresPublicos)
+      .from(schema.perfilesServidor)
       .groupBy(sql`DATE_FORMAT(created_at, '%Y-%m')`)
       .orderBy(sql`DATE_FORMAT(created_at, '%Y-%m') ASC`)
       .limit(12),
