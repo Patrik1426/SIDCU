@@ -7,8 +7,8 @@ vi.mock("./auth", () => ({
   verifyToken: vi.fn(),
 }));
 
-function makeReq(body: any): Request {
-  return { body } as Request;
+function makeReq(body: any, query: Record<string, string> = {}): Request {
+  return { body, query } as unknown as Request;
 }
 
 function makeReqConCookie(cookies: Record<string, string>, ip = "1.2.3.4"): Request {
@@ -20,10 +20,31 @@ describe("extraerCurp", () => {
     expect(extraerCurp(makeReq({ curp: "peju900101hdfrxn01", password: "x" }))).toBe("PEJU900101HDFRXN01");
   });
 
-  it("extrae curp de un body batched con superjson (body['0'].json.curp)", () => {
-    expect(extraerCurp(makeReq({ "0": { json: { curp: "peju900101hdfrxn01", password: "x" } } }))).toBe(
-      "PEJU900101HDFRXN01",
-    );
+  it("extrae curp de un body batched con superjson (body['0'].json.curp, ?batch=1)", () => {
+    expect(
+      extraerCurp(
+        makeReq({ "0": { json: { curp: "peju900101hdfrxn01", password: "x" } } }, { batch: "1" }),
+      ),
+    ).toBe("PEJU900101HDFRXN01");
+  });
+
+  it("ignora un curp decoy en el top-level si la request es batched (?batch=1) -- ahi tRPC solo lee body['0'].json, el decoy nunca se usa para el login real", () => {
+    expect(
+      extraerCurp(
+        makeReq(
+          { curp: "DECOY", "0": { json: { curp: "peju900101hdfrxn01", password: "x" } } },
+          { batch: "1" },
+        ),
+      ),
+    ).toBe("PEJU900101HDFRXN01");
+  });
+
+  it("ignora el shape batched si la request NO es batched -- usa el top-level, que es lo que tRPC realmente lee sin ?batch=1", () => {
+    expect(
+      extraerCurp(
+        makeReq({ curp: "peju900101hdfrxn01", "0": { json: { curp: "OTRO_CURP_IGNORADO" } } }),
+      ),
+    ).toBe("PEJU900101HDFRXN01");
   });
 
   it("extrae curp de un body envuelto directo en json (sin indice de batch)", () => {

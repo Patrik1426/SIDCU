@@ -25,10 +25,23 @@ export const generalLimiter = rateLimit({
 // Extrae el CURP del body de una llamada tRPC a auth.login/auth.register,
 // sin importar si el request llega batched (httpBatchLink + superjson
 // envuelve el input real en body["0"].json en vez de en el body directo).
+//
+// CRITICO: no basta con probar ambos shapes con "??" y quedarse con el
+// primero que exista -- ?batch=1 en la URL es lo que de verdad decide que
+// shape usa tRPC para el login real (createExpressMiddleware ignora el
+// otro shape por completo). Si aqui se prueba "top-level primero" sin
+// mirar ?batch=1, un atacante manda un "curp" decoy rotando en el nivel
+// top mientras el login real (con password real) viaja en body["0"].json
+// -- la key del limiter nunca converge en la cuenta real, saltandose
+// authLimiter por completo (confirmado con curl: 10+ intentos fallidos
+// contra la misma cuenta, cero bloqueos, con este bug presente).
 export function extraerCurp(req: Request): string | null {
   const body = req.body as any;
   if (!body || typeof body !== "object") return null;
-  const candidato = body.curp ?? body["0"]?.json?.curp ?? body.json?.curp;
+  const esBatched = req.query?.batch === "1";
+  const candidato = esBatched
+    ? body["0"]?.json?.curp
+    : (body.curp ?? body.json?.curp);
   return typeof candidato === "string" && candidato.trim() ? candidato.trim().toUpperCase() : null;
 }
 
