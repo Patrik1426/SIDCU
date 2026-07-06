@@ -3,10 +3,16 @@ import { fileURLToPath } from "node:url";
 import jwt from "jsonwebtoken";
 import type { User } from "../drizzle/schema";
 
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("JWT_SECRET no está configurado — obligatorio en producción.");
+// Sin fallback silencioso: si NODE_ENV no queda exacto "production" en
+// Railway (o Railway corre el proceso sin pasar por pnpm start), un guard
+// basado en NODE_ENV nunca dispara y la app cae en un secreto conocido
+// hardcodeado -- forjable por cualquiera que lea este archivo. JWT_SECRET
+// siempre debe estar en .env (incluso en dev, ya vive ahi), asi que no hay
+// caso legitimo donde falte.
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET no está configurado — obligatorio, sin excepción de entorno.");
 }
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-prod";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const bcryptPool = new Piscina({
   filename: fileURLToPath(new URL("./workers/bcrypt-worker.mjs", import.meta.url)),
