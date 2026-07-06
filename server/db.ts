@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, like, or, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, like, or, sql, desc, inArray, getTableColumns } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -285,8 +285,17 @@ export async function listarServidores(filtros?: {
 
   const [items, countResult] = await Promise.all([
     d
-      .select()
+      .select({
+        ...getTableColumns(schema.servidoresPublicos),
+        // null = sin cuenta creada todavia, false = cuenta creada pero
+        // faltan los 3 pasos de onboarding, true = registro completo
+        registroCompletado: schema.perfilesServidor.completado,
+      })
       .from(schema.servidoresPublicos)
+      .leftJoin(
+        schema.perfilesServidor,
+        eq(schema.servidoresPublicos.userId, schema.perfilesServidor.userId),
+      )
       .where(where)
       .orderBy(desc(schema.servidoresPublicos.createdAt))
       .limit(limit)

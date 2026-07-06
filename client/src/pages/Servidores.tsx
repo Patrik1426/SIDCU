@@ -397,10 +397,10 @@ export default function Servidores() {
                   <td className="px-4 py-3 font-medium text-gray-900">
                     <div className="flex items-center gap-2">
                       {srv.nombreCompleto}
-                      {srv.rfc?.startsWith("PEND") || srv.rfc?.startsWith("UREG") ? (
-                        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-500">Pendiente</span>
-                      ) : (
+                      {srv.registroCompletado ? (
                         <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500">Registrado</span>
+                      ) : (
+                        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-500">Pendiente</span>
                       )}
                     </div>
                   </td>
