@@ -57,6 +57,12 @@ export const perfilRouter = router({
         }
       }
 
+      // Servidor ya vinculado a este usuario (ej. importado por CSV antes de
+      // que la persona se auto-registrara) -- se consulta antes de crear el
+      // perfil para heredar su nivelProgresion, en vez de resetearlo a 0.
+      const [existingSrv] = await d.select().from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
+
       // Crear o actualizar perfil
       let id: number;
       if (existing) {
@@ -68,12 +74,9 @@ export const perfilRouter = router({
           ...input,
           datosContacto: input.datosContacto ?? null,
           completado: true,
+          nivelProgresion: existingSrv?.nivelProgresion ?? 0,
         });
       }
-
-      // Crear o actualizar servidor
-      const [existingSrv] = await d.select().from(schema.servidoresPublicos)
-        .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
 
       if (existingSrv) {
         await d.update(schema.servidoresPublicos).set({
