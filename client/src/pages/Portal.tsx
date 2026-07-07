@@ -366,20 +366,22 @@ export default function Portal() {
             <h2 className="text-lg font-bold text-slate-900">{user?.nombre ?? "Usuario"}</h2>
             {perfil?.cargo && <p className="text-sm text-slate-600">{perfil.cargo}</p>}
             {perfil?.dependencia && <p className="text-sm text-slate-400">{perfil.dependencia}</p>}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
+                Federal
+              </span>
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                {NIVEL_LABELS_PROG[nivelActual] ?? `N${nivelActual}`}
+              </span>
+            </div>
             {servidor?.preparacionAcademica && (
-              <p className="mt-1 text-xs text-slate-400">{servidor.preparacionAcademica}</p>
+              <p className="text-xs text-slate-400">{servidor.preparacionAcademica}</p>
             )}
             {servidor?.fechaIngreso && (
               <p className="text-xs text-slate-400">Ingreso: {formatFechaCedula(servidor.fechaIngreso)}</p>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
-              Federal
-            </span>
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-              {NIVEL_LABELS_PROG[nivelActual] ?? `N${nivelActual}`}
-            </span>
           </div>
         </div>
 
