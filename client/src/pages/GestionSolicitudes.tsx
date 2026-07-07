@@ -21,20 +21,19 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
 };
 
-type Estado = "" | "pendiente" | "aprobada" | "rechazada" | "completada";
+// "pendiente"/"rechazada" ya no ocurren en la practica -- la inscripcion
+// es directa (crearSolicitudConAsignacion siempre inserta "aprobada"), y
+// no existe flujo para rechazar una solicitud ya inscrita.
+type Estado = "" | "aprobada" | "completada";
 
 const ESTADOS: { value: Estado; label: string }[] = [
   { value: "", label: "Todas" },
-  { value: "pendiente", label: "Pendientes" },
   { value: "aprobada", label: "Aprobadas" },
-  { value: "rechazada", label: "Rechazadas" },
   { value: "completada", label: "Completadas" },
 ];
 
 const estadoBadge: Record<string, string> = {
-  pendiente: "bg-amber-50 text-amber-700",
   aprobada: "bg-emerald-50 text-emerald-700",
-  rechazada: "bg-rose-50 text-rose-700",
   completada: "bg-indigo-50 text-indigo-700",
 };
 
@@ -254,7 +253,7 @@ export default function GestionSolicitudes() {
             const solicitud = item.solicitudes_curso ?? item;
             const curso = item.cursos ?? {};
             const usuario = item.users ?? {};
-            const estado = solicitud.estado ?? "pendiente";
+            const estado = solicitud.estado ?? "aprobada";
 
             return (
               <motion.div

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { ClipboardList, Clock, CheckCircle2, XCircle, Award } from "lucide-react";
+import { ClipboardList, CheckCircle2, Award } from "lucide-react";
 
 const stagger = {
   hidden: {},
@@ -27,10 +27,10 @@ function formatRangoFechas(fechaInicio: string | Date | null | undefined, fechaF
   return `Hasta ${formatFecha(fechaFin!)}`;
 }
 
+// "pendiente"/"rechazada" ya no ocurren en la practica -- la inscripcion
+// es directa y no existe flujo para rechazar una solicitud ya inscrita.
 const ESTATUS_CONFIG: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
-  pendiente: { label: "Pendiente", bg: "bg-amber-50", text: "text-amber-700", icon: Clock },
   aprobada: { label: "Aprobada", bg: "bg-emerald-50", text: "text-emerald-700", icon: CheckCircle2 },
-  rechazada: { label: "Rechazada", bg: "bg-rose-50", text: "text-rose-700", icon: XCircle },
   completada: { label: "Completada", bg: "bg-indigo-50", text: "text-indigo-700", icon: Award },
 };
 
@@ -87,8 +87,8 @@ export default function MisSolicitudes() {
           {solicitudes.map((item: any) => {
             const solicitud = item.solicitudes_curso;
             const curso = item.cursos;
-            const estatus = solicitud.estado ?? "pendiente";
-            const config = ESTATUS_CONFIG[estatus] ?? ESTATUS_CONFIG.pendiente;
+            const estatus = solicitud.estado ?? "aprobada";
+            const config = ESTATUS_CONFIG[estatus] ?? ESTATUS_CONFIG.aprobada;
             const EstatusIcon = config.icon;
 
             return (
@@ -130,13 +130,6 @@ export default function MisSolicitudes() {
                       </div>
                     )}
 
-                    {/* Rejected notes */}
-                    {estatus === "rechazada" && solicitud.notasAdmin && (
-                      <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
-                        <p className="font-medium">Motivo del rechazo:</p>
-                        <p className="mt-1">{solicitud.notasAdmin}</p>
-                      </div>
-                    )}
                   </div>
 
                   {/* Status badge */}
