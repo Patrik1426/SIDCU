@@ -8,7 +8,6 @@ import {
   obtenerSolicitud,
   actualizarSolicitud,
   tieneSolicitudActiva,
-  incrementarNivelProgresion,
   getUserByCurp,
   contarAcreditacion,
   contarAprobacionPorBloque,
@@ -89,9 +88,10 @@ export const solicitudesRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Solicitud no está aprobada" });
       }
       await actualizarSolicitud(input.id, { estado: "completada", calificacion: input.calificacion });
-      if (input.calificacion >= CALIFICACION_APROBATORIA) {
-        await incrementarNivelProgresion(sol.userId);
-      }
+      // nivelProgresion NO sube automaticamente al aprobar cursos -- queda
+      // fijo en lo que se puso al crear/importar el servidor. La regla de
+      // cuantos cursos aprobados equivalen a subir de nivel esta pendiente
+      // de definir (ver incrementarNivelProgresion en db.ts, sin uso por ahora).
       return { success: true, aprobado: input.calificacion >= CALIFICACION_APROBATORIA };
     }),
 
@@ -152,9 +152,7 @@ export const solicitudesRouter = router({
           }
 
           await actualizarSolicitud(sol.id, { estado: "completada", calificacion });
-          if (calificacion >= CALIFICACION_APROBATORIA) {
-            await incrementarNivelProgresion(user.id);
-          }
+          // nivelProgresion NO sube automaticamente aqui tampoco (ver nota en completar).
           actualizados.push(sol.id);
         } catch (err: any) {
           errores.push({ fila: i + 1, error: err.message ?? "Error desconocido" });
