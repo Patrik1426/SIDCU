@@ -19,7 +19,9 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: keyPorCuentaOIp,
-  message: { error: "Demasiadas solicitudes. Intente de nuevo en unos minutos." },
+  handler: (req, res) => {
+    res.status(429).json({ error: "Demasiadas solicitudes. Intente de nuevo en unos minutos." });
+  },
 });
 
 // Extrae el CURP del body de una llamada tRPC a auth.login/auth.register,
@@ -56,7 +58,9 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   keyGenerator: (req) => extraerCurp(req) ?? ipKeyGenerator(req.ip ?? "unknown"),
-  message: { error: "Demasiados intentos de acceso para esta cuenta. Intente de nuevo en 15 minutos." },
+  handler: (req, res) => {
+    res.status(429).json({ error: "Demasiados intentos de acceso para esta cuenta. Intente de nuevo en 15 minutos." });
+  },
 });
 
 // Capa 2: respaldo por IP contra abuso de volumen bruto (ej. enumeracion de
@@ -82,7 +86,9 @@ export const authIpBackstopLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  message: { error: "Demasiadas solicitudes desde esta red. Intente de nuevo en 15 minutos." },
+  handler: (req, res) => {
+    res.status(429).json({ error: "Demasiadas solicitudes desde esta red. Intente de nuevo en 15 minutos." });
+  },
 });
 
 export const importLimiter = rateLimit({
@@ -90,5 +96,7 @@ export const importLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Demasiadas importaciones. Espere 5 minutos antes de intentar de nuevo." },
+  handler: (req, res) => {
+    res.status(429).json({ error: "Demasiadas importaciones. Espere 5 minutos antes de intentar de nuevo." });
+  },
 });
