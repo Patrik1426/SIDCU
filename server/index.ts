@@ -70,6 +70,21 @@ app.use(
   }),
 );
 
+// Error handler: asegurar que todo error devuelva JSON
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("Error:", err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      error: err.message || "Error interno del servidor",
+    });
+  }
+});
+
+// 404 handler
+app.use((_req: express.Request, res: express.Response) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 if (process.env.NODE_ENV === "production") {
   const path = await import("path");
   app.use(express.static(path.resolve("dist/client")));
