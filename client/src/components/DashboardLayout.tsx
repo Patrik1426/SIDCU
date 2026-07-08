@@ -38,7 +38,7 @@ const navItems: NavItem[] = [
   { label: "Mis Solicitudes", href: "/portal/solicitudes", icon: ClipboardCheck, roles: ["user"] },
   { label: "Servidores", href: "/servidores", icon: Users, roles: ["admin", "capturista"] },
   { label: "Importar CSV", href: "/importar", icon: FileUp, roles: ["admin", "capturista"] },
-  { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] },
+  // { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] }, // En construcción
   { label: "Cursos", href: "/cursos", icon: GraduationCap, roles: ["admin"] },
   { label: "Instituciones", href: "/instituciones", icon: Building, roles: ["admin"] },
   { label: "Solicitudes", href: "/solicitudes", icon: Inbox, roles: ["admin"] },
