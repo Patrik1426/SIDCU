@@ -48,13 +48,17 @@ const authRouter = router({
         });
       }
 
+      // Mensaje generico e identico para los 3 motivos de rechazo (cuenta ya
+      // existe, no esta en el padron, dado de baja) -- un mensaje distinto
+      // por caso le deja a quien esta probando datos al azar deducir cuales
+      // corresponden a alguien real en el sistema. No se menciona "CURP" en
+      // el mensaje para no confirmar cual es el campo que se esta validando.
+      const REGISTRO_RECHAZADO = "No se pudo completar el registro. Verifica tus datos o contacta al administrador.";
+
       const curp = input.curp.toUpperCase();
       const existingUser = await getUserByCurp(curp);
       if (existingUser) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Esta CURP ya tiene una cuenta registrada",
-        });
+        throw new TRPCError({ code: "FORBIDDEN", message: REGISTRO_RECHAZADO });
       }
 
       const { getDb } = await import("./db");
@@ -69,17 +73,11 @@ const authRouter = router({
       // valido podia crearse cuenta y avanzar aunque nunca hubiera sido
       // cargado al padron.
       if (!servidor) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Esta CURP no está registrada en el padrón. Contacta al administrador para darte de alta.",
-        });
+        throw new TRPCError({ code: "FORBIDDEN", message: REGISTRO_RECHAZADO });
       }
 
       if (servidor.estatus === "inactivo") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Esta CURP pertenece a un servidor dado de baja. Contacte al administrador.",
-        });
+        throw new TRPCError({ code: "FORBIDDEN", message: REGISTRO_RECHAZADO });
       }
 
       const nombre = capitalizarNombre(input.nombre);

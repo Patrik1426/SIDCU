@@ -391,14 +391,11 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       await register({ curp: curp.toUpperCase(), nombre: nombre.trim(), password, turnstileToken });
       onSuccess();
     } catch (err: any) {
-      const msg = err.message ?? "";
-      if (msg.includes("ya tiene una cuenta") || msg.includes("CONFLICT")) {
-        setError("Esta CURP ya tiene una cuenta registrada");
-      } else if (msg.includes("dado de baja") || msg.includes("FORBIDDEN")) {
-        setError("Esta CURP pertenece a un servidor dado de baja. Contacte al administrador.");
-      } else {
-        setError(msg || "Error al registrarse");
-      }
+      // El servidor ya devuelve un mensaje generico e identico para los
+      // distintos motivos de rechazo (cuenta ya existe, no esta en el
+      // padron, dado de baja) -- reinterpretar el texto aqui por substring
+      // deshacia esa proteccion mostrando cual caso es cada uno.
+      setError(err.message || "Error al registrarse");
     } finally {
       setLoading(false);
     }
