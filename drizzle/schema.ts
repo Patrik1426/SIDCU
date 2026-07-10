@@ -27,6 +27,10 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   fechaIngreso: datetime("fecha_ingreso").notNull(),
   datosContacto: varchar("datos_contacto", { length: 255 }),
   grupoFuncion: mysqlEnum("grupo_funcion", ["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]).notNull(),
+  // A qué universo (SDPC/PAC/SPC) pertenece este servidor -- lo fija el
+  // import (una selección por archivo, igual que cursos.tipoPrograma), no
+  // el onboarding. Determina qué cursos ve en su catálogo (ver cursos.listar).
+  programa: mysqlEnum("programa", ["PAC", "SPC", "SDPC"]).notNull(),
   upa: varchar("upa", { length: 100 }),
   cmao: varchar("cmao", { length: 50 }),
   ua: varchar("ua", { length: 255 }),
@@ -54,6 +58,7 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   dependenciaIdx: index("dependencia_idx").on(table.dependencia),
   nivelIdx: index("nivel_idx").on(table.nivel),
   grupoFuncionIdx: index("grupo_funcion_idx").on(table.grupoFuncion),
+  programaIdx: index("programa_idx").on(table.programa),
   upaIdx: index("upa_idx").on(table.upa),
   cmaoIdx: index("cmao_idx").on(table.cmao),
   uaIdx: index("ua_idx").on(table.ua),

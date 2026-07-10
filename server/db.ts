@@ -197,6 +197,9 @@ export async function toggleActivoUsuario(id: number) {
           dependencia: "Por definir",
           nivel: "federal",
           grupoFuncion: "ADMO",
+          // Reactivación sin fila previa (caso raro) -- SDPC como placeholder
+          // seguro, igual que en usuarios.crear; admin corrige si aplica.
+          programa: "SDPC",
           fechaIngreso: new Date(),
           datosContacto: user.email,
           estatus: "activo",
@@ -600,6 +603,7 @@ export async function listarCursos(filtros?: {
   nivelGobierno?: string | null;
   categoria?: string;
   modalidad?: string;
+  tipoPrograma?: string;
   soloActivos?: boolean;
 }) {
   const d = await getDb();
@@ -624,6 +628,9 @@ export async function listarCursos(filtros?: {
   }
   if (filtros?.modalidad) {
     conditions.push(eq(schema.cursos.modalidad, filtros.modalidad as any));
+  }
+  if (filtros?.tipoPrograma) {
+    conditions.push(eq(schema.cursos.tipoPrograma, filtros.tipoPrograma as any));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

@@ -123,7 +123,12 @@ export const importacionRouter = router({
     }),
 
   importar: requireRole("admin", "capturista")
-    .input(z.object({ registros: z.array(z.record(z.string(), z.any())) }))
+    .input(z.object({
+      registros: z.array(z.record(z.string(), z.any())),
+      // Todo el archivo es de un solo programa -- se elige antes de subir
+      // el CSV, no fila por fila (mismo patrón que cursos.importar).
+      programa: z.enum(["PAC", "SPC", "SDPC"]),
+    }))
     .mutation(async ({ ctx, input }) => {
       const BATCH_SIZE = 50;
       const creados: number[] = [];
@@ -223,6 +228,7 @@ export const importacionRouter = router({
             cmao,
             ua,
             nivelProgresion,
+            programa: input.programa,
             creadoPor: ctx.user.id,
             actualizadoPor: ctx.user.id,
           } as any);

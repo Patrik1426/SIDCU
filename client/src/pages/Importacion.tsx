@@ -84,6 +84,7 @@ export default function Importacion() {
   const [resultado, setResultado] = useState<ImportResult | null>(null);
   const [archivo, setArchivo] = useState<string>("");
   const [dragOver, setDragOver] = useState(false);
+  const [programa, setPrograma] = useState<"PAC" | "SPC" | "SDPC">("SDPC");
   const fileRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
 
@@ -138,7 +139,7 @@ export default function Importacion() {
 
   const handleImportar = () => {
     if (!registros.length) return;
-    importarMut.mutate({ registros });
+    importarMut.mutate({ registros, programa });
   };
 
   const resetear = () => {
@@ -414,6 +415,20 @@ export default function Importacion() {
                 Mostrando 50 de {validacion.total} registros
               </div>
             )}
+          </div>
+
+          {/* Programa -- todo el archivo pertenece a un solo programa, se elige antes de importar */}
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <label className="text-sm font-semibold text-slate-600">Programa de este archivo:</label>
+            <select
+              value={programa}
+              onChange={(e) => setPrograma(e.target.value as "PAC" | "SPC" | "SDPC")}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
+            >
+              <option value="PAC">PAC</option>
+              <option value="SPC">SPC</option>
+              <option value="SDPC">SDPC</option>
+            </select>
           </div>
 
           {/* Actions */}

@@ -14,6 +14,7 @@ import {
   obtenerPerfil,
   buscarCursoPorNombre,
   obtenerInstitucionPredeterminada,
+  obtenerServidorPorUserId,
 } from "../db";
 import { FINALIDAD_POR_TIPO_PROGRAMA, FINALIDADES_PAC } from "../../shared/const";
 
@@ -56,20 +57,30 @@ export const cursosRouter = router({
     .input(z.object({
       categoria: z.string().optional(),
       modalidad: z.string().optional(),
+      // Filtro opcional para admin/capturista/consultor -- les facilita
+      // navegar el catálogo completo por programa sin restringir lo que
+      // pueden ver (a diferencia del rol "user", que sí queda acotado a
+      // su propio programa).
+      tipoPrograma: z.enum(["PAC", "SPC", "SDPC"]).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
       if (ctx.user.role === "user") {
         const perfil = await obtenerPerfil(ctx.user.id);
         if (!perfil?.completado) return [];
+        // Catálogo acotado al programa (SDPC/PAC/SPC) del propio servidor --
+        // cada persona solo debe ver cursos de su universo, no los 3 mezclados.
+        const servidor = await obtenerServidorPorUserId(ctx.user.id);
         return listarCursos({
           categoria: input?.categoria,
           modalidad: input?.modalidad,
+          tipoPrograma: servidor?.programa,
           soloActivos: true,
         });
       }
       return listarCursos({
         categoria: input?.categoria,
         modalidad: input?.modalidad,
+        tipoPrograma: input?.tipoPrograma,
         soloActivos: false,
       });
     }),

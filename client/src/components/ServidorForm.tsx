@@ -12,6 +12,7 @@ export interface ServidorFormData {
   fechaIngreso: string;
   datosContacto: string;
   grupoFuncion: "ADMO" | "TECN" | "SERV" | "COMUN" | "PROFE" | "EDU";
+  programa: "PAC" | "SPC" | "SDPC";
   upa: string;
   cmao: string;
   ua: string;
@@ -31,6 +32,7 @@ const emptyForm: ServidorFormData = {
   fechaIngreso: "",
   datosContacto: "",
   grupoFuncion: "ADMO",
+  programa: "SDPC",
   upa: "",
   cmao: "",
   ua: "",
@@ -57,6 +59,12 @@ const GRUPOS = [
   { value: "COMUN", label: "Comunicación (COMUN)" },
   { value: "PROFE", label: "Profesional (PROFE)" },
   { value: "EDU", label: "Educación (EDU)" },
+] as const;
+
+const PROGRAMAS = [
+  { value: "PAC", label: "PAC" },
+  { value: "SPC", label: "SPC" },
+  { value: "SDPC", label: "SDPC" },
 ] as const;
 
 interface Props {
@@ -218,6 +226,25 @@ export function ServidorForm({
             {GRUPOS.map((g) => (
               <option key={g.value} value={g.value}>
                 {g.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Programa -- lo fija el import (SDPC/PAC/SPC); editable aquí solo
+            para corregir un error de captura, no forma parte del onboarding. */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Programa *
+          </label>
+          <select
+            value={form.programa}
+            onChange={(e) => set("programa", e.target.value)}
+            className={inputClass}
+          >
+            {PROGRAMAS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
               </option>
             ))}
           </select>

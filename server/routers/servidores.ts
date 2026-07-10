@@ -47,6 +47,7 @@ const servidorInput = z.object({
   fechaIngreso: z.coerce.date(),
   datosContacto: z.string().nullable().optional(),
   grupoFuncion: z.enum(["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]),
+  programa: z.enum(["PAC", "SPC", "SDPC"]),
   estatus: z.enum(["activo", "inactivo"]).default("activo"),
   observaciones: z.string().nullable().optional(),
   upa: z.string().nullable().optional(),

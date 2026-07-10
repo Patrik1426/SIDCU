@@ -50,6 +50,9 @@ export const usuariosRouter = router({
         dependencia: "Por definir",
         nivel: "federal",
         grupoFuncion: "ADMO",
+        // Alta directa de admin (no es parte del flujo de import por programa) --
+        // SDPC como placeholder seguro; admin puede corregirlo desde Servidores si aplica.
+        programa: "SDPC",
         fechaIngreso: new Date(),
         datosContacto: null,
         upa: null,

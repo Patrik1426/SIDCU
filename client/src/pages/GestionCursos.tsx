@@ -62,12 +62,20 @@ export default function GestionCursos() {
   if (cursos !== undefined) cursosRef.current = cursos;
   const displayCursos = cursosRef.current;
 
+  // Filtro por programa -- puramente de navegación (admin/capturista/consultor
+  // siguen viendo todos los cursos vía la query, esto solo acota lo que se
+  // muestra en pantalla para no tener que scrollear los 3 programas mezclados).
+  const [programaFiltro, setProgramaFiltro] = useState<"TODOS" | "PAC" | "SPC" | "SDPC">("TODOS");
+  const cursosFiltrados = programaFiltro === "TODOS"
+    ? displayCursos
+    : displayCursos?.filter((c: any) => c.tipoPrograma === programaFiltro);
+
   // Agrupa cursos por bloque -- el bloque es la secuencia curricular real
   // (Bloque 1 antes que Bloque 2), por eso el numero encabeza cada seccion.
   const grupos = (() => {
-    if (!displayCursos) return [] as { key: string; label: string; cursos: any[] }[];
+    if (!cursosFiltrados) return [] as { key: string; label: string; cursos: any[] }[];
     const porBloque = new Map<number | null, any[]>();
-    for (const curso of displayCursos) {
+    for (const curso of cursosFiltrados) {
       const key = curso.bloque ?? null;
       if (!porBloque.has(key)) porBloque.set(key, []);
       porBloque.get(key)!.push(curso);
@@ -294,6 +302,21 @@ export default function GestionCursos() {
             Crear Curso
           </button>
         </div>
+      </motion.div>
+
+      {/* Filtro por programa -- solo navegación, no restringe qué se puede ver */}
+      <motion.div variants={fadeUp} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-0.5 w-fit">
+        {(["TODOS", "PAC", "SPC", "SDPC"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => setProgramaFiltro(p)}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              programaFiltro === p ? "bg-primary-500 text-white" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {p === "TODOS" ? "Todos" : TIPO_PROGRAMA_LABELS[p]}
+          </button>
+        ))}
       </motion.div>
 
       {/* Selection bar */}
