@@ -106,9 +106,13 @@ export default function Onboarding() {
   useEffect(() => {
     if (!miServidor || prefillApplied.current) return;
     const esPlaceholder = (v: string | null | undefined) => !v || v === "Por definir";
+    const esCurpRfcPlaceholder = (v: string | null | undefined) => !v || v.startsWith("PEND") || v.startsWith("UREG");
     const tieneFecha = miServidor.fechaIngreso && !isNaN(new Date(miServidor.fechaIngreso).getTime());
 
-    if (esPlaceholder(miServidor.cargo) && esPlaceholder(miServidor.dependencia) && !tieneFecha) return;
+    if (
+      esPlaceholder(miServidor.cargo) && esPlaceholder(miServidor.dependencia) && !tieneFecha &&
+      esCurpRfcPlaceholder(miServidor.curp) && esCurpRfcPlaceholder(miServidor.rfc) && !miServidor.grupoFuncion
+    ) return;
 
     prefillApplied.current = true;
     setFormData((prev) => ({
@@ -116,6 +120,14 @@ export default function Onboarding() {
       cargo: esPlaceholder(miServidor.cargo) ? prev.cargo : miServidor.cargo,
       dependencia: esPlaceholder(miServidor.dependencia) ? prev.dependencia : miServidor.dependencia,
       fechaIngreso: tieneFecha ? new Date(miServidor.fechaIngreso).toISOString().slice(0, 10) : prev.fechaIngreso,
+      // El admin ya cargó estos datos por CSV -- precargarlos evita que el
+      // usuario tenga que volver a teclearlos/seleccionarlos desde cero, que
+      // es justo lo que abría la puerta a que un despiste (ej. click rápido
+      // en el primer <option>) sobreescribiera un dato bueno del import.
+      curp: esCurpRfcPlaceholder(miServidor.curp) ? prev.curp : miServidor.curp,
+      rfc: esCurpRfcPlaceholder(miServidor.rfc) ? prev.rfc : miServidor.rfc,
+      grupoFuncion: miServidor.grupoFuncion || prev.grupoFuncion,
+      nivelGobierno: miServidor.nivel || prev.nivelGobierno,
     }));
   }, [miServidor, prefillApplied]);
 
