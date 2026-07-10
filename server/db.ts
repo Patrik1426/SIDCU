@@ -373,8 +373,15 @@ export async function listarTodosIdsServidores(search?: string) {
 
 export async function obtenerServidorPorUserId(userId: number) {
   const d = await getDb();
+  // userId no tiene constraint unico en servidores_publicos (a diferencia de
+  // perfiles_servidor, que si lo tiene) -- orderBy+limit hace la lectura
+  // deterministica (fila mas reciente) por si alguna vez existe mas de una
+  // fila para el mismo usuario, en vez de depender del orden no garantizado
+  // que devuelve MySQL sin ORDER BY.
   const [srv] = await d.select().from(schema.servidoresPublicos)
-    .where(eq(schema.servidoresPublicos.userId, userId));
+    .where(eq(schema.servidoresPublicos.userId, userId))
+    .orderBy(desc(schema.servidoresPublicos.id))
+    .limit(1);
   return srv ?? null;
 }
 

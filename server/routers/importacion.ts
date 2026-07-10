@@ -6,6 +6,7 @@ import { crearServidor, crearAuditoria, getDb } from "../db";
 import { eq, or } from "drizzle-orm";
 import * as schema from "../../drizzle/schema";
 import { capitalizarNombre } from "../../shared/utils";
+import { GRUPOS_FUNCION, NIVELES } from "../../shared/const";
 
 function requireRole(...roles: string[]) {
   return protectedProcedure.use(({ ctx, next }) => {
@@ -46,18 +47,50 @@ function parseFechaDDMMYYYY(valor: string | undefined): string | null {
   return isNaN(new Date(isoCandidato).getTime()) ? null : isoCandidato;
 }
 
+// El CSV real trae "grupo función" como texto humano (ej. "Técnico",
+// "Administrativo"), no como el código de 4 letras que usa el enum de DB
+// (TECN, ADMO...). Sin este mapeo, cualquier valor que no calce exacto con
+// el código pasaba silencioso como z.string() y quedaba mal escrito en DB
+// (o tronaba el insert dependiendo del sql_mode) -- el admin nunca se enteraba
+// de cuál fila quedó con el grupo equivocado.
+const GRUPO_FUNCION_SINONIMOS: Record<string, typeof GRUPOS_FUNCION[number]> = {
+  ADMO: "ADMO", ADMINISTRATIVO: "ADMO", ADMINISTRATIVA: "ADMO",
+  TECN: "TECN", TECNICO: "TECN", TECNICA: "TECN",
+  SERV: "SERV", SERVICIOS: "SERV", SERVICIO: "SERV",
+  COMUN: "COMUN", COMUNICACION: "COMUN",
+  PROFE: "PROFE", PROFESIONAL: "PROFE",
+  EDU: "EDU", EDUCACION: "EDU", EDUCATIVO: "EDU", EDUCATIVA: "EDU",
+};
+function normalizarGrupoFuncion(valor: string | undefined): string | undefined {
+  if (!valor) return undefined;
+  const clave = valor.toString().trim().toUpperCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, ""); // quita acentos
+  return GRUPO_FUNCION_SINONIMOS[clave];
+}
+
+// Filas sin RFC/CURP real reciben un placeholder PENDxxxxxxxxx (ver más abajo) --
+// esas no deben pasar por el regex estricto, solo los valores reales tomados del CSV.
+const rfcSchema = z.string().refine(
+  (v) => v.startsWith("PEND") || /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(v),
+  "RFC inválido",
+);
+const curpSchema = z.string().refine(
+  (v) => v.startsWith("PEND") || /^[A-Z]{4}\d{6}[HM][A-Z]{5}[0-9A-Z]\d$/.test(v),
+  "CURP inválido",
+);
+
 const registroImportSchema = z.object({
   nombreCompleto: z.string(),
-  rfc: z.string(),
-  curp: z.string(),
+  rfc: rfcSchema,
+  curp: curpSchema,
   cargo: z.string(),
   dependencia: z.string(),
-  nivel: z.string(),
+  nivel: z.enum(NIVELES),
   fechaIngreso: z.string(),
   datosContacto: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
-  grupoFuncion: z.string(),
-  estatus: z.string(),
+  grupoFuncion: z.enum(GRUPOS_FUNCION),
+  estatus: z.enum(["activo", "inactivo"]),
   observaciones: z.string().nullable().optional(),
   preparacionAcademica: z.string().nullable().optional(),
 });
@@ -112,6 +145,16 @@ export const importacionRouter = router({
         const fechaIngresoRaw = buscarCampo(row, "fechaIngreso", "fecha_ingreso", "antiguedad", "antigüedad");
 
         const nombreRaw = buscarCampo(row, "nombreCompleto", "nombre_completo", "nombre");
+        const grupoFuncionRaw = buscarCampo(row, "grupoFuncion", "grupo_funcion", "grupo funcion", "grupo/funcion");
+        const grupoFuncionNormalizado = normalizarGrupoFuncion(grupoFuncionRaw);
+        // Columna vacía -> default ADMO (comportamiento previo). Columna con
+        // texto no reconocido -> error explícito en vez de default silencioso,
+        // para que el admin vea exactamente qué fila trae el dato mal escrito.
+        if (grupoFuncionRaw && !grupoFuncionNormalizado) {
+          errores.push({ fila: i + 1, error: `Grupo de función "${grupoFuncionRaw}" no reconocido (usar: ${GRUPOS_FUNCION.join(", ")})` });
+          continue;
+        }
+
         const reg = registroImportSchema.safeParse({
           nombreCompleto: nombreRaw ? capitalizarNombre(nombreRaw) : "Por definir",
           rfc: buscarCampo(row, "rfc") || `PEND${String(i + 1).padStart(9, "0")}`,
@@ -122,10 +165,10 @@ export const importacionRouter = router({
           dependencia: buscarCampo(row, "dependencia") || (ua !== "Sin asignar" ? ua : "Por definir"),
           nivel: "federal",
           fechaIngreso: parseFechaDDMMYYYY(fechaIngresoRaw) || new Date().toISOString().split("T")[0],
-          grupoFuncion: buscarCampo(row, "grupoFuncion", "grupo_funcion") || "ADMO",
+          grupoFuncion: grupoFuncionNormalizado ?? "ADMO",
           datosContacto: buscarCampo(row, "datosContacto", "datos_contacto") || "Sin datos",
           email: buscarCampo(row, "email", "correo", "correo electronico") || null,
-          estatus: buscarCampo(row, "estatus") || "activo",
+          estatus: (buscarCampo(row, "estatus") || "activo").toLowerCase() === "inactivo" ? "inactivo" : "activo",
           observaciones: buscarCampo(row, "observaciones") || "Sin observaciones",
           preparacionAcademica,
         });
