@@ -277,16 +277,6 @@ export default function GestionCursos() {
               <List size={15} />
             </button>
           </div>
-          <select
-            value={tipoImportacion}
-            onChange={(e) => setTipoImportacion(e.target.value as "PAC" | "SPC" | "SDPC")}
-            title="Tipo de programa de los cursos a importar"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600"
-          >
-            <option value="PAC">PAC</option>
-            <option value="SPC">SPC</option>
-            <option value="SDPC">SDPC</option>
-          </select>
           <button
             onClick={() => setShowImport(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
@@ -584,6 +574,20 @@ export default function GestionCursos() {
           onImportar={(registros) => importarCursosMut.mutateAsync({ registros, tipoPrograma: tipoImportacion })}
           onClose={() => setShowImport(false)}
           onSuccess={() => utils.cursos.listar.invalidate()}
+          extraControls={
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-slate-600">Programa de este archivo:</label>
+              <select
+                value={tipoImportacion}
+                onChange={(e) => setTipoImportacion(e.target.value as "PAC" | "SPC" | "SDPC")}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
+              >
+                <option value="PAC">PAC</option>
+                <option value="SPC">SPC</option>
+                <option value="SDPC">SDPC</option>
+              </select>
+            </div>
+          }
         />
       )}
 

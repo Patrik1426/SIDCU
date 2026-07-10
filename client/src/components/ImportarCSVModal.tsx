@@ -12,6 +12,11 @@ interface ImportarCSVModalProps {
   /** Campos que heredan el valor de la fila anterior cuando vienen vacíos
    *  (celdas combinadas de Excel exportadas a CSV dejan vacías las filas siguientes). */
   camposHeredables?: string[];
+  /** Slot opcional para controles extra (ej. selector de programa) que
+   *  aparecen junto al preview, después de subir el archivo -- un solo
+   *  lugar para elegir configuración del import, no un selector aparte
+   *  antes de abrir el modal. */
+  extraControls?: React.ReactNode;
 }
 
 function aplicarFillDown(registros: Record<string, string>[], campos: string[]): Record<string, string>[] {
@@ -31,7 +36,7 @@ function aplicarFillDown(registros: Record<string, string>[], campos: string[]):
   });
 }
 
-export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose, onSuccess, camposHeredables }: ImportarCSVModalProps) {
+export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose, onSuccess, camposHeredables, extraControls }: ImportarCSVModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Record<string, any>[] | null>(null);
   const [fileName, setFileName] = useState("");
@@ -194,6 +199,12 @@ export default function ImportarCSVModal({ titulo, columnas, onImportar, onClose
                   Cambiar archivo
                 </button>
               </div>
+
+              {extraControls && !result && (
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  {extraControls}
+                </div>
+              )}
 
               <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-full text-xs">
