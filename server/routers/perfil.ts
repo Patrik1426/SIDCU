@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { obtenerPerfil, crearPerfil, actualizarPerfil, crearServidor, actualizarServidor, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
+import { obtenerPerfil, crearPerfil, actualizarPerfil, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
 import { eq } from "drizzle-orm";
 import * as schema from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -63,6 +63,19 @@ export const perfilRouter = router({
       const [existingSrv] = await d.select().from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.userId, ctx.user.id));
 
+      // auth.register ya exige que la CURP exista en el padrón para poder
+      // crear la cuenta -- si llega aquí sin servidor vinculado es una cuenta
+      // de antes de ese fix (o cualquier otro camino que la haya creado sin
+      // pasar por register). No se crea un servidor nuevo desde cero: eso es
+      // exactamente el hueco que permitía a cualquiera con CURP con formato
+      // válido avanzar sin haber sido dado de alta por un admin.
+      if (!existingSrv) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Tu cuenta no está vinculada a ningún registro del padrón. Contacta al administrador para darte de alta.",
+        });
+      }
+
       // Crear o actualizar perfil
       let id: number;
       if (existing) {
@@ -74,53 +87,23 @@ export const perfilRouter = router({
           ...input,
           datosContacto: input.datosContacto ?? null,
           completado: true,
-          nivelProgresion: existingSrv?.nivelProgresion ?? 0,
+          nivelProgresion: existingSrv.nivelProgresion ?? 0,
         });
       }
 
-      if (existingSrv) {
-        await d.update(schema.servidoresPublicos).set({
-          nombreCompleto: ctx.user.nombre,
-          rfc: input.rfc,
-          curp: input.curp,
-          cargo: input.cargo,
-          dependencia: input.dependencia,
-          nivel: input.nivelGobierno,
-          grupoFuncion: input.grupoFuncion,
-          fechaIngreso: input.fechaIngreso,
-          datosContacto: input.datosContacto ?? null,
-          email: input.email ?? existingSrv.email,
-          actualizadoPor: ctx.user.id,
-        }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
-      } else {
-        try {
-          await crearServidor({
-            userId: ctx.user.id,
-            nombreCompleto: ctx.user.nombre,
-            rfc: input.rfc,
-            curp: input.curp,
-            cargo: input.cargo,
-            dependencia: input.dependencia,
-            nivel: input.nivelGobierno,
-            grupoFuncion: input.grupoFuncion,
-            fechaIngreso: input.fechaIngreso,
-            datosContacto: input.datosContacto ?? null,
-            email: input.email ?? null,
-            upa: null,
-            cmao: null,
-            ua: null,
-            nivelProgresion: 0,
-            estatus: "activo",
-            creadoPor: ctx.user.id,
-            actualizadoPor: ctx.user.id,
-          });
-        } catch (err: any) {
-          // Carrera: dos requests simultáneos pasaron el check de "existente" antes de que
-          // el primero terminara. El unique constraint en curp/rfc ya evita duplicar el dato;
-          // aquí solo se evita que el segundo request reciba un error crudo de MySQL.
-          if (!err.message?.includes("Duplicate")) throw err;
-        }
-      }
+      await d.update(schema.servidoresPublicos).set({
+        nombreCompleto: ctx.user.nombre,
+        rfc: input.rfc,
+        curp: input.curp,
+        cargo: input.cargo,
+        dependencia: input.dependencia,
+        nivel: input.nivelGobierno,
+        grupoFuncion: input.grupoFuncion,
+        fechaIngreso: input.fechaIngreso,
+        datosContacto: input.datosContacto ?? null,
+        email: input.email ?? existingSrv.email,
+        actualizadoPor: ctx.user.id,
+      }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
 
       return { success: true, id };
     }),

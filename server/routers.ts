@@ -8,7 +8,6 @@ import {
   getUserByEmail,
   getUserByCurp,
   createUser,
-  crearServidor,
   crearTokenRestablecimiento,
   obtenerTokenRestablecimiento,
   actualizarPasswordUsuario,
@@ -65,7 +64,18 @@ const authRouter = router({
       const [servidor] = await d.select().from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.curp, curp));
 
-      if (servidor && servidor.estatus === "inactivo") {
+      // El registro solo es para gente ya dada de alta por un admin (import
+      // CSV de SDPC/PAC/SPC) -- sin esto, cualquiera con una CURP de formato
+      // valido podia crearse cuenta y avanzar aunque nunca hubiera sido
+      // cargado al padron.
+      if (!servidor) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Esta CURP no está registrada en el padrón. Contacta al administrador para darte de alta.",
+        });
+      }
+
+      if (servidor.estatus === "inactivo") {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Esta CURP pertenece a un servidor dado de baja. Contacte al administrador.",
@@ -81,31 +91,10 @@ const authRouter = router({
         role: "user",
       });
 
-      if (servidor) {
-        await d.update(schema.servidoresPublicos)
-          .set({ userId: id, nombreCompleto: nombre, actualizadoPor: id })
-          .where(eq(schema.servidoresPublicos.id, servidor.id));
-      } else {
-        await crearServidor({
-          userId: id,
-          nombreCompleto: nombre,
-          rfc: `UREG${String(id).padStart(9, "0")}`,
-          curp,
-          cargo: "Por definir",
-          dependencia: "Por definir",
-          nivel: "federal",
-          grupoFuncion: "ADMO",
-          fechaIngreso: new Date(),
-          datosContacto: null,
-          upa: null,
-          cmao: null,
-          ua: null,
-          nivelProgresion: 0,
-          estatus: "activo",
-          creadoPor: id,
-          actualizadoPor: id,
-        });
-      }
+      await d.update(schema.servidoresPublicos)
+        .set({ userId: id, nombreCompleto: nombre, actualizadoPor: id })
+        .where(eq(schema.servidoresPublicos.id, servidor.id));
+
       return { success: true, id };
     }),
 
