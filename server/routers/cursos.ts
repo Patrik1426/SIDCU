@@ -38,7 +38,7 @@ const cursoInput = z.object({
   categoria: z.string().default("general"),
   duracionHoras: z.number().int().positive(),
   modalidad: z.enum(["presencial", "virtual", "mixto"]),
-  tipoPrograma: z.enum(["PAC", "CERT", "SDPC", "OTRO"]).default("OTRO"),
+  tipoPrograma: z.enum(["PAC", "SPC", "SDPC"]),
   bloque: z.number().int().nullable().optional(),
   numero: z.number().int().nullable().optional(),
   institucionResponsable: z.string().nullable().optional(),
@@ -156,7 +156,7 @@ export const cursosRouter = router({
       // Todo el archivo es de un solo tipoPrograma -- se elige antes de
       // subir el CSV, no fila por fila (simplifica: sin columna ni alias
       // que parsear, la finalidad ya se sabe si es fija o hay que leerla).
-      tipoPrograma: z.enum(["PAC", "CERT", "SDPC"]),
+      tipoPrograma: z.enum(["PAC", "SPC", "SDPC"]),
     }))
     .mutation(async ({ ctx, input }) => {
       const creados: number[] = [];

@@ -136,8 +136,8 @@ export const cursos = mysqlTable("cursos", {
   duracionHoras: int("duracion_horas").notNull(),
   modalidad: mysqlEnum("modalidad", ["presencial", "virtual", "mixto"]).notNull(),
   activo: boolean("activo").default(true).notNull(),
-  // Campos modulares — estructura real de PAC / CERT-SPC / SDPC
-  tipoPrograma: mysqlEnum("tipo_programa", ["PAC", "CERT", "SDPC", "OTRO"]).default("OTRO").notNull(),
+  // Campos modulares — estructura real de PAC / SPC / SDPC (3 programas, sin default: siempre se elige explícito)
+  tipoPrograma: mysqlEnum("tipo_programa", ["PAC", "SPC", "SDPC"]).notNull(),
   bloque: int("bloque"),
   numero: int("numero"),
   institucionResponsable: varchar("institucion_responsable", { length: 255 }),

@@ -7,7 +7,7 @@ import { TIPO_PROGRAMA_LABELS, FINALIDAD_POR_TIPO_PROGRAMA, FINALIDADES_PAC } fr
 // necesita presencial/mixto de nuevo, se reactiva el <select> abajo
 // (misma logica que se aplico a horario/cupo).
 const MODALIDAD_DEFAULT = "virtual";
-const TIPOS_PROGRAMA = ["PAC", "CERT", "SDPC", "OTRO"];
+const TIPOS_PROGRAMA = ["PAC", "SPC", "SDPC"];
 
 export type ModalState =
   | { type: "closed" }
@@ -31,7 +31,7 @@ export const emptyForm: CursoFormData = {
   nivelGobierno: "federal",
   duracionHoras: 20,
   modalidad: MODALIDAD_DEFAULT,
-  tipoPrograma: "OTRO",
+  tipoPrograma: "SDPC",
   bloque: "",
   finalidad: "",
 };
@@ -218,7 +218,7 @@ export default function CursoModal({
               </select>
             ) : (
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
-                {FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? "Sin finalidad predeterminada para OTRO"}
+                {FINALIDAD_POR_TIPO_PROGRAMA[form.tipoPrograma] ?? "Sin finalidad predeterminada"}
               </p>
             )}
           </div>

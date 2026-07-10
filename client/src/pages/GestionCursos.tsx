@@ -38,7 +38,7 @@ export default function GestionCursos() {
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [form, setForm] = useState<CursoFormData>(emptyForm);
   const [showImport, setShowImport] = useState(false);
-  const [tipoImportacion, setTipoImportacion] = useState<"PAC" | "CERT" | "SDPC">("CERT");
+  const [tipoImportacion, setTipoImportacion] = useState<"PAC" | "SPC" | "SDPC">("SPC");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [confirmDelete, setConfirmDelete] = useState<{ type: "single"; id: number; nombre: string } | { type: "bulk" } | null>(null);
@@ -184,7 +184,7 @@ export default function GestionCursos() {
       nivelGobierno: curso.nivelGobierno ?? "federal",
       duracionHoras: curso.duracionHoras,
       modalidad: curso.modalidad,
-      tipoPrograma: curso.tipoPrograma ?? "OTRO",
+      tipoPrograma: curso.tipoPrograma ?? "SDPC",
       bloque: curso.bloque?.toString() ?? "",
       finalidad: curso.finalidad ?? "",
     });
@@ -200,7 +200,7 @@ export default function GestionCursos() {
       nivelGobierno: "federal" as const,
       duracionHoras: Number(form.duracionHoras),
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
-      tipoPrograma: form.tipoPrograma as "PAC" | "CERT" | "SDPC" | "OTRO",
+      tipoPrograma: form.tipoPrograma as "PAC" | "SPC" | "SDPC",
       bloque: form.bloque ? Number(form.bloque) : undefined,
       // El backend resuelve/valida la finalidad final segun tipoPrograma
       // (fija para SPC/SDPC, una de las 4 opciones para PAC) -- aqui solo
@@ -271,12 +271,12 @@ export default function GestionCursos() {
           </div>
           <select
             value={tipoImportacion}
-            onChange={(e) => setTipoImportacion(e.target.value as "PAC" | "CERT" | "SDPC")}
+            onChange={(e) => setTipoImportacion(e.target.value as "PAC" | "SPC" | "SDPC")}
             title="Tipo de programa de los cursos a importar"
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600"
           >
             <option value="PAC">PAC</option>
-            <option value="CERT">SPC</option>
+            <option value="SPC">SPC</option>
             <option value="SDPC">SDPC</option>
           </select>
           <button
