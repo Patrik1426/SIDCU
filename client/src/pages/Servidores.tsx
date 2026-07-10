@@ -204,6 +204,7 @@ export default function Servidores() {
           : "",
         datosContacto: srv.datosContacto ?? "",
         grupoFuncion: srv.grupoFuncion,
+        programa: srv.programa,
         upa: srv.upa ?? "",
         cmao: srv.cmao ?? "",
         email: srv.email ?? "",
