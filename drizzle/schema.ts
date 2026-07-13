@@ -108,18 +108,16 @@ export const passwordResetTokens = mysqlTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Solo estado de onboarding/baja -- rfc/curp/cargo/dependencia/nivelGobierno/
+// grupoFuncion/nivelProgresion/fechaIngreso/datosContacto vivian duplicados
+// aqui Y en servidoresPublicos (que es a donde el onboarding en realidad
+// escribe, ver perfil.crear). La copia de aqui nunca se volvia a leer para
+// nada real, solo quedaba desincronizada con el tiempo -- causo un bug real
+// (nivelProgresion se perdia al auto-registrarse) antes de esta sesion.
+// servidoresPublicos es la unica fuente de verdad para esos datos.
 export const perfilesServidor = mysqlTable("perfiles_servidor", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
-  rfc: varchar("rfc", { length: 13 }).notNull(),
-  curp: varchar("curp", { length: 18 }).notNull(),
-  cargo: varchar("cargo", { length: 255 }).notNull(),
-  dependencia: varchar("dependencia", { length: 255 }).notNull(),
-  nivelGobierno: mysqlEnum("nivel_gobierno", ["federal", "estatal", "municipal", "otro"]).notNull(),
-  grupoFuncion: mysqlEnum("grupo_funcion", ["ADMO", "TECN", "SERV", "COMUN", "PROFE", "EDU"]).notNull(),
-  nivelProgresion: int("nivel_progresion").default(0).notNull(),
-  fechaIngreso: datetime("fecha_ingreso").notNull(),
-  datosContacto: varchar("datos_contacto", { length: 255 }),
   completado: boolean("completado").default(false).notNull(),
   solicitudBaja: boolean("solicitud_baja").default(false).notNull(),
   motivoBaja: text("motivo_baja"),
@@ -128,8 +126,6 @@ export const perfilesServidor = mysqlTable("perfiles_servidor", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
   userIdIdx: index("perfil_user_id_idx").on(table.userId),
-  nivelGobiernoIdx: index("perfil_nivel_gobierno_idx").on(table.nivelGobierno),
-  nivelProgresionIdx: index("perfil_nivel_progresion_idx").on(table.nivelProgresion),
   completadoIdx: index("perfil_completado_idx").on(table.completado),
   solicitudBajaIdx: index("perfil_baja_idx").on(table.solicitudBaja),
 }));

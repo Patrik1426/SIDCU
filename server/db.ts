@@ -553,19 +553,11 @@ export async function actualizarPerfil(userId: number, data: Partial<schema.Inse
     .where(eq(schema.perfilesServidor.userId, userId));
 }
 
-export async function incrementarNivelProgresion(userId: number) {
-  const d = await getDb();
-  const perfil = await obtenerPerfil(userId);
-  if (!perfil || perfil.nivelProgresion >= 5) return;
-  await d
-    .update(schema.perfilesServidor)
-    .set({ nivelProgresion: perfil.nivelProgresion + 1 })
-    .where(eq(schema.perfilesServidor.userId, userId));
-}
-
 export async function listarSolicitudesBaja() {
   const d = await getDb();
   // No usar select() plano aquí — el join trae users.passwordHash al JSON enviado al navegador.
+  // cargo viene de servidoresPublicos (unica fuente de verdad, perfilesServidor
+  // ya no duplica estos datos -- ver comentario en schema.ts).
   return d
     .select({
       perfiles_servidor: schema.perfilesServidor,
@@ -577,9 +569,11 @@ export async function listarSolicitudesBaja() {
         role: schema.users.role,
         isActive: schema.users.isActive,
       },
+      cargo: schema.servidoresPublicos.cargo,
     })
     .from(schema.perfilesServidor)
     .innerJoin(schema.users, eq(schema.perfilesServidor.userId, schema.users.id))
+    .leftJoin(schema.servidoresPublicos, eq(schema.perfilesServidor.userId, schema.servidoresPublicos.userId))
     .where(eq(schema.perfilesServidor.solicitudBaja, true))
     .orderBy(desc(schema.perfilesServidor.fechaSolicitudBaja));
 }
