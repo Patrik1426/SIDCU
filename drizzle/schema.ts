@@ -43,7 +43,6 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   jefeInmediatoCurp: varchar("jefe_inmediato_curp", { length: 18 }),
   jefeInmediatoNombre: varchar("jefe_inmediato_nombre", { length: 255 }),
   jefeInmediatoCorreo: varchar("jefe_inmediato_correo", { length: 320 }),
-  folioSdpc: varchar("folio_sdpc", { length: 20 }),
   estatus: mysqlEnum("estatus", ["activo", "inactivo"]).default("activo").notNull(),
   observaciones: text("observaciones"),
   creadoPor: int("creado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
