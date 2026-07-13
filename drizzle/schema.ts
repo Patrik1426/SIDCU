@@ -17,7 +17,7 @@ export const users = mysqlTable("users", {
 
 export const servidoresPublicos = mysqlTable("servidores_publicos", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").unique(),
+  userId: int("user_id").unique().references(() => users.id, { onDelete: "set null" }),
   nombreCompleto: varchar("nombre_completo", { length: 255 }).notNull(),
   rfc: varchar("rfc", { length: 13 }).notNull().unique(),
   curp: varchar("curp", { length: 18 }).notNull().unique(),
@@ -46,8 +46,8 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
   folioSdpc: varchar("folio_sdpc", { length: 20 }),
   estatus: mysqlEnum("estatus", ["activo", "inactivo"]).default("activo").notNull(),
   observaciones: text("observaciones"),
-  creadoPor: int("creado_por").notNull(),
-  actualizadoPor: int("actualizado_por").notNull(),
+  creadoPor: int("creado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
+  actualizadoPor: int("actualizado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -71,8 +71,11 @@ export const servidoresPublicos = mysqlTable("servidores_publicos", {
 
 export const auditoria = mysqlTable("auditoria", {
   id: int("id").autoincrement().primaryKey(),
-  servidorId: int("servidor_id"),
-  usuarioId: int("usuario_id").notNull(),
+  servidorId: int("servidor_id").references(() => servidoresPublicos.id, { onDelete: "set null" }),
+  // notNull + RESTRICT a proposito: nunca se hace hard-delete de usuarios
+  // (ver eliminarUsuarioCompleto, removido -- solo isActive:false) para que
+  // el rastro de auditoria nunca pierda quien hizo cada accion.
+  usuarioId: int("usuario_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   accion: mysqlEnum("accion", ["crear", "actualizar", "eliminar", "ver"]).notNull(),
   cambiosAnteriores: text("cambios_anteriores"),
   cambiosPosterior: text("cambios_posterior"),
@@ -92,13 +95,13 @@ export const archivosCargados = mysqlTable("archivos_cargados", {
   tamanoBytes: bigint("tamano_bytes", { mode: "number" }).notNull(),
   s3Key: varchar("s3_key", { length: 500 }).notNull(),
   s3Url: text("s3_url").notNull(),
-  cargadoPor: int("cargado_por").notNull(),
+  cargadoPor: int("cargado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const passwordResetTokens = mysqlTable("password_reset_tokens", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
+  userId: int("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   token: varchar("token", { length: 255 }).notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
@@ -107,7 +110,7 @@ export const passwordResetTokens = mysqlTable("password_reset_tokens", {
 
 export const perfilesServidor = mysqlTable("perfiles_servidor", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull().unique(),
+  userId: int("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   rfc: varchar("rfc", { length: 13 }).notNull(),
   curp: varchar("curp", { length: 18 }).notNull(),
   cargo: varchar("cargo", { length: 255 }).notNull(),
@@ -153,7 +156,7 @@ export const cursos = mysqlTable("cursos", {
   fechaEvaluacion: timestamp("fecha_evaluacion"),
   horarioEvaluacion: varchar("horario_evaluacion", { length: 255 }),
   duracionEvaluacion: varchar("duracion_evaluacion", { length: 50 }),
-  creadoPor: int("creado_por").notNull(),
+  creadoPor: int("creado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -178,8 +181,8 @@ export const instituciones = mysqlTable("instituciones", {
 
 export const cursosInstituciones = mysqlTable("cursos_instituciones", {
   id: int("id").autoincrement().primaryKey(),
-  cursoId: int("curso_id").notNull(),
-  institucionId: int("institucion_id").notNull(),
+  cursoId: int("curso_id").notNull().references(() => cursos.id, { onDelete: "cascade" }),
+  institucionId: int("institucion_id").notNull().references(() => instituciones.id, { onDelete: "cascade" }),
   cupoMaximo: int("cupo_maximo").notNull(),
   cupoDisponible: int("cupo_disponible").notNull(),
   horario: varchar("horario", { length: 255 }),
@@ -197,9 +200,9 @@ export const cursosInstituciones = mysqlTable("cursos_instituciones", {
 
 export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
-  cursoId: int("curso_id").notNull(),
-  cursoInstitucionId: int("curso_institucion_id"),
+  userId: int("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cursoId: int("curso_id").notNull().references(() => cursos.id, { onDelete: "restrict" }),
+  cursoInstitucionId: int("curso_institucion_id").references(() => cursosInstituciones.id, { onDelete: "set null" }),
   estado: mysqlEnum("estado", ["pendiente", "aprobada", "rechazada", "completada"]).default("pendiente").notNull(),
   calificacion: int("calificacion"),
   notasAdmin: text("notas_admin"),

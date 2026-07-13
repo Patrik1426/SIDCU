@@ -232,18 +232,6 @@ export async function resetearPasswordUsuario(id: number, passwordHash: string) 
 
 // Elimina el usuario y todo lo que depende exclusivamente de él (perfil, solicitudes).
 // El servidor público asociado no se borra — se desvincula y marca inactivo.
-export async function eliminarUsuarioCompleto(id: number) {
-  const d = await getDb();
-  await d.transaction(async (tx) => {
-    await tx.update(schema.servidoresPublicos)
-      .set({ estatus: "inactivo", userId: null })
-      .where(eq(schema.servidoresPublicos.userId, id));
-    await tx.delete(schema.perfilesServidor).where(eq(schema.perfilesServidor.userId, id));
-    await tx.delete(schema.solicitudesCurso).where(eq(schema.solicitudesCurso.userId, id));
-    await tx.delete(schema.users).where(eq(schema.users.id, id));
-  });
-}
-
 // ─── Servidores Públicos ─────────────────────────────────────────────
 
 export async function crearServidor(data: InsertServidorPublico) {

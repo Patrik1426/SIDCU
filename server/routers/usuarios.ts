@@ -12,7 +12,6 @@ import {
   crearAuditoria,
   servidorIdDeUsuario,
   resetearPasswordUsuario,
-  eliminarUsuarioCompleto,
 } from "../db";
 
 export const usuariosRouter = router({
@@ -117,16 +116,6 @@ export const usuariosRouter = router({
         descripcion: `${ctx.user.nombre} restableció la contraseña del usuario #${input.id}`,
       } as any);
 
-      return { success: true };
-    }),
-
-  eliminar: adminProcedure
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ input, ctx }) => {
-      if (input.id === ctx.user.id) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminar tu propia cuenta" });
-      }
-      await eliminarUsuarioCompleto(input.id);
       return { success: true };
     }),
 });

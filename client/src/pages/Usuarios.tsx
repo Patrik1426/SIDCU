@@ -16,7 +16,6 @@ import {
   Clock,
   ChevronDown,
   UserPlus,
-  Trash2,
   KeyRound,
 } from "lucide-react";
 
@@ -47,7 +46,7 @@ export default function Usuarios() {
   const [search, setSearch] = useState("");
   const [roleDropdown, setRoleDropdown] = useState<number | null>(null);
   const [showCrear, setShowCrear] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ type: "toggle"; id: number; nombre: string; isActive: boolean } | { type: "delete"; id: number; nombre: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: "toggle"; id: number; nombre: string; isActive: boolean } | null>(null);
   const [resetTarget, setResetTarget] = useState<{ id: number; nombre: string } | null>(null);
   const utils = trpc.useUtils();
 
@@ -71,12 +70,6 @@ export default function Usuarios() {
   });
 
   const toggleActivoMut = trpc.usuarios.toggleActivo.useMutation({
-    onSuccess: () => {
-      utils.usuarios.listar.invalidate();
-    },
-  });
-
-  const eliminarMut = trpc.usuarios.eliminar.useMutation({
     onSuccess: () => {
       utils.usuarios.listar.invalidate();
     },
@@ -302,17 +295,6 @@ export default function Usuarios() {
                 >
                   {usr.isActive ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
-
-                {/* Delete — solo si inactivo */}
-                {!usr.isActive && !isSelf && (
-                  <button
-                    onClick={() => setConfirmAction({ type: "delete", id: usr.id, nombre: usr.nombre })}
-                    title="Eliminar usuario"
-                    className="shrink-0 rounded-lg p-2 text-slate-700 hover:bg-rose-50 hover:text-rose-500 transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
               </motion.div>
             );
           })}
@@ -346,28 +328,14 @@ export default function Usuarios() {
 
       <ConfirmModal
         open={!!confirmAction}
-        title={
-          confirmAction?.type === "delete" ? "Eliminar usuario"
-            : confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar usuario"
-            : "Activar usuario"
-        }
-        message={
-          confirmAction?.type === "delete"
-            ? `¿Eliminar a "${confirmAction.nombre}" permanentemente? Se borrarán todos sus datos, servidor y solicitudes.`
-            : `¿${confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar" : "Activar"} a "${confirmAction?.nombre ?? ""}"?`
-        }
-        confirmLabel={
-          confirmAction?.type === "delete" ? "Eliminar"
-            : confirmAction?.type === "toggle" && confirmAction.isActive ? "Desactivar"
-            : "Activar"
-        }
-        variant={confirmAction?.type === "delete" || (confirmAction?.type === "toggle" && confirmAction.isActive) ? "danger" : "success"}
-        loading={toggleActivoMut.isPending || eliminarMut.isPending}
+        title={confirmAction?.isActive ? "Desactivar usuario" : "Activar usuario"}
+        message={`¿${confirmAction?.isActive ? "Desactivar" : "Activar"} a "${confirmAction?.nombre ?? ""}"?`}
+        confirmLabel={confirmAction?.isActive ? "Desactivar" : "Activar"}
+        variant={confirmAction?.isActive ? "danger" : "success"}
+        loading={toggleActivoMut.isPending}
         onConfirm={() => {
-          if (confirmAction?.type === "toggle") {
+          if (confirmAction) {
             toggleActivoMut.mutate({ id: confirmAction.id }, { onSuccess: () => setConfirmAction(null) });
-          } else if (confirmAction?.type === "delete") {
-            eliminarMut.mutate({ id: confirmAction.id }, { onSuccess: () => setConfirmAction(null) });
           }
         }}
         onCancel={() => setConfirmAction(null)}
