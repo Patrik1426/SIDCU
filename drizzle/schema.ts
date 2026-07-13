@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, varchar, boolean, bigint, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, varchar, boolean, bigint, index, foreignKey } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -202,7 +202,10 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   cursoId: int("curso_id").notNull().references(() => cursos.id, { onDelete: "restrict" }),
-  cursoInstitucionId: int("curso_institucion_id").references(() => cursosInstituciones.id, { onDelete: "set null" }),
+  // Sin .references() inline: el nombre auto-generado por Drizzle para esta
+  // FK pasa el limite de 64 caracteres de MySQL (tabla+columna+ref largos).
+  // Se define abajo con foreignKey() + nombre corto explicito (fk_sol_curso_institucion).
+  cursoInstitucionId: int("curso_institucion_id"),
   estado: mysqlEnum("estado", ["pendiente", "aprobada", "rechazada", "completada"]).default("pendiente").notNull(),
   calificacion: int("calificacion"),
   notasAdmin: text("notas_admin"),
@@ -215,6 +218,11 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   createdAtIdx: index("sol_created_at_idx").on(table.createdAt),
   userEstadoIdx: index("sol_user_estado_idx").on(table.userId, table.estado),
   userCursoIdx: index("sol_user_curso_idx").on(table.userId, table.cursoId),
+  cursoInstitucionFk: foreignKey({
+    columns: [table.cursoInstitucionId],
+    foreignColumns: [cursosInstituciones.id],
+    name: "fk_sol_curso_institucion",
+  }).onDelete("set null"),
 }));
 
 export type User = typeof users.$inferSelect;
