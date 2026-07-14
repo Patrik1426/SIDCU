@@ -52,6 +52,20 @@ function formatFecha(date: string | Date): string {
 
 const NIVEL_PROG_LABELS: Record<number, string> = { 0: "Nuevo ingreso", 1: "N1", 2: "N2", 3: "N3", 4: "N4", 5: "N5" };
 
+// Fecha LOCAL (no UTC) para nombre de archivo y texto "Generado:" -- deben
+// coincidir entre si. Antes el nombre de archivo usaba toISOString() (UTC)
+// y el texto interno usaba toLocaleDateString() (hora local del navegador),
+// dos bases distintas para el mismo momento: en Mexico (UTC-6), ya entrada
+// la noche local UTC ya rodo al dia siguiente, y el archivo salia fechado
+// un dia adelante del texto "Generado:" que mostraba el dia local real.
+function fechaLocalISO(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function prepararDatos(items: ServidorExport[]) {
   return items.map((s) => ({
     "Nombre Completo": s.nombreCompleto,
@@ -97,7 +111,7 @@ export function exportarExcel(items: ServidorExport[], filename = "servidores_pu
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Servidores Públicos");
-  XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split("T")[0]}.xlsx`);
+  XLSX.writeFile(wb, `${filename}_${fechaLocalISO()}.xlsx`);
 }
 
 export function exportarPDF(items: ServidorExport[], filename = "servidores_publicos") {
@@ -171,5 +185,5 @@ export function exportarPDF(items: ServidorExport[], filename = "servidores_publ
     margin: { left: 10, right: 10 },
   });
 
-  doc.save(`${filename}_${new Date().toISOString().split("T")[0]}.pdf`);
+  doc.save(`${filename}_${fechaLocalISO()}.pdf`);
 }
