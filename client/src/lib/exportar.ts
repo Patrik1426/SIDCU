@@ -27,6 +27,7 @@ interface ServidorExport {
   nivel: string;
   fechaIngreso: string | Date;
   datosContacto?: string | null;
+  email?: string | null;
   grupoFuncion: string;
   upa?: string | null;
   cmao?: string | null;
@@ -93,6 +94,7 @@ function prepararDatos(items: ServidorExport[]) {
     "Nivel Progresión": NIVEL_PROG_LABELS[s.nivelProgresion ?? 0] ?? `N${s.nivelProgresion}`,
     "Fecha de Ingreso": formatFecha(s.fechaIngreso),
     "Datos de Contacto": s.datosContacto ?? "",
+    Email: s.email ?? "",
     "Grupo de Función": GRUPO_LABELS[s.grupoFuncion] ?? s.grupoFuncion,
     Estatus: s.estatus === "activo" ? "Activo" : "Inactivo",
     Observaciones: s.observaciones ?? "",
@@ -116,6 +118,7 @@ export function exportarExcel(items: ServidorExport[], filename = "servidores_pu
     { wch: 15 }, // Nivel Progresión
     { wch: 15 }, // Fecha
     { wch: 25 }, // Contacto
+    { wch: 25 }, // Email
     { wch: 18 }, // Grupo
     { wch: 10 }, // Estatus
     { wch: 30 }, // Observaciones
@@ -157,6 +160,7 @@ export function exportarPDF(items: ServidorExport[], filename = "servidores_publ
     "UA",
     "Nivel",
     "Fecha Ingreso",
+    "Email",
     "Grupo",
     "Estatus",
   ];
@@ -172,6 +176,7 @@ export function exportarPDF(items: ServidorExport[], filename = "servidores_publ
     s.ua ?? "",
     NIVEL_PROG_LABELS[s.nivelProgresion ?? 0] ?? `N${s.nivelProgresion}`,
     formatFecha(s.fechaIngreso),
+    s.email ?? "",
     GRUPO_LABELS[s.grupoFuncion] ?? s.grupoFuncion,
     s.estatus === "activo" ? "Activo" : "Inactivo",
   ]);
