@@ -402,3 +402,85 @@ export function exportarCursosPorInscritosPDF(items: CursoInscritosExport[], fil
 
   doc.save(`${filename}_${fechaLocalISO()}.pdf`);
 }
+
+interface InconformidadExport {
+  nombreCompleto: string;
+  curp: string;
+  factor: string;
+  mensaje: string;
+  archivoId: number | null;
+  enviadoAt: Date | string;
+}
+
+const FACTOR_LABELS_EXPORT: Record<string, string> = {
+  capacitacion: "Capacitación",
+  evaluacion_desempeno: "Evaluación del Desempeño",
+  antiguedad: "Antigüedad",
+  preparacion_academica: "Preparación Académica",
+};
+
+function prepararDatosInconformidades(items: InconformidadExport[]) {
+  return items.map((f) => ({
+    "Nombre Completo": sanitizeCell(f.nombreCompleto),
+    CURP: sanitizeCell(f.curp),
+    Factor: FACTOR_LABELS_EXPORT[f.factor] ?? f.factor,
+    Mensaje: sanitizeCell(f.mensaje),
+    PDF: f.archivoId ? "Sí" : "No",
+    "Fecha de Envío": formatFechaHora(f.enviadoAt),
+  }));
+}
+
+export function exportarInconformidadesExcel(items: InconformidadExport[], filename = "inconformidades") {
+  const datos = prepararDatosInconformidades(items);
+  const ws = XLSX.utils.json_to_sheet(datos);
+  ws["!cols"] = [
+    { wch: 30 }, // Nombre
+    { wch: 20 }, // CURP
+    { wch: 25 }, // Factor
+    { wch: 60 }, // Mensaje
+    { wch: 6 },  // PDF
+    { wch: 18 }, // Fecha
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Inconformidades");
+  XLSX.writeFile(wb, `${filename}_${fechaLocalISO()}.xlsx`);
+}
+
+export function exportarInconformidadesPDF(items: InconformidadExport[], filename = "inconformidades") {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+
+  doc.setFontSize(16);
+  doc.setTextColor(97, 18, 50);
+  doc.text("Secretaría de Cultura", 14, 15);
+
+  doc.setFontSize(11);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Inconformidades", 14, 22);
+
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Generado: ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })} · ${items.length} registros`,
+    14, 28,
+  );
+
+  const headers = ["Nombre", "CURP", "Factor", "Mensaje", "PDF", "Fecha"];
+  const rows = items.map((f) => [
+    f.nombreCompleto,
+    f.curp,
+    FACTOR_LABELS_EXPORT[f.factor] ?? f.factor,
+    f.mensaje,
+    f.archivoId ? "Sí" : "No",
+    formatFechaHora(f.enviadoAt),
+  ]);
+
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: 33,
+    columnStyles: { 3: { cellWidth: 90 } },
+    styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.1 },
+  });
+
+  doc.save(`${filename}_${fechaLocalISO()}.pdf`);
+}
