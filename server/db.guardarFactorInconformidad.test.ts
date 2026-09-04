@@ -14,8 +14,7 @@ describe("guardarFactorInconformidad", () => {
     const { tx, calls } = makeTxRecorder(
       [
         [], // FOR UPDATE sobre inconformidades por userId -- no existe
-        [], // factor ya existe para esta inconformidad? -- no (irrelevante aqui, se crea la cabecera primero)
-        [{ habilitado: true }], // config del factor
+        [{ habilitado: true }], // config del factor -- ya no se consulta factorExistente cuando no hay cabecera
       ],
       [{ insertId: 10 }, { insertId: 55 }, { insertId: 1 }], // insert inconformidad, insert factor, insert auditoria
     );

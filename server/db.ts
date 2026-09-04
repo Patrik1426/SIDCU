@@ -1065,24 +1065,38 @@ export async function guardarFactorInconformidad(
 ): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
   const d = await getDb();
   return d.transaction(async (tx) => {
-    let [cabecera] = await tx.select().from(schema.inconformidades)
+    const [cabeceraExistente] = await tx.select().from(schema.inconformidades)
       .where(eq(schema.inconformidades.userId, userId))
       .for("update");
 
-    if (!cabecera) {
-      const [ins] = await tx.insert(schema.inconformidades).values({ userId });
-      cabecera = { id: ins.insertId, userId, estado: "borrador", enviadoAt: null, createdAt: new Date() };
-    }
-
-    if (cabecera.estado !== "borrador") {
+    if (cabeceraExistente && cabeceraExistente.estado !== "borrador") {
       return { ok: false, error: "YA_ENVIADA" };
     }
 
-    const [factorExistente] = await tx.select().from(schema.inconformidadFactores)
-      .where(and(
-        eq(schema.inconformidadFactores.inconformidadId, cabecera.id),
-        eq(schema.inconformidadFactores.factor, factor),
-      ));
+    let factorExistente: typeof schema.inconformidadFactores.$inferSelect | undefined;
+    if (cabeceraExistente) {
+      [factorExistente] = await tx.select().from(schema.inconformidadFactores)
+        .where(and(
+          eq(schema.inconformidadFactores.inconformidadId, cabeceraExistente.id),
+          eq(schema.inconformidadFactores.factor, factor),
+        ));
+    }
+
+    if (!factorExistente) {
+      const [config] = await tx.select().from(schema.factoresInconformidadConfig)
+        .where(eq(schema.factoresInconformidadConfig.factor, factor));
+      if (!config?.habilitado) {
+        return { ok: false, error: "FACTOR_DESHABILITADO" };
+      }
+    }
+
+    let cabeceraId: number;
+    if (cabeceraExistente) {
+      cabeceraId = cabeceraExistente.id;
+    } else {
+      const [ins] = await tx.insert(schema.inconformidades).values({ userId });
+      cabeceraId = ins.insertId;
+    }
 
     let factorId: number;
     if (factorExistente) {
@@ -1091,17 +1105,12 @@ export async function guardarFactorInconformidad(
         .where(eq(schema.inconformidadFactores.id, factorExistente.id));
       factorId = factorExistente.id;
     } else {
-      const [config] = await tx.select().from(schema.factoresInconformidadConfig)
-        .where(eq(schema.factoresInconformidadConfig.factor, factor));
-      if (!config?.habilitado) {
-        return { ok: false, error: "FACTOR_DESHABILITADO" };
-      }
       const [ins] = await tx.insert(schema.inconformidadFactores)
-        .values({ inconformidadId: cabecera.id, factor, mensaje });
+        .values({ inconformidadId: cabeceraId, factor, mensaje });
       factorId = ins.insertId;
     }
 
-    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
+    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id })
       .from(schema.servidoresPublicos)
       .where(eq(schema.servidoresPublicos.userId, userId));
 
