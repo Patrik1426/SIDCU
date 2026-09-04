@@ -178,7 +178,7 @@ export default function SubidaPDF({
   } else {
     contenido = (
       <label
-        htmlFor="subida-pdf-input"
+        htmlFor={`subida-pdf-input-${factorId}`}
         className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 px-3 py-3 text-sm font-medium text-slate-500 hover:border-primary-300 hover:text-primary-600"
       >
         <UploadCloud size={16} />
@@ -191,7 +191,7 @@ export default function SubidaPDF({
     <div>
       {contenido}
       <input
-        id="subida-pdf-input"
+        id={`subida-pdf-input-${factorId}`}
         ref={inputRef}
         type="file"
         accept="application/pdf"
