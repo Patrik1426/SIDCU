@@ -1030,3 +1030,133 @@ export async function contarAprobacionPorBloque() {
     })
     .map(([bloque, counts]) => ({ bloque, ...counts }));
 }
+
+// ─── Inconformidad ───────────────────────────────────────────────────
+
+export async function obtenerFactoresConfig() {
+  const d = await getDb();
+  return d.select().from(schema.factoresInconformidadConfig);
+}
+
+export async function obtenerInconformidad(userId: number) {
+  const d = await getDb();
+  const [cabecera] = await d.select().from(schema.inconformidades)
+    .where(eq(schema.inconformidades.userId, userId));
+  if (!cabecera) return null;
+
+  const factores = await d.select({
+    id: schema.inconformidadFactores.id,
+    factor: schema.inconformidadFactores.factor,
+    mensaje: schema.inconformidadFactores.mensaje,
+    archivoId: schema.inconformidadFactores.archivoId,
+    nombreOriginal: schema.archivosCargados.nombreOriginal,
+  })
+    .from(schema.inconformidadFactores)
+    .leftJoin(schema.archivosCargados, eq(schema.archivosCargados.id, schema.inconformidadFactores.archivoId))
+    .where(eq(schema.inconformidadFactores.inconformidadId, cabecera.id));
+
+  return { ...cabecera, factores };
+}
+
+export async function guardarFactorInconformidad(
+  userId: number,
+  factor: (typeof schema.FACTORES_INCONFORMIDAD)[number],
+  mensaje: string,
+): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    let [cabecera] = await tx.select().from(schema.inconformidades)
+      .where(eq(schema.inconformidades.userId, userId))
+      .for("update");
+
+    if (!cabecera) {
+      const [ins] = await tx.insert(schema.inconformidades).values({ userId });
+      cabecera = { id: ins.insertId, userId, estado: "borrador", enviadoAt: null, createdAt: new Date() };
+    }
+
+    if (cabecera.estado !== "borrador") {
+      return { ok: false, error: "YA_ENVIADA" };
+    }
+
+    const [factorExistente] = await tx.select().from(schema.inconformidadFactores)
+      .where(and(
+        eq(schema.inconformidadFactores.inconformidadId, cabecera.id),
+        eq(schema.inconformidadFactores.factor, factor),
+      ));
+
+    let factorId: number;
+    if (factorExistente) {
+      await tx.update(schema.inconformidadFactores)
+        .set({ mensaje })
+        .where(eq(schema.inconformidadFactores.id, factorExistente.id));
+      factorId = factorExistente.id;
+    } else {
+      const [config] = await tx.select().from(schema.factoresInconformidadConfig)
+        .where(eq(schema.factoresInconformidadConfig.factor, factor));
+      if (!config?.habilitado) {
+        return { ok: false, error: "FACTOR_DESHABILITADO" };
+      }
+      const [ins] = await tx.insert(schema.inconformidadFactores)
+        .values({ inconformidadId: cabecera.id, factor, mensaje });
+      factorId = ins.insertId;
+    }
+
+    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, userId));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: servidor?.id ?? null,
+      usuarioId: userId,
+      accion: factorExistente ? "actualizar" : "crear",
+      descripcion: `Inconformidad: ${factorExistente ? "editó el texto del" : "agregó el"} factor "${factor}"`,
+    });
+
+    return { ok: true, id: factorId };
+  });
+}
+
+export async function quitarFactorInconformidad(
+  userId: number,
+  factorId: number,
+): Promise<{ ok: true; s3KeyBorrado: string | null } | { ok: false; error: "YA_ENVIADA" | "NO_ENCONTRADO" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [cabecera] = await tx.select().from(schema.inconformidades)
+      .where(eq(schema.inconformidades.userId, userId))
+      .for("update");
+    if (!cabecera) return { ok: false, error: "NO_ENCONTRADO" };
+    if (cabecera.estado !== "borrador") return { ok: false, error: "YA_ENVIADA" };
+
+    const [factor] = await tx.select().from(schema.inconformidadFactores)
+      .where(and(
+        eq(schema.inconformidadFactores.id, factorId),
+        eq(schema.inconformidadFactores.inconformidadId, cabecera.id),
+      ));
+    if (!factor) return { ok: false, error: "NO_ENCONTRADO" };
+
+    let s3KeyBorrado: string | null = null;
+    if (factor.archivoId) {
+      const [archivo] = await tx.select({ s3Key: schema.archivosCargados.s3Key })
+        .from(schema.archivosCargados)
+        .where(eq(schema.archivosCargados.id, factor.archivoId));
+      s3KeyBorrado = archivo?.s3Key ?? null;
+      await tx.delete(schema.archivosCargados).where(eq(schema.archivosCargados.id, factor.archivoId));
+    }
+
+    await tx.delete(schema.inconformidadFactores).where(eq(schema.inconformidadFactores.id, factorId));
+
+    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, userId));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: servidor?.id ?? null,
+      usuarioId: userId,
+      accion: "eliminar",
+      descripcion: `Inconformidad: eliminó el factor "${factor.factor}"${s3KeyBorrado ? " (incluía PDF)" : ""}`,
+    });
+
+    return { ok: true, s3KeyBorrado };
+  });
+}
