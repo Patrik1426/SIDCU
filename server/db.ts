@@ -1169,3 +1169,92 @@ export async function quitarFactorInconformidad(
     return { ok: true, s3KeyBorrado };
   });
 }
+
+export async function crearArchivoPendiente(
+  cargadoPor: number,
+  nombreOriginal: string,
+  tipoArchivo: string,
+  tamanoBytes: number,
+  s3Key: string,
+): Promise<{ id: number }> {
+  const d = await getDb();
+  const [ins] = await d.insert(schema.archivosCargados).values({
+    nombreOriginal,
+    tipoArchivo,
+    tamanoBytes,
+    s3Key,
+    s3Url: `s3://${process.env.AWS_S3_BUCKET}/${s3Key}`,
+    cargadoPor,
+  });
+  return { id: ins.insertId };
+}
+
+export async function borrarArchivoPendiente(archivoId: number): Promise<void> {
+  const d = await getDb();
+  await d.delete(schema.archivosCargados).where(eq(schema.archivosCargados.id, archivoId));
+}
+
+export async function confirmarSubidaInconformidad(
+  userId: number,
+  factorId: number,
+  archivoId: number,
+): Promise<{ ok: true; s3KeyViejo: string | null } | { ok: false; error: "YA_ENVIADA" | "FACTOR_NO_ENCONTRADO" | "ARCHIVO_NO_ES_TUYO" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [cabecera] = await tx.select().from(schema.inconformidades)
+      .where(eq(schema.inconformidades.userId, userId))
+      .for("update");
+    if (!cabecera) return { ok: false, error: "FACTOR_NO_ENCONTRADO" };
+    if (cabecera.estado !== "borrador") return { ok: false, error: "YA_ENVIADA" };
+
+    const [factor] = await tx.select().from(schema.inconformidadFactores)
+      .where(and(
+        eq(schema.inconformidadFactores.id, factorId),
+        eq(schema.inconformidadFactores.inconformidadId, cabecera.id),
+      ));
+    if (!factor) return { ok: false, error: "FACTOR_NO_ENCONTRADO" };
+
+    let s3KeyViejo: string | null = null;
+    if (factor.archivoId) {
+      const [archivoViejo] = await tx.select({ s3Key: schema.archivosCargados.s3Key })
+        .from(schema.archivosCargados)
+        .where(eq(schema.archivosCargados.id, factor.archivoId));
+      s3KeyViejo = archivoViejo?.s3Key ?? null;
+      await tx.delete(schema.archivosCargados).where(eq(schema.archivosCargados.id, factor.archivoId));
+    }
+
+    await tx.update(schema.inconformidadFactores)
+      .set({ archivoId })
+      .where(eq(schema.inconformidadFactores.id, factorId));
+
+    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, userId));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: servidor?.id ?? null,
+      usuarioId: userId,
+      accion: "actualizar",
+      descripcion: `Inconformidad: ${s3KeyViejo ? "reemplazó" : "subió"} el PDF del factor "${factor.factor}"`,
+    });
+
+    return { ok: true, s3KeyViejo };
+  });
+}
+
+export async function obtenerArchivoParaDescarga(archivoId: number) {
+  const d = await getDb();
+  const [row] = await d.select({
+    s3Key: schema.archivosCargados.s3Key,
+    nombreOriginal: schema.archivosCargados.nombreOriginal,
+    cargadoPor: schema.archivosCargados.cargadoPor,
+    userIdDueno: schema.inconformidades.userId,
+    servidorIdDueno: schema.servidoresPublicos.id,
+  })
+    .from(schema.archivosCargados)
+    .leftJoin(schema.inconformidadFactores, eq(schema.inconformidadFactores.archivoId, schema.archivosCargados.id))
+    .leftJoin(schema.inconformidades, eq(schema.inconformidades.id, schema.inconformidadFactores.inconformidadId))
+    .leftJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.inconformidades.userId))
+    .where(eq(schema.archivosCargados.id, archivoId));
+  return row ?? null;
+}
