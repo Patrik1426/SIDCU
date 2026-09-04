@@ -98,6 +98,42 @@ export const archivosCargados = mysqlTable("archivos_cargados", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const FACTORES_INCONFORMIDAD = [
+  "capacitacion", "evaluacion_desempeno", "antiguedad", "preparacion_academica",
+] as const;
+
+export const inconformidades = mysqlTable("inconformidades", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  estado: mysqlEnum("estado", ["borrador", "enviado"]).notNull().default("borrador"),
+  enviadoAt: timestamp("enviado_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  estadoIdx: index("inc_estado_idx").on(table.estado),
+}));
+
+export const inconformidadFactores = mysqlTable("inconformidad_factores", {
+  id: int("id").autoincrement().primaryKey(),
+  inconformidadId: int("inconformidad_id").notNull(),
+  factor: mysqlEnum("factor", FACTORES_INCONFORMIDAD).notNull(),
+  mensaje: varchar("mensaje", { length: 500 }).notNull(),
+  archivoId: int("archivo_id").unique().references(() => archivosCargados.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  inconformidadFactorIdx: index("incf_inconformidad_factor_idx").on(table.inconformidadId, table.factor),
+  fk: foreignKey({
+    columns: [table.inconformidadId],
+    foreignColumns: [inconformidades.id],
+    name: "fk_incf_inconformidad",
+  }).onDelete("cascade"),
+}));
+
+export const factoresInconformidadConfig = mysqlTable("factores_inconformidad_config", {
+  factor: mysqlEnum("factor", FACTORES_INCONFORMIDAD).primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+});
+
 export const passwordResetTokens = mysqlTable("password_reset_tokens", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -238,3 +274,6 @@ export type CursoInstitucion = typeof cursosInstituciones.$inferSelect;
 export type InsertCursoInstitucion = typeof cursosInstituciones.$inferInsert;
 export type SolicitudCurso = typeof solicitudesCurso.$inferSelect;
 export type InsertSolicitudCurso = typeof solicitudesCurso.$inferInsert;
+export type Inconformidad = typeof inconformidades.$inferSelect;
+export type InconformidadFactor = typeof inconformidadFactores.$inferSelect;
+export type FactorInconformidadConfig = typeof factoresInconformidadConfig.$inferSelect;

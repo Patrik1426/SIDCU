@@ -88,3 +88,6 @@ export const CMAO_CATALOGO: { cmao: string; ua: string }[] = [
   { cmao: "CMAO17", ua: "INSTITUTO NACIONAL DEL DERECHO DE AUTOR" },
   { cmao: "CMAO18", ua: "RADIO EDUCACIÓN" },
 ];
+
+export const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
+export const TIPO_PDF = "application/pdf";
