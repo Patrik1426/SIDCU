@@ -17,6 +17,7 @@ describe("confirmarSubidaInconformidad", () => {
       [
         [{ id: 10, estado: "borrador" }],
         [{ id: 55, archivoId: null, factor: "capacitacion" }],
+        [{ cargadoPor: 4 }], // ownership check del archivo nuevo
         [{ id: 3 }], // servidor
       ],
       [],
@@ -36,6 +37,7 @@ describe("confirmarSubidaInconformidad", () => {
       [
         [{ id: 10, estado: "borrador" }],
         [{ id: 55, archivoId: 7, factor: "capacitacion" }],
+        [{ cargadoPor: 4 }], // ownership check del archivo nuevo
         [{ s3Key: "inconformidad/4/55/viejo.pdf" }],
         [{ id: 3 }],
       ],
@@ -69,5 +71,22 @@ describe("confirmarSubidaInconformidad", () => {
 
     const { confirmarSubidaInconformidad } = await import("./db");
     expect(await confirmarSubidaInconformidad(4, 999, 99)).toEqual({ ok: false, error: "FACTOR_NO_ENCONTRADO" });
+  });
+
+  it("rechaza si el archivoId pertenece a otro usuario (IDOR)", async () => {
+    const { tx } = makeTxRecorder(
+      [
+        [{ id: 10, estado: "borrador" }],
+        [{ id: 55, archivoId: null, factor: "capacitacion" }],
+        [{ cargadoPor: 999 }], // el archivo fue subido por otro usuario, no por userId=4
+      ],
+      [],
+    );
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { confirmarSubidaInconformidad } = await import("./db");
+    expect(await confirmarSubidaInconformidad(4, 55, 99)).toEqual({ ok: false, error: "ARCHIVO_NO_ES_TUYO" });
   });
 });

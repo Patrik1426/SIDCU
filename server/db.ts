@@ -1189,9 +1189,17 @@ export async function crearArchivoPendiente(
   return { id: ins.insertId };
 }
 
-export async function borrarArchivoPendiente(archivoId: number): Promise<void> {
+export async function obtenerArchivoPorId(archivoId: number) {
   const d = await getDb();
-  await d.delete(schema.archivosCargados).where(eq(schema.archivosCargados.id, archivoId));
+  const [archivo] = await d.select().from(schema.archivosCargados)
+    .where(eq(schema.archivosCargados.id, archivoId));
+  return archivo ?? null;
+}
+
+export async function borrarArchivoPendiente(archivoId: number, userId: number): Promise<void> {
+  const d = await getDb();
+  await d.delete(schema.archivosCargados)
+    .where(and(eq(schema.archivosCargados.id, archivoId), eq(schema.archivosCargados.cargadoPor, userId)));
 }
 
 export async function confirmarSubidaInconformidad(
@@ -1213,6 +1221,15 @@ export async function confirmarSubidaInconformidad(
         eq(schema.inconformidadFactores.inconformidadId, cabecera.id),
       ));
     if (!factor) return { ok: false, error: "FACTOR_NO_ENCONTRADO" };
+
+    if (factor.archivoId !== archivoId) {
+      const [archivoNuevo] = await tx.select({ cargadoPor: schema.archivosCargados.cargadoPor })
+        .from(schema.archivosCargados)
+        .where(eq(schema.archivosCargados.id, archivoId));
+      if (!archivoNuevo || archivoNuevo.cargadoPor !== userId) {
+        return { ok: false, error: "ARCHIVO_NO_ES_TUYO" };
+      }
+    }
 
     let s3KeyViejo: string | null = null;
     if (factor.archivoId) {

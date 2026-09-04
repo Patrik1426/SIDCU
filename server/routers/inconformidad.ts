@@ -10,6 +10,7 @@ import {
   crearArchivoPendiente,
   borrarArchivoPendiente,
   confirmarSubidaInconformidad,
+  obtenerArchivoPorId,
   obtenerArchivoParaDescarga,
   enviarInconformidad,
   listarInconformidadesAdmin,
@@ -20,7 +21,11 @@ import { urlSubida, urlDescarga, verificarArchivo, borrarArchivoSeguro } from ".
 import { FACTORES_INCONFORMIDAD } from "../../drizzle/schema";
 import { MAX_PDF_BYTES, TIPO_PDF } from "../../shared/const";
 
-function traducirError(error: string): TRPCError {
+type ErrorCodigoInconformidad =
+  | "YA_ENVIADA" | "FACTOR_DESHABILITADO" | "NO_ENCONTRADO" | "FACTOR_NO_ENCONTRADO"
+  | "ARCHIVO_NO_ES_TUYO" | "SIN_FACTORES" | "NO_INICIADA";
+
+function traducirError(error: ErrorCodigoInconformidad): TRPCError {
   switch (error) {
     case "YA_ENVIADA":
       return new TRPCError({ code: "CONFLICT", message: "Tu inconformidad ya fue enviada (quizás desde otra pestaña). Actualizando tu pantalla..." });
@@ -89,16 +94,21 @@ export const inconformidadRouter = router({
     }),
 
   confirmarSubida: protectedProcedure
-    .input(z.object({ factorId: z.number(), archivoId: z.number(), s3Key: z.string() }))
+    .input(z.object({ factorId: z.number(), archivoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      const verificacion = await verificarArchivo(input.s3Key);
+      const archivo = await obtenerArchivoPorId(input.archivoId);
+      if (!archivo || archivo.cargadoPor !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
+      }
+
+      const verificacion = await verificarArchivo(archivo.s3Key);
       if (!verificacion.existe) {
-        await borrarArchivoPendiente(input.archivoId);
+        await borrarArchivoPendiente(input.archivoId, ctx.user.id);
         throw new TRPCError({ code: "BAD_REQUEST", message: "No se pudo confirmar la subida, intenta de nuevo." });
       }
       if ((verificacion.tamanoBytes ?? 0) > MAX_PDF_BYTES) {
-        await borrarArchivoSeguro(input.s3Key);
-        await borrarArchivoPendiente(input.archivoId);
+        await borrarArchivoSeguro(archivo.s3Key);
+        await borrarArchivoPendiente(input.archivoId, ctx.user.id);
         throw new TRPCError({ code: "BAD_REQUEST", message: "El archivo excede el límite de 10MB." });
       }
 
