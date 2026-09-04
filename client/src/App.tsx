@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { Route, Switch, Redirect, useLocation } from "wouter";
+import { Toaster } from "sonner";
 import { useAuthState } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -205,6 +206,7 @@ export default function App() {
         <Route path="/restablecer-contrasena/:token" component={RestablecerContrasena} />
         <Route component={NotFound} />
       </Switch>
+      <Toaster position="bottom-right" richColors />
     </ThemeProvider>
   );
 }
