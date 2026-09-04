@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/mysql2";
+import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, and, like, or, sql, desc, inArray, getTableColumns } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
@@ -6,7 +7,7 @@ import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
 import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
 
-let db: ReturnType<typeof drizzle> | null = null;
+let db: (MySql2Database<typeof schema> & { $client: mysql.Pool }) | null = null;
 let pool: mysql.Pool | null = null;
 
 export async function getDb() {
