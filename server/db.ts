@@ -1258,3 +1258,89 @@ export async function obtenerArchivoParaDescarga(archivoId: number) {
     .where(eq(schema.archivosCargados.id, archivoId));
   return row ?? null;
 }
+
+export async function enviarInconformidad(
+  userId: number,
+): Promise<{ ok: true } | { ok: false; error: "YA_ENVIADA" | "SIN_FACTORES" | "NO_INICIADA" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [cabecera] = await tx.select().from(schema.inconformidades)
+      .where(eq(schema.inconformidades.userId, userId))
+      .for("update");
+    if (!cabecera) return { ok: false, error: "NO_INICIADA" };
+    if (cabecera.estado !== "borrador") return { ok: false, error: "YA_ENVIADA" };
+
+    const factores = await tx.select({ id: schema.inconformidadFactores.id })
+      .from(schema.inconformidadFactores)
+      .where(eq(schema.inconformidadFactores.inconformidadId, cabecera.id));
+    if (factores.length === 0) return { ok: false, error: "SIN_FACTORES" };
+
+    await tx.update(schema.inconformidades)
+      .set({ estado: "enviado", enviadoAt: new Date() })
+      .where(eq(schema.inconformidades.id, cabecera.id));
+
+    const [servidor] = await tx.select({ id: schema.servidoresPublicos.id })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.userId, userId));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: servidor?.id ?? null,
+      usuarioId: userId,
+      accion: "actualizar",
+      descripcion: `Inconformidad: envió su inconformidad con ${factores.length} factor(es)`,
+    });
+
+    return { ok: true };
+  });
+}
+
+export async function listarInconformidadesAdmin(filtroFactor?: string) {
+  const d = await getDb();
+  const cabeceras = await d.select({
+    id: schema.inconformidades.id,
+    enviadoAt: schema.inconformidades.enviadoAt,
+    nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+    curp: schema.servidoresPublicos.curp,
+  })
+    .from(schema.inconformidades)
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.inconformidades.userId))
+    .where(eq(schema.inconformidades.estado, "enviado"));
+
+  const resultado = [];
+  for (const cab of cabeceras) {
+    const condiciones = filtroFactor
+      ? and(eq(schema.inconformidadFactores.inconformidadId, cab.id), eq(schema.inconformidadFactores.factor, filtroFactor as any))
+      : eq(schema.inconformidadFactores.inconformidadId, cab.id);
+    const factores = await d.select({
+      id: schema.inconformidadFactores.id,
+      factor: schema.inconformidadFactores.factor,
+      mensaje: schema.inconformidadFactores.mensaje,
+      archivoId: schema.inconformidadFactores.archivoId,
+      nombreOriginal: schema.archivosCargados.nombreOriginal,
+    })
+      .from(schema.inconformidadFactores)
+      .leftJoin(schema.archivosCargados, eq(schema.archivosCargados.id, schema.inconformidadFactores.archivoId))
+      .where(condiciones);
+    if (filtroFactor && factores.length === 0) continue;
+    resultado.push({ ...cab, enviadoAt: cab.enviadoAt!, factores });
+  }
+  return resultado;
+}
+
+export async function actualizarConfigFactorInconformidad(
+  factor: string,
+  habilitado: boolean,
+  adminUserId: number,
+): Promise<void> {
+  const d = await getDb();
+  await d.update(schema.factoresInconformidadConfig)
+    .set({ habilitado })
+    .where(eq(schema.factoresInconformidadConfig.factor, factor as any));
+
+  await d.insert(schema.auditoria).values({
+    servidorId: null,
+    usuarioId: adminUserId,
+    accion: "actualizar",
+    descripcion: `Inconformidad: ${habilitado ? "habilitó" : "inhabilitó"} el factor "${factor}" para nuevas selecciones`,
+  });
+}
