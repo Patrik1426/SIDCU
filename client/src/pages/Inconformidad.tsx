@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -28,28 +28,22 @@ export default function Inconformidad() {
   // evita el bug de la versión original del brief, donde el checkbox no
   // respondía visualmente a los clics.
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
-  const seedeadoRef = useRef(false);
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   const [factorAQuitar, setFactorAQuitar] = useState<{ id: number; label: string } | null>(null);
+  // Banner inline (role="alert") para errores de mutacion que no sean
+  // CONFLICT -- este formulario se edita muchas veces antes de enviarse, y
+  // un toast se puede perder si el usuario esta escribiendo en otra parte
+  // de la pantalla. Mismo patron visual que SubidaPDF.tsx.
+  const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 
   const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery();
   const { data: factoresConfig, isLoading: configLoading } = trpc.inconformidad.factoresDisponibles.useQuery();
   const { data: inconformidad, isLoading: incLoading } = trpc.inconformidad.miInconformidad.useQuery();
 
-  // Al cargar por primera vez, abre automáticamente los paneles de los
-  // factores que ya tenían una fila guardada (ej. el usuario recarga la
-  // página a medio llenar). Solo corre una vez -- no debe volver a
-  // sobreescribir `abiertos` en cada invalidate/refetch posterior.
-  useEffect(() => {
-    if (!seedeadoRef.current && inconformidad) {
-      setAbiertos(new Set(inconformidad.factores.map((f) => f.factor)));
-      seedeadoRef.current = true;
-    }
-  }, [inconformidad]);
-
   const guardarMut = trpc.inconformidad.guardarFactor.useMutation({
     onSuccess: () => {
       utils.inconformidad.miInconformidad.invalidate();
+      setErrorGeneral(null);
       toast.success("Factor guardado");
     },
     onError: (err) => {
@@ -57,6 +51,7 @@ export default function Inconformidad() {
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
+      setErrorGeneral(err.message);
       toast.error(err.message);
     },
   });
@@ -64,6 +59,7 @@ export default function Inconformidad() {
   const quitarMut = trpc.inconformidad.quitarFactor.useMutation({
     onSuccess: () => {
       utils.inconformidad.miInconformidad.invalidate();
+      setErrorGeneral(null);
       toast.success("Factor eliminado");
       setFactorAQuitar(null);
     },
@@ -73,6 +69,7 @@ export default function Inconformidad() {
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
+      setErrorGeneral(err.message);
       toast.error(err.message);
     },
   });
@@ -80,6 +77,7 @@ export default function Inconformidad() {
   const enviarMut = trpc.inconformidad.enviar.useMutation({
     onSuccess: () => {
       utils.inconformidad.miInconformidad.invalidate();
+      setErrorGeneral(null);
       setConfirmandoEnvio(false);
     },
     onError: (err) => {
@@ -88,6 +86,7 @@ export default function Inconformidad() {
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
+      setErrorGeneral(err.message);
       toast.error(err.message);
     },
   });
@@ -139,6 +138,16 @@ export default function Inconformidad() {
         <h1 className="text-2xl font-bold text-gray-900">Inconformidad</h1>
         <p className="mt-1 text-gray-500">Selecciona el factor o factores sobre los que te quieres inconformar</p>
       </motion.div>
+
+      {errorGeneral && (
+        <motion.div
+          variants={fadeUp}
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+        >
+          {errorGeneral}
+        </motion.div>
+      )}
 
       <motion.div variants={stagger} className="space-y-4">
         {(factoresConfig ?? []).map((fc) => {
