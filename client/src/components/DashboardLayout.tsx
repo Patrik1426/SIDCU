@@ -22,6 +22,7 @@ import {
   GraduationCap,
   Building,
   Inbox,
+  FileWarning,
 } from "lucide-react";
 
 interface NavItem {
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { label: "Portal", href: "/portal", icon: Home, roles: ["user"] },
   { label: "Catálogo Cursos", href: "/portal/cursos", icon: BookOpen, roles: ["user"] },
   { label: "Mis Solicitudes", href: "/portal/solicitudes", icon: ClipboardCheck, roles: ["user"] },
+  { label: "Inconformidad", href: "/portal/inconformidad", icon: FileWarning, roles: ["user"] },
   { label: "Servidores", href: "/servidores", icon: Users, roles: ["admin", "capturista"] },
   { label: "Importar CSV", href: "/importar", icon: FileUp, roles: ["admin", "capturista"] },
   // { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] }, // En construcción
