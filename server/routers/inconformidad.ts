@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import {
   obtenerFactoresConfig,
   obtenerInconformidad,
+  obtenerEstadoInconformidad,
   guardarFactorInconformidad,
   quitarFactorInconformidad,
   crearArchivoPendiente,
@@ -125,17 +126,21 @@ export const inconformidadRouter = router({
       }
 
       // Chequeo temprano, ANTES de tocar S3 -- mismo guard que ya tiene
-      // presignarSubida. Sin esto, alguien podía reusar la URL firmada del
-      // PUT (valida 600s) DESPUÉS de haber enviado su inconformidad y
-      // llamar confirmarSubida de nuevo: las ramas de limpieza de abajo
-      // (archivo no existe / excede tamaño) borraban el adjunto YA
-      // CONGELADO del factor enviado antes de que confirmarSubidaInconformidad
-      // llegara a rechazar por YA_ENVIADA -- auto-daño sobre su propio dato
-      // ya frozen, no cruza usuarios, pero real (hallazgo de code review).
-      const inconformidadActual = await obtenerInconformidad(ctx.user.id);
-      if (!inconformidadActual || inconformidadActual.estado !== "borrador") {
-        throw traducirError("YA_ENVIADA");
-      }
+      // presignarSubida. REDUCE la ventana en la que alguien podía reusar
+      // la URL firmada del PUT (válida 600s) DESPUÉS de enviar su
+      // inconformidad y llamar confirmarSubida de nuevo -- las ramas de
+      // limpieza de abajo (archivo no existe / excede tamaño / no es PDF)
+      // podían borrar el adjunto ya congelado de un factor enviado antes de
+      // llegar al rechazo real de confirmarSubidaInconformidad. NO la
+      // cierra del todo (queda una ventana más chica entre esta lectura y
+      // las llamadas a S3 de abajo, ninguna de las dos bajo lock) -- cerrar
+      // eso de raíz implica rediseñar el PUT a POST firmado con política
+      // (ver CLAUDE.md → Pendiente), no antes de tener llaves AWS reales.
+      // Select angosto (solo `estado`), no el objeto completo con join a
+      // factores/archivos que no se usa aquí.
+      const estadoActual = await obtenerEstadoInconformidad(ctx.user.id);
+      if (estadoActual === null) throw traducirError("NO_INICIADA");
+      if (estadoActual !== "borrador") throw traducirError("YA_ENVIADA");
 
       let verificacion: Awaited<ReturnType<typeof verificarArchivo>>;
       try {

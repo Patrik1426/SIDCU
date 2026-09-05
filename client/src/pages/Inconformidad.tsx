@@ -158,6 +158,7 @@ export default function Inconformidad() {
           <button
             type="button"
             onClick={() => setErrorGeneral(null)}
+            aria-label="Cerrar"
             className="shrink-0 text-rose-400 hover:text-rose-600"
           >
             <X size={14} />

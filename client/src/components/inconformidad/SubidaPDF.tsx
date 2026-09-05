@@ -43,8 +43,20 @@ export default function SubidaPDF({
     archivoActual ? { tipo: "completado", nombreOriginal: archivoActual.nombreOriginal } : { tipo: "idle" },
   );
 
+  const utils = trpc.useUtils();
   const presignarMut = trpc.inconformidad.presignarSubida.useMutation();
   const confirmarMut = trpc.inconformidad.confirmarSubida.useMutation();
+
+  // confirmarSubida puede fallar con CONFLICT si la inconformidad ya se
+  // envió (desde otra pestaña, o porque el guard nuevo de confirmarSubida
+  // la detectó). Ofrecer "Reintentar" ahí es un callejón sin salida --
+  // confirmarSubida con el mismo archivoId va a fallar exactamente igual
+  // para siempre (hallazgo real de code review). En ese caso se avisa y se
+  // deja que la pantalla se refresque sola a modo solo-lectura, como ya
+  // hacen las demás mutaciones de la pantalla del trabajador.
+  function esConflictoYaEnviada(err: unknown): boolean {
+    return (err as any)?.data?.code === "CONFLICT";
+  }
 
   async function reintentarConfirmacion(archivo: File, archivoId: number) {
     setEstado({ tipo: "confirmando", archivo });
@@ -54,6 +66,12 @@ export default function SubidaPDF({
       toast.success("PDF subido correctamente");
       onSubido();
     } catch (err: any) {
+      if (esConflictoYaEnviada(err)) {
+        toast(err.message);
+        utils.inconformidad.miInconformidad.invalidate();
+        setEstado({ tipo: "idle" });
+        return;
+      }
       setEstado({
         tipo: "error",
         mensaje: err.message ?? "No se pudo confirmar la subida",
@@ -81,6 +99,12 @@ export default function SubidaPDF({
       toast.success("PDF subido correctamente");
       onSubido();
     } catch (err: any) {
+      if (esConflictoYaEnviada(err)) {
+        toast(err.message);
+        utils.inconformidad.miInconformidad.invalidate();
+        setEstado({ tipo: "idle" });
+        return;
+      }
       setEstado({
         tipo: "error",
         mensaje: err.message ?? "No se pudo subir el archivo",
@@ -128,6 +152,12 @@ export default function SubidaPDF({
       toast.success("PDF subido correctamente");
       onSubido();
     } catch (err: any) {
+      if (esConflictoYaEnviada(err)) {
+        toast(err.message);
+        utils.inconformidad.miInconformidad.invalidate();
+        setEstado({ tipo: "idle" });
+        return;
+      }
       if (putTerminado && archivoIdActual !== undefined) {
         // El PUT a S3 ya termino -- solo fallo confirmarSubida. Reintentar
         // NO debe resubir el archivo, solo reintentar la confirmacion con el
@@ -198,7 +228,12 @@ export default function SubidaPDF({
       <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
         <div className="flex items-start justify-between gap-2">
           <span className="flex-1">{estado.mensaje}</span>
-          <button type="button" onClick={() => setEstado({ tipo: "idle" })} className="shrink-0 text-rose-400 hover:text-rose-600">
+          <button
+            type="button"
+            onClick={() => setEstado({ tipo: "idle" })}
+            aria-label="Cerrar"
+            className="shrink-0 text-rose-400 hover:text-rose-600"
+          >
             <X size={14} />
           </button>
         </div>

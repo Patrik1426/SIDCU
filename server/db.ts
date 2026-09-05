@@ -1071,6 +1071,14 @@ export async function obtenerFactoresConfig() {
   return d.select().from(schema.factoresInconformidadConfig);
 }
 
+export async function obtenerEstadoInconformidad(userId: number): Promise<"borrador" | "enviado" | null> {
+  const d = await getDb();
+  const [cabecera] = await d.select({ estado: schema.inconformidades.estado })
+    .from(schema.inconformidades)
+    .where(eq(schema.inconformidades.userId, userId));
+  return cabecera?.estado ?? null;
+}
+
 export async function obtenerInconformidad(userId: number) {
   const d = await getDb();
   const [cabecera] = await d.select().from(schema.inconformidades)
