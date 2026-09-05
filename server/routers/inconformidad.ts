@@ -25,6 +25,17 @@ type ErrorCodigoInconformidad =
   | "YA_ENVIADA" | "FACTOR_DESHABILITADO" | "NO_ENCONTRADO" | "FACTOR_NO_ENCONTRADO"
   | "ARCHIVO_NO_ES_TUYO" | "SIN_FACTORES" | "NO_INICIADA";
 
+function errorS3Seguro(err: unknown): TRPCError {
+  // Nunca exponer al cliente el detalle real (p.ej. "AWS_ACCESS_KEY_ID no
+  // está configurado") -- es información de infraestructura, no algo que
+  // un trabajador deba ver. Se loguea completo para diagnóstico interno.
+  console.error("Error de S3 en Inconformidad:", err);
+  return new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "No se pudo procesar el archivo en este momento. Intenta de nuevo más tarde o contacta al administrador.",
+  });
+}
+
 function traducirError(error: ErrorCodigoInconformidad): TRPCError {
   switch (error) {
     case "YA_ENVIADA":
@@ -89,8 +100,13 @@ export const inconformidadRouter = router({
 
       const s3Key = `inconformidad/${ctx.user.id}/${input.factorId}/${nanoid()}.pdf`;
       const { id: archivoId } = await crearArchivoPendiente(ctx.user.id, input.nombreOriginal, input.tipoArchivo, input.tamanoBytes, s3Key);
-      const url = await urlSubida(s3Key, input.tipoArchivo);
-      return { archivoId, url, s3Key };
+      try {
+        const url = await urlSubida(s3Key, input.tipoArchivo);
+        return { archivoId, url, s3Key };
+      } catch (err) {
+        await borrarArchivoPendiente(archivoId, ctx.user.id);
+        throw errorS3Seguro(err);
+      }
     }),
 
   confirmarSubida: protectedProcedure
@@ -101,7 +117,12 @@ export const inconformidadRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
       }
 
-      const verificacion = await verificarArchivo(archivo.s3Key);
+      let verificacion: Awaited<ReturnType<typeof verificarArchivo>>;
+      try {
+        verificacion = await verificarArchivo(archivo.s3Key);
+      } catch (err) {
+        throw errorS3Seguro(err);
+      }
       if (!verificacion.existe) {
         await borrarArchivoPendiente(input.archivoId, ctx.user.id);
         throw new TRPCError({ code: "BAD_REQUEST", message: "No se pudo confirmar la subida, intenta de nuevo." });
@@ -137,7 +158,12 @@ export const inconformidadRouter = router({
         });
       }
 
-      const url = await urlDescarga(archivo.s3Key, archivo.nombreOriginal);
+      let url: string;
+      try {
+        url = await urlDescarga(archivo.s3Key, archivo.nombreOriginal);
+      } catch (err) {
+        throw errorS3Seguro(err);
+      }
       return { url };
     }),
 
