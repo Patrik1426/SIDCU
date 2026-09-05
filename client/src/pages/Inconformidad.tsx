@@ -42,6 +42,11 @@ export default function Inconformidad() {
     },
     onError: (err) => {
       if (err.data?.code === "CONFLICT") {
+        // La pantalla se refresca sola (spec §5), pero sin avisar nada el
+        // texto que la persona estaba escribiendo desaparece sin
+        // explicación visible (hallazgo real de QA). err.message ya trae el
+        // mensaje pensado para esto ("Tu inconformidad ya fue enviada...").
+        toast(err.message);
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
@@ -60,6 +65,11 @@ export default function Inconformidad() {
     onError: (err) => {
       setFactorAQuitar(null);
       if (err.data?.code === "CONFLICT") {
+        // La pantalla se refresca sola (spec §5), pero sin avisar nada el
+        // texto que la persona estaba escribiendo desaparece sin
+        // explicación visible (hallazgo real de QA). err.message ya trae el
+        // mensaje pensado para esto ("Tu inconformidad ya fue enviada...").
+        toast(err.message);
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
@@ -77,6 +87,11 @@ export default function Inconformidad() {
     onError: (err) => {
       setConfirmandoEnvio(false);
       if (err.data?.code === "CONFLICT") {
+        // La pantalla se refresca sola (spec §5), pero sin avisar nada el
+        // texto que la persona estaba escribiendo desaparece sin
+        // explicación visible (hallazgo real de QA). err.message ya trae el
+        // mensaje pensado para esto ("Tu inconformidad ya fue enviada...").
+        toast(err.message);
         utils.inconformidad.miInconformidad.invalidate();
         return;
       }
@@ -114,7 +129,7 @@ export default function Inconformidad() {
             {inconformidad.factores.map((f) => (
               <li key={f.id} className="rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
                 <p className="font-medium text-gray-800">{FACTOR_LABELS[f.factor]}</p>
-                <p className="mt-1">{f.mensaje}</p>
+                <p className="mt-1 whitespace-pre-wrap">{f.mensaje}</p>
               </li>
             ))}
           </ul>

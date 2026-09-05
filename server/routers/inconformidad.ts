@@ -17,7 +17,7 @@ import {
   actualizarConfigFactorInconformidad,
   crearAuditoria,
 } from "../db";
-import { urlSubida, urlDescarga, verificarArchivo, borrarArchivoSeguro } from "../lib/s3";
+import { urlSubida, urlDescarga, verificarArchivo, tieneEncabezadoPDF, borrarArchivoSeguro } from "../lib/s3";
 import { FACTORES_INCONFORMIDAD } from "../../drizzle/schema";
 import { MAX_PDF_BYTES, TIPO_PDF } from "../../shared/const";
 
@@ -133,6 +133,18 @@ export const inconformidadRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "El archivo excede el límite de 10MB." });
       }
 
+      let esPdfReal: boolean;
+      try {
+        esPdfReal = await tieneEncabezadoPDF(archivo.s3Key);
+      } catch (err) {
+        throw errorS3Seguro(err);
+      }
+      if (!esPdfReal) {
+        await borrarArchivoSeguro(archivo.s3Key);
+        await borrarArchivoPendiente(input.archivoId, ctx.user.id);
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El archivo no es un PDF válido." });
+      }
+
       const resultado = await confirmarSubidaInconformidad(ctx.user.id, input.factorId, input.archivoId);
       if (!resultado.ok) throw traducirError(resultado.error);
       if (resultado.s3KeyViejo) await borrarArchivoSeguro(resultado.s3KeyViejo);
@@ -156,6 +168,18 @@ export const inconformidadRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
       }
 
+      let url: string;
+      try {
+        url = await urlDescarga(archivo.s3Key, archivo.nombreOriginal);
+      } catch (err) {
+        throw errorS3Seguro(err);
+      }
+
+      // Auditar DESPUÉS de que la URL se generó con éxito, no antes -- si se
+      // audita primero y urlDescarga falla (S3 caído, credenciales, etc.), el
+      // rastro de auditoría queda con una "descarga" que en realidad nunca
+      // ocurrió (hallazgo real de QA, verificado con el mismo bloqueo de
+      // infra: quedó una fila "descargó el PDF" con la descarga fallando).
       if (esAdmin && archivo.userIdDueno !== null && archivo.userIdDueno !== ctx.user.id) {
         await crearAuditoria({
           servidorId: archivo.servidorIdDueno,
@@ -165,12 +189,6 @@ export const inconformidadRouter = router({
         });
       }
 
-      let url: string;
-      try {
-        url = await urlDescarga(archivo.s3Key, archivo.nombreOriginal);
-      } catch (err) {
-        throw errorS3Seguro(err);
-      }
       return { url };
     }),
 

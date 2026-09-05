@@ -44,6 +44,20 @@ export async function verificarArchivo(key: string): Promise<{ existe: boolean; 
   }
 }
 
+// Confirmar que el archivo ES un PDF de verdad, no solo que el navegador
+// declaró Content-Type/nombre de archivo terminado en .pdf (hallazgo real de
+// QA: un .txt renombrado a .pdf pasa el `z.literal(TIPO_PDF)` del input y el
+// Content-Type firmado del PUT sin problema, porque ambos confían en lo que
+// reporta el cliente). Todo PDF real empieza con la firma ASCII "%PDF-" --
+// pedimos solo los primeros 5 bytes con un Range, no el archivo completo.
+export async function tieneEncabezadoPDF(key: string): Promise<boolean> {
+  const { client, bucket } = getS3();
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: "bytes=0-4" }));
+  if (!res.Body) return false;
+  const bytes = await res.Body.transformToByteArray();
+  return Buffer.from(bytes).toString("ascii") === "%PDF-";
+}
+
 export async function borrarArchivoSeguro(key: string): Promise<void> {
   try {
     const { client, bucket } = getS3();

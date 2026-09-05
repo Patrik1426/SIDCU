@@ -169,7 +169,7 @@ export default function GestionInconformidades() {
                   {caso.factores.map((f) => (
                     <div key={f.id} className="rounded-xl bg-gray-50 p-3">
                       <p className="text-sm font-medium text-gray-800">{FACTOR_LABELS[f.factor]}</p>
-                      <p className="mt-1 text-sm text-gray-600">{f.mensaje}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">{f.mensaje}</p>
                       {f.archivoId && (
                         <button
                           type="button"

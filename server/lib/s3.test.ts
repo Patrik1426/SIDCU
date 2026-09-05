@@ -66,4 +66,22 @@ describe("server/lib/s3", () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("tieneEncabezadoPDF regresa true si los primeros bytes son la firma %PDF-", async () => {
+    sendMock.mockResolvedValueOnce({ Body: { transformToByteArray: async () => new TextEncoder().encode("%PDF-") } });
+    const { tieneEncabezadoPDF } = await import("./s3");
+    await expect(tieneEncabezadoPDF("x")).resolves.toBe(true);
+  });
+
+  it("tieneEncabezadoPDF regresa false si el contenido real no es un PDF (aunque el nombre/tipo declarado diga que si)", async () => {
+    sendMock.mockResolvedValueOnce({ Body: { transformToByteArray: async () => new TextEncoder().encode("hola!") } });
+    const { tieneEncabezadoPDF } = await import("./s3");
+    await expect(tieneEncabezadoPDF("x")).resolves.toBe(false);
+  });
+
+  it("tieneEncabezadoPDF regresa false si la respuesta no trae Body", async () => {
+    sendMock.mockResolvedValueOnce({});
+    const { tieneEncabezadoPDF } = await import("./s3");
+    await expect(tieneEncabezadoPDF("x")).resolves.toBe(false);
+  });
 });
