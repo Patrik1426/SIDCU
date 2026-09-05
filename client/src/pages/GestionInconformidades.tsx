@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import { Download, FileText } from "lucide-react";
 import { exportarInconformidadesExcel, exportarInconformidadesPDF } from "@/lib/exportar";
 import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
@@ -28,7 +29,9 @@ export default function GestionInconformidades() {
       const { url } = await descargaUtil.fetch({ archivoId });
       window.open(url, "_blank");
     } catch (err: any) {
-      alert("No se pudo descargar el archivo: " + (err.message ?? "desconocido"));
+      // err.message ya viene saneado por el errorFormatter global de tRPC
+      // (server/trpc.ts) -- nunca trae detalle crudo de infra.
+      toast.error("No se pudo descargar el archivo", { description: err.message ?? "Intenta de nuevo." });
     }
   };
 
@@ -49,7 +52,7 @@ export default function GestionInconformidades() {
       if (tipo === "excel") exportarInconformidadesExcel(filasExport);
       else exportarInconformidadesPDF(filasExport);
     } catch (err: any) {
-      alert("Error al exportar: " + (err.message ?? "desconocido"));
+      toast.error("No se pudo exportar", { description: err.message ?? "Intenta de nuevo." });
     } finally {
       setExportando(null);
     }
