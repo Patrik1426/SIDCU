@@ -262,10 +262,37 @@ export async function resetearPasswordUsuario(id: number, passwordHash: string) 
 // El servidor público asociado no se borra — se desvincula y marca inactivo.
 // ─── Servidores Públicos ─────────────────────────────────────────────
 
+// Señal tipada de "RFC o CURP duplicado" para que el router (o el loop de
+// importación CSV) la traduzca a un mensaje de negocio real, sin adivinar
+// buscando texto dentro de `err.message` -- eso ya estaba roto: drizzle-orm
+// envuelve el error real de mysql2 en un DrizzleQueryError cuyo `.message`
+// es solo "Failed query: insert into ...", nunca el texto "Duplicate entry"
+// (verificado en vivo). El código y el sqlMessage reales viven en `.cause`.
+export class ServidorDuplicadoError extends Error {
+  constructor(public readonly campo: "rfc" | "curp") {
+    super(`Servidor duplicado por ${campo}`);
+    this.name = "ServidorDuplicadoError";
+  }
+}
+
+function campoDuplicadoServidor(err: unknown): "rfc" | "curp" | null {
+  if (codigoMysql(err) !== "ER_DUP_ENTRY") return null;
+  const sqlMessage = (err as any)?.sqlMessage ?? (err as any)?.cause?.sqlMessage ?? "";
+  if (sqlMessage.includes("_rfc_unique")) return "rfc";
+  if (sqlMessage.includes("_curp_unique")) return "curp";
+  return null;
+}
+
 export async function crearServidor(data: InsertServidorPublico) {
   const d = await getDb();
-  const [result] = await d.insert(schema.servidoresPublicos).values(data);
-  return result.insertId;
+  try {
+    const [result] = await d.insert(schema.servidoresPublicos).values(data);
+    return result.insertId;
+  } catch (err) {
+    const campo = campoDuplicadoServidor(err);
+    if (campo) throw new ServidorDuplicadoError(campo);
+    throw err;
+  }
 }
 
 export async function listarServidores(filtros?: {
@@ -355,10 +382,16 @@ export async function actualizarServidor(
   data: Partial<InsertServidorPublico>,
 ) {
   const d = await getDb();
-  await d
-    .update(schema.servidoresPublicos)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(schema.servidoresPublicos.id, id));
+  try {
+    await d
+      .update(schema.servidoresPublicos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.servidoresPublicos.id, id));
+  } catch (err) {
+    const campo = campoDuplicadoServidor(err);
+    if (campo) throw new ServidorDuplicadoError(campo);
+    throw err;
+  }
 }
 
 export async function eliminarServidor(id: number) {
