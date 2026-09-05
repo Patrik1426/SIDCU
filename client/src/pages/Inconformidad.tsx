@@ -3,8 +3,9 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { CheckCircle2, FileWarning, Trash2, X } from "lucide-react";
+import { CheckCircle2, FileWarning, Trash2 } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
+import DismissibleAlert from "@/components/DismissibleAlert";
 import SubidaPDF from "@/components/inconformidad/SubidaPDF";
 import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
 
@@ -149,21 +150,7 @@ export default function Inconformidad() {
       </motion.div>
 
       {errorGeneral && (
-        <motion.div
-          variants={fadeUp}
-          role="alert"
-          className="flex items-start justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
-        >
-          <span className="flex-1">{errorGeneral}</span>
-          <button
-            type="button"
-            onClick={() => setErrorGeneral(null)}
-            aria-label="Cerrar"
-            className="shrink-0 text-rose-400 hover:text-rose-600"
-          >
-            <X size={14} />
-          </button>
-        </motion.div>
+        <DismissibleAlert mensaje={errorGeneral} onCerrar={() => setErrorGeneral(null)} />
       )}
 
       <motion.div variants={stagger} className="space-y-4">

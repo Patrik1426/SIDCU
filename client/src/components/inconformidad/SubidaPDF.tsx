@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { UploadCloud, FileCheck2, RotateCcw, X } from "lucide-react";
+import { UploadCloud, FileCheck2, RotateCcw } from "lucide-react";
+import DismissibleAlert from "@/components/DismissibleAlert";
 import { MAX_PDF_BYTES, TIPO_PDF } from "@shared/const";
 
 type Estado =
@@ -225,32 +226,15 @@ export default function SubidaPDF({
     );
   } else if (estado.tipo === "error") {
     contenido = (
-      <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-        <div className="flex items-start justify-between gap-2">
-          <span className="flex-1">{estado.mensaje}</span>
-          <button
-            type="button"
-            onClick={() => setEstado({ tipo: "idle" })}
-            aria-label="Cerrar"
-            className="shrink-0 text-rose-400 hover:text-rose-600"
-          >
-            <X size={14} />
-          </button>
-        </div>
-        {estado.recuperable && estado.retomar ? (
-          <button
-            type="button"
-            onClick={estado.retomar}
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold underline"
-          >
-            <RotateCcw size={12} /> Reintentar
-          </button>
-        ) : (
-          <button type="button" onClick={elegirArchivo} className="mt-2 text-xs font-semibold underline">
-            Elegir otro archivo
-          </button>
-        )}
-      </div>
+      <DismissibleAlert
+        mensaje={estado.mensaje}
+        onCerrar={() => setEstado({ tipo: "idle" })}
+        accion={
+          estado.recuperable && estado.retomar
+            ? { label: "Reintentar", onClick: estado.retomar, icon: RotateCcw }
+            : { label: "Elegir otro archivo", onClick: elegirArchivo }
+        }
+      />
     );
   } else {
     contenido = (
