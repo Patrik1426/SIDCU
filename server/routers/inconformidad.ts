@@ -51,8 +51,15 @@ function traducirError(error: ErrorCodigoInconformidad): TRPCError {
       return new TRPCError({ code: "BAD_REQUEST", message: "Selecciona al menos un factor antes de enviar." });
     case "NO_INICIADA":
       return new TRPCError({ code: "BAD_REQUEST", message: "No has empezado tu inconformidad." });
-    default:
+    default: {
+      // Exhaustividad en compile-time: si se agrega un código nuevo a
+      // ErrorCodigoInconformidad sin su `case` arriba, `error` deja de ser
+      // `never` aquí y esta línea deja de compilar -- antes caía callado al
+      // 500 genérico sin que nadie se enterara en build (hallazgo de code
+      // review).
+      const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
+    }
   }
 }
 
@@ -115,6 +122,19 @@ export const inconformidadRouter = router({
       const archivo = await obtenerArchivoPorId(input.archivoId);
       if (!archivo || archivo.cargadoPor !== ctx.user.id) {
         throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
+      }
+
+      // Chequeo temprano, ANTES de tocar S3 -- mismo guard que ya tiene
+      // presignarSubida. Sin esto, alguien podía reusar la URL firmada del
+      // PUT (valida 600s) DESPUÉS de haber enviado su inconformidad y
+      // llamar confirmarSubida de nuevo: las ramas de limpieza de abajo
+      // (archivo no existe / excede tamaño) borraban el adjunto YA
+      // CONGELADO del factor enviado antes de que confirmarSubidaInconformidad
+      // llegara a rechazar por YA_ENVIADA -- auto-daño sobre su propio dato
+      // ya frozen, no cruza usuarios, pero real (hallazgo de code review).
+      const inconformidadActual = await obtenerInconformidad(ctx.user.id);
+      if (!inconformidadActual || inconformidadActual.estado !== "borrador") {
+        throw traducirError("YA_ENVIADA");
       }
 
       let verificacion: Awaited<ReturnType<typeof verificarArchivo>>;
