@@ -80,4 +80,72 @@ describe("guardarFactorInconformidad", () => {
 
     expect(resultado).toEqual({ ok: false, error: "YA_ENVIADA" });
   });
+
+  // Los 3 tests siguientes fijan el comportamiento encontrado con una prueba
+  // de concurrencia real contra MySQL de verdad (ver ledger): dos guardados
+  // simultaneos del primer factor de un usuario pueden chocar con
+  // ER_DUP_ENTRY o con ER_LOCK_DEADLOCK (InnoDB aborta la transaccion
+  // COMPLETA en un deadlock, no solo el statement) -- drizzle-orm ademas
+  // envuelve el error real de mysql2 en `.cause`, nunca en `.code` directo.
+
+  it("reintenta la transaccion completa si MySQL reporta un deadlock (ER_LOCK_DEADLOCK en .cause)", async () => {
+    const { tx } = makeTxRecorder(
+      [[], [{ habilitado: true }]],
+      [{ insertId: 20 }, { insertId: 77 }, { insertId: 1 }],
+    );
+    let intentos = 0;
+    const fakeDb = {
+      transaction: vi.fn((cb: any) => {
+        intentos++;
+        if (intentos === 1) {
+          const err: any = new Error("Failed query: insert into inconformidades ...");
+          err.cause = { code: "ER_LOCK_DEADLOCK", errno: 1213, sqlState: "40001" };
+          return Promise.reject(err);
+        }
+        return cb(tx);
+      }),
+    };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { guardarFactorInconformidad } = await import("./db");
+    const resultado = await guardarFactorInconformidad(4, "capacitacion", "Texto valido de mas de diez caracteres");
+
+    expect(fakeDb.transaction).toHaveBeenCalledTimes(2);
+    expect(resultado).toEqual({ ok: true, id: 77 });
+  });
+
+  it("se rinde y propaga el error si el deadlock persiste en los 3 intentos (no reintenta para siempre)", async () => {
+    const fakeDb = {
+      transaction: vi.fn(() => {
+        const err: any = new Error("Failed query: insert into inconformidades ...");
+        err.cause = { code: "ER_LOCK_DEADLOCK", errno: 1213 };
+        return Promise.reject(err);
+      }),
+    };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { guardarFactorInconformidad } = await import("./db");
+    await expect(guardarFactorInconformidad(4, "capacitacion", "Texto valido de mas de diez caracteres"))
+      .rejects.toThrow("Failed query");
+    expect(fakeDb.transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("NO reintenta si el error de MySQL no es de los codigos conocidos como transitorios", async () => {
+    const fakeDb = {
+      transaction: vi.fn(() => {
+        const err: any = new Error("Failed query: syntax error");
+        err.cause = { code: "ER_PARSE_ERROR" };
+        return Promise.reject(err);
+      }),
+    };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { guardarFactorInconformidad } = await import("./db");
+    await expect(guardarFactorInconformidad(4, "capacitacion", "Texto valido de mas de diez caracteres"))
+      .rejects.toThrow("Failed query");
+    expect(fakeDb.transaction).toHaveBeenCalledTimes(1);
+  });
 });

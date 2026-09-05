@@ -149,6 +149,13 @@ export const inconformidadRouter = router({
       const esAdmin = ctx.user.role === "admin";
       if (!esDueno && !esAdmin) throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
 
+      // El admin solo puede ver adjuntos de inconformidades ya enviadas -- un
+      // borrador sigue siendo privado del trabajador hasta que lo envía,
+      // aunque el archivoId ya exista en la DB.
+      if (esAdmin && !esDueno && archivo.estadoInconformidad !== "enviado") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
+      }
+
       if (esAdmin && archivo.userIdDueno !== null && archivo.userIdDueno !== ctx.user.id) {
         await crearAuditoria({
           servidorId: archivo.servidorIdDueno,

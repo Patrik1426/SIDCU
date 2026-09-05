@@ -64,6 +64,33 @@ export default function SubidaPDF({
     }
   }
 
+  // Reintenta el PUT a S3 reusando el archivoId/url ya emitidos por un
+  // presignarSubida anterior -- NO vuelve a llamar presignarSubida. Sin esto,
+  // cada reintento de un PUT que falla por red (wifi inestable, etc.) mintaba
+  // una fila nueva en archivos_cargados + un S3 key nuevo, dejando huerfano
+  // cada intento previo (bug real encontrado en code review post-Task 12).
+  async function reintentarSubida(archivo: File, archivoId: number, url: string) {
+    setEstado({ tipo: "subiendo", archivo, progreso: 0, factorId });
+    try {
+      await subirConProgreso(url, archivo, (pct) =>
+        setEstado((prev) => (prev.tipo === "subiendo" ? { ...prev, progreso: pct } : prev)),
+      );
+      setEstado({ tipo: "confirmando", archivo });
+      await confirmarMut.mutateAsync({ factorId, archivoId });
+      setEstado({ tipo: "completado", nombreOriginal: archivo.name });
+      toast.success("PDF subido correctamente");
+      onSubido();
+    } catch (err: any) {
+      setEstado({
+        tipo: "error",
+        mensaje: err.message ?? "No se pudo subir el archivo",
+        recuperable: true,
+        archivo,
+        retomar: () => reintentarSubida(archivo, archivoId, url),
+      });
+    }
+  }
+
   async function iniciarSubida(archivo: File) {
     if (archivo.type !== TIPO_PDF) {
       setEstado({ tipo: "error", mensaje: "Solo se aceptan archivos PDF.", recuperable: false, archivo: null, retomar: null });
@@ -79,6 +106,7 @@ export default function SubidaPDF({
     // closure obsoleto que tenia la version anterior (leia `estado` de render,
     // nunca se actualizaba a tiempo dentro de la misma llamada async).
     let archivoIdActual: number | undefined;
+    let urlActual: string | undefined;
     let putTerminado = false;
 
     setEstado({ tipo: "subiendo", archivo, progreso: 0, factorId });
@@ -87,6 +115,7 @@ export default function SubidaPDF({
         factorId, nombreOriginal: archivo.name, tipoArchivo: TIPO_PDF, tamanoBytes: archivo.size,
       });
       archivoIdActual = archivoId;
+      urlActual = url;
 
       await subirConProgreso(url, archivo, (pct) =>
         setEstado((prev) => (prev.tipo === "subiendo" ? { ...prev, progreso: pct } : prev)),
@@ -110,7 +139,20 @@ export default function SubidaPDF({
           archivo,
           retomar: () => reintentarConfirmacion(archivo, archivoIdActual!),
         });
+      } else if (archivoIdActual !== undefined && urlActual !== undefined) {
+        // presignarSubida SI se completo (ya tenemos archivoId/url validos)
+        // pero el PUT a S3 fallo antes de terminar -- reintentar debe reusar
+        // ese mismo archivoId/url, nunca volver a presignar.
+        setEstado({
+          tipo: "error",
+          mensaje: err.message ?? "No se pudo subir el archivo",
+          recuperable: true,
+          archivo,
+          retomar: () => reintentarSubida(archivo, archivoIdActual!, urlActual!),
+        });
       } else {
+        // presignarSubida mismo fallo -- el server ya limpio cualquier fila
+        // pendiente (ver errorS3Seguro en el router), no hay nada que reusar.
         setEstado({
           tipo: "error",
           mensaje: err.message ?? "No se pudo subir el archivo",

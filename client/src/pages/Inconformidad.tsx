@@ -6,16 +6,10 @@ import { useLocation } from "wouter";
 import { CheckCircle2, FileWarning, Trash2 } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
 import SubidaPDF from "@/components/inconformidad/SubidaPDF";
+import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
-
-const FACTOR_LABELS: Record<string, string> = {
-  capacitacion: "Capacitación",
-  evaluacion_desempeno: "Evaluación del Desempeño",
-  antiguedad: "Antigüedad",
-  preparacion_academica: "Preparación Académica",
-};
 
 export default function Inconformidad() {
   const [, navigate] = useLocation();

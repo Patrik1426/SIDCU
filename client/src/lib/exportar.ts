@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { FACTOR_INCONFORMIDAD_LABELS } from "@shared/const";
 
 const NIVEL_LABELS: Record<string, string> = {
   federal: "Federal",
@@ -412,18 +413,11 @@ interface InconformidadExport {
   enviadoAt: Date | string;
 }
 
-const FACTOR_LABELS_EXPORT: Record<string, string> = {
-  capacitacion: "Capacitación",
-  evaluacion_desempeno: "Evaluación del Desempeño",
-  antiguedad: "Antigüedad",
-  preparacion_academica: "Preparación Académica",
-};
-
 function prepararDatosInconformidades(items: InconformidadExport[]) {
   return items.map((f) => ({
     "Nombre Completo": sanitizeCell(f.nombreCompleto),
     CURP: sanitizeCell(f.curp),
-    Factor: FACTOR_LABELS_EXPORT[f.factor] ?? f.factor,
+    Factor: FACTOR_INCONFORMIDAD_LABELS[f.factor] ?? f.factor,
     Mensaje: sanitizeCell(f.mensaje),
     PDF: f.archivoId ? "Sí" : "No",
     "Fecha de Envío": formatFechaHora(f.enviadoAt),
@@ -468,7 +462,7 @@ export function exportarInconformidadesPDF(items: InconformidadExport[], filenam
   const rows = items.map((f) => [
     f.nombreCompleto,
     f.curp,
-    FACTOR_LABELS_EXPORT[f.factor] ?? f.factor,
+    FACTOR_INCONFORMIDAD_LABELS[f.factor] ?? f.factor,
     f.mensaje,
     f.archivoId ? "Sí" : "No",
     formatFechaHora(f.enviadoAt),

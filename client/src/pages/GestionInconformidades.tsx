@@ -3,16 +3,10 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { Download, FileText } from "lucide-react";
 import { exportarInconformidadesExcel, exportarInconformidadesPDF } from "@/lib/exportar";
+import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
-
-const FACTOR_LABELS: Record<string, string> = {
-  capacitacion: "Capacitación",
-  evaluacion_desempeno: "Evaluación del Desempeño",
-  antiguedad: "Antigüedad",
-  preparacion_academica: "Preparación Académica",
-};
 
 export default function GestionInconformidades() {
   const utils = trpc.useUtils();

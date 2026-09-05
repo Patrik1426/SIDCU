@@ -1058,12 +1058,52 @@ export async function obtenerInconformidad(userId: number) {
   return { ...cabecera, factores };
 }
 
+// Codigos de MySQL que significan "otra transaccion concurrente gano la
+// carrera o hubo un deadlock detectado por InnoDB" -- en ambos casos la
+// transaccion completa ya se aborto server-side (un deadlock la mata entera,
+// no solo el statement que fallo), asi que la unica recuperacion correcta es
+// reintentar la funcion completa desde cero, no "seguir" dentro de la misma
+// transaccion muerta.
+const CODIGOS_MYSQL_REINTENTABLES = new Set(["ER_DUP_ENTRY", "ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT"]);
+
+// drizzle-orm envuelve el error real de mysql2 en un DrizzleQueryError y lo
+// deja en `.cause` (verificado contra node_modules/drizzle-orm/errors) --
+// `err.code` esta undefined, el codigo real vive en `err.cause.code`.
+function codigoMysql(err: unknown): string | undefined {
+  return (err as any)?.code ?? (err as any)?.cause?.code;
+}
+
 export async function guardarFactorInconformidad(
   userId: number,
   factor: (typeof schema.FACTORES_INCONFORMIDAD)[number],
   mensaje: string,
 ): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
   const d = await getDb();
+  const MAX_INTENTOS = 3;
+  for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+    try {
+      return await intentarGuardarFactorInconformidad(d, userId, factor, mensaje);
+    } catch (err: any) {
+      // Solo reintentamos si es una carrera real de primer-guardado (doble
+      // clic, dos pestañas del mismo usuario en su primer factor jamas
+      // guardado) -- verificado con una prueba de concurrencia real, ver
+      // ledger de Inconformidad. Cualquier otro error se propaga tal cual.
+      const codigo = codigoMysql(err);
+      if (codigo && CODIGOS_MYSQL_REINTENTABLES.has(codigo) && intento < MAX_INTENTOS) continue;
+      throw err;
+    }
+  }
+  // Inalcanzable (el loop siempre retorna o lanza en su ultima vuelta), solo
+  // para que TypeScript vea una funcion que siempre retorna algo.
+  throw new Error("guardarFactorInconformidad: agoto reintentos sin exito ni error");
+}
+
+async function intentarGuardarFactorInconformidad(
+  d: Awaited<ReturnType<typeof getDb>>,
+  userId: number,
+  factor: (typeof schema.FACTORES_INCONFORMIDAD)[number],
+  mensaje: string,
+): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
   return d.transaction(async (tx) => {
     const [cabeceraExistente] = await tx.select().from(schema.inconformidades)
       .where(eq(schema.inconformidades.userId, userId))
@@ -1266,6 +1306,7 @@ export async function obtenerArchivoParaDescarga(archivoId: number) {
     nombreOriginal: schema.archivosCargados.nombreOriginal,
     cargadoPor: schema.archivosCargados.cargadoPor,
     userIdDueno: schema.inconformidades.userId,
+    estadoInconformidad: schema.inconformidades.estado,
     servidorIdDueno: schema.servidoresPublicos.id,
   })
     .from(schema.archivosCargados)
@@ -1313,35 +1354,48 @@ export async function enviarInconformidad(
 
 export async function listarInconformidadesAdmin(filtroFactor?: string) {
   const d = await getDb();
-  const cabeceras = await d.select({
+  // Una sola query con joins (antes: 1 + N -- una por cada caso enviado).
+  // Mismo filtrado que antes: si filtroFactor viene, solo aparecen casos que
+  // tengan ese factor, y de esos casos solo se muestra ese factor (no los
+  // demas que tambien tengan guardados) -- se logra filtrando el join en vez
+  // de la cabecera.
+  const condiciones = filtroFactor
+    ? and(eq(schema.inconformidades.estado, "enviado"), eq(schema.inconformidadFactores.factor, filtroFactor as any))
+    : eq(schema.inconformidades.estado, "enviado");
+
+  const filas = await d.select({
     id: schema.inconformidades.id,
     enviadoAt: schema.inconformidades.enviadoAt,
     nombreCompleto: schema.servidoresPublicos.nombreCompleto,
     curp: schema.servidoresPublicos.curp,
+    factorId: schema.inconformidadFactores.id,
+    factor: schema.inconformidadFactores.factor,
+    mensaje: schema.inconformidadFactores.mensaje,
+    archivoId: schema.inconformidadFactores.archivoId,
+    nombreOriginal: schema.archivosCargados.nombreOriginal,
   })
     .from(schema.inconformidades)
     .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.inconformidades.userId))
-    .where(eq(schema.inconformidades.estado, "enviado"));
+    .innerJoin(schema.inconformidadFactores, eq(schema.inconformidadFactores.inconformidadId, schema.inconformidades.id))
+    .leftJoin(schema.archivosCargados, eq(schema.archivosCargados.id, schema.inconformidadFactores.archivoId))
+    .where(condiciones);
 
-  const resultado = [];
-  for (const cab of cabeceras) {
-    const condiciones = filtroFactor
-      ? and(eq(schema.inconformidadFactores.inconformidadId, cab.id), eq(schema.inconformidadFactores.factor, filtroFactor as any))
-      : eq(schema.inconformidadFactores.inconformidadId, cab.id);
-    const factores = await d.select({
-      id: schema.inconformidadFactores.id,
-      factor: schema.inconformidadFactores.factor,
-      mensaje: schema.inconformidadFactores.mensaje,
-      archivoId: schema.inconformidadFactores.archivoId,
-      nombreOriginal: schema.archivosCargados.nombreOriginal,
-    })
-      .from(schema.inconformidadFactores)
-      .leftJoin(schema.archivosCargados, eq(schema.archivosCargados.id, schema.inconformidadFactores.archivoId))
-      .where(condiciones);
-    if (filtroFactor && factores.length === 0) continue;
-    resultado.push({ ...cab, enviadoAt: cab.enviadoAt!, factores });
+  const porCabecera = new Map<number, {
+    id: number; enviadoAt: Date; nombreCompleto: string; curp: string;
+    factores: { id: number; factor: string; mensaje: string; archivoId: number | null; nombreOriginal: string | null }[];
+  }>();
+  for (const fila of filas) {
+    let cab = porCabecera.get(fila.id);
+    if (!cab) {
+      cab = { id: fila.id, enviadoAt: fila.enviadoAt!, nombreCompleto: fila.nombreCompleto, curp: fila.curp, factores: [] };
+      porCabecera.set(fila.id, cab);
+    }
+    cab.factores.push({
+      id: fila.factorId, factor: fila.factor, mensaje: fila.mensaje,
+      archivoId: fila.archivoId, nombreOriginal: fila.nombreOriginal,
+    });
   }
-  return resultado;
+  return [...porCabecera.values()];
 }
 
 export async function actualizarConfigFactorInconformidad(
