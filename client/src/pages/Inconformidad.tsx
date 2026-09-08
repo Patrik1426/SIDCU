@@ -34,6 +34,7 @@ export default function Inconformidad() {
   const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery();
   const { data: factoresConfig, isLoading: configLoading } = trpc.inconformidad.factoresDisponibles.useQuery();
   const { data: inconformidad, isLoading: incLoading } = trpc.inconformidad.miInconformidad.useQuery();
+  const { data: moduloHabilitado, isLoading: moduloLoading } = trpc.inconformidad.moduloHabilitado.useQuery();
 
   const guardarMut = trpc.inconformidad.guardarFactor.useMutation({
     onSuccess: () => {
@@ -106,7 +107,7 @@ export default function Inconformidad() {
     return null;
   }
 
-  if (perfilLoading || configLoading || incLoading) {
+  if (perfilLoading || configLoading || incLoading || moduloLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
@@ -134,6 +135,25 @@ export default function Inconformidad() {
               </li>
             ))}
           </ul>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Un caso YA enviado (bloque de arriba) siempre se puede seguir viendo --
+  // esto solo bloquea a quien todavia no ha terminado/enviado el suyo
+  // mientras el módulo está en pausa (decisión "pausa total" confirmada con
+  // el cliente).
+  if (!moduloHabilitado) {
+    return (
+      <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+        <motion.div variants={fadeUp}>
+          <h1 className="text-2xl font-bold text-gray-900">Inconformidad</h1>
+        </motion.div>
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-8 text-center shadow-card-rest border border-gray-100">
+          <FileWarning className="mx-auto h-10 w-10 text-gray-300" />
+          <p className="mt-3 font-medium text-gray-700">Esta sección no está disponible por ahora</p>
+          <p className="mt-1 text-sm text-gray-500">Vuelve a intentarlo más tarde.</p>
         </motion.div>
       </motion.div>
     );

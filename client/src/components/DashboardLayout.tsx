@@ -23,6 +23,7 @@ import {
   Building,
   Inbox,
   FileWarning,
+  ToggleLeft,
 } from "lucide-react";
 
 interface NavItem {
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { label: "Usuarios", href: "/usuarios", icon: UserCog, roles: ["admin"] },
   { label: "Auditoría", href: "/auditoria", icon: ClipboardList, roles: ["admin"] },
   { label: "Reportes", href: "/reportes", icon: FileText, roles: ["admin", "consultor"] },
+  { label: "Centro de Módulos", href: "/modulos", icon: ToggleLeft, roles: ["admin"] },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -65,10 +67,22 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const [showIdleWarn, setShowIdleWarn] = useState(false);
 
   const role = user?.role ?? "user";
-  const visibleItems = navItems.filter((item) => item.roles.includes(role));
 
   const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery(undefined, {
     enabled: role === "user",
+  });
+
+  // No es el candado real (eso ya lo hacen los procedures server-side, ver
+  // exigirModuloHabilitado en el router) -- solo evita mostrar un link a
+  // una seccion que ahora mismo va a rechazar todo. `!== false` para no
+  // esconder/mostrar el link con un parpadeo mientras la query carga.
+  const { data: inconformidadHabilitada } = trpc.inconformidad.moduloHabilitado.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const visibleItems = navItems.filter((item) => {
+    if (!item.roles.includes(role)) return false;
+    if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false;
+    return true;
   });
 
   useEffect(() => {

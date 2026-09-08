@@ -23,6 +23,7 @@ import Instituciones from "@/pages/Instituciones";
 import GestionSolicitudes from "@/pages/GestionSolicitudes";
 import Inconformidad from "@/pages/Inconformidad";
 import GestionInconformidades from "@/pages/GestionInconformidades";
+import CentroModulos from "@/pages/CentroModulos";
 
 class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -189,6 +190,12 @@ export default function App() {
         <ProtectedRoute
           path="/inconformidades"
           component={GestionInconformidades}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/modulos"
+          component={CentroModulos}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />

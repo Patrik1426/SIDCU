@@ -1079,6 +1079,90 @@ export async function obtenerEstadoInconformidad(userId: number): Promise<"borra
   return cabecera?.estado ?? null;
 }
 
+// ─── Config del modulo Inconformidad (Centro de Modulos) ──────────────
+
+export async function obtenerConfigModuloInconformidad() {
+  const d = await getDb();
+  const [row] = await d.select({
+    id: schema.inconformidadModuloConfig.id,
+    habilitado: schema.inconformidadModuloConfig.habilitado,
+    fechaDesde: schema.inconformidadModuloConfig.fechaDesde,
+    fechaHasta: schema.inconformidadModuloConfig.fechaHasta,
+    actualizadoPor: schema.inconformidadModuloConfig.actualizadoPor,
+    actualizadoPorNombre: schema.users.nombre,
+    updatedAt: schema.inconformidadModuloConfig.updatedAt,
+  })
+    .from(schema.inconformidadModuloConfig)
+    .leftJoin(schema.users, eq(schema.users.id, schema.inconformidadModuloConfig.actualizadoPor))
+    .where(eq(schema.inconformidadModuloConfig.id, 1));
+  if (row) return row;
+  // Defensivo: si el seed nunca corrio, no romper el modulo ya en uso --
+  // se comporta como si estuviera habilitado (mismo estado que tenia antes
+  // de que existiera este control).
+  return { id: 1, habilitado: true, fechaDesde: null, fechaHasta: null, actualizadoPor: null, actualizadoPorNombre: null, updatedAt: new Date() };
+}
+
+// Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
+// errores de este feature (comparacion de fechas) sin necesidad de mocks.
+export function moduloEstaHabilitadoAhora(
+  config: Pick<schema.InconformidadModuloConfig, "habilitado" | "fechaDesde" | "fechaHasta">,
+  ahora: Date = new Date(),
+): boolean {
+  if (config.fechaDesde && config.fechaHasta) {
+    // Comparacion de fecha pura (YYYY-MM-DD), nunca de Date/timezone -- la
+    // columna es DATE en modo string precisamente para evitar el bug de
+    // fechas-un-dia-adelantadas que ya tuvo este repo (ver exportar.ts).
+    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+    return hoy >= config.fechaDesde && hoy <= config.fechaHasta;
+  }
+  return config.habilitado;
+}
+
+export async function moduloInconformidadHabilitado(): Promise<boolean> {
+  const config = await obtenerConfigModuloInconformidad();
+  return moduloEstaHabilitadoAhora(config);
+}
+
+export async function actualizarModuloInconformidadManual(habilitado: boolean, adminUserId: number): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    // Tocar el switch a mano SIEMPRE cancela cualquier ventana programada y
+    // pasa a control manual puro (decision confirmada con el cliente) --
+    // sin esto, un admin que "apaga" durante una ventana activa veria que
+    // no pasa nada (la ventana seguiria mandando).
+    await tx.update(schema.inconformidadModuloConfig)
+      .set({ habilitado, fechaDesde: null, fechaHasta: null, actualizadoPor: adminUserId })
+      .where(eq(schema.inconformidadModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Inconformidad ${habilitado ? "activado" : "desactivado"} manualmente (cancela ventana programada si había una)`,
+    });
+  });
+}
+
+export async function programarVentanaModuloInconformidad(
+  fechaDesde: string,
+  fechaHasta: string,
+  adminUserId: number,
+): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.inconformidadModuloConfig)
+      .set({ fechaDesde, fechaHasta, actualizadoPor: adminUserId })
+      .where(eq(schema.inconformidadModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Inconformidad: ventana programada del ${fechaDesde} al ${fechaHasta}`,
+    });
+  });
+}
+
 export async function obtenerInconformidad(userId: number) {
   const d = await getDb();
   const [cabecera] = await d.select().from(schema.inconformidades)

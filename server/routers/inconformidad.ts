@@ -17,6 +17,10 @@ import {
   listarInconformidadesAdmin,
   actualizarConfigFactorInconformidad,
   crearAuditoria,
+  obtenerConfigModuloInconformidad,
+  moduloInconformidadHabilitado,
+  actualizarModuloInconformidadManual,
+  programarVentanaModuloInconformidad,
 } from "../db";
 import { urlSubida, urlDescarga, verificarArchivo, tieneEncabezadoPDF, borrarArchivoSeguro } from "../lib/s3";
 import { FACTORES_INCONFORMIDAD } from "../../drizzle/schema";
@@ -64,7 +68,46 @@ function traducirError(error: ErrorCodigoInconformidad): TRPCError {
   }
 }
 
+// "Pausa total" (decision confirmada con el cliente): mientras el módulo
+// está deshabilitado -- a mano o porque hoy cae fuera de una ventana
+// programada -- ninguna de las 5 mutaciones del trabajador procede. Lectura
+// (factoresDisponibles, miInconformidad, presignarDescarga) sigue abierta:
+// un caso ya guardado o enviado nunca se esconde, solo se congela.
+async function exigirModuloHabilitado(): Promise<void> {
+  if (!(await moduloInconformidadHabilitado())) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "El módulo Inconformidad no está disponible en este momento." });
+  }
+}
+
 export const inconformidadRouter = router({
+  moduloHabilitado: protectedProcedure.query(async () => {
+    return moduloInconformidadHabilitado();
+  }),
+
+  moduloConfig: adminProcedure.query(async () => {
+    return obtenerConfigModuloInconformidad();
+  }),
+
+  actualizarModulo: adminProcedure
+    .input(z.object({ habilitado: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await actualizarModuloInconformidadManual(input.habilitado, ctx.user.id);
+      return { success: true };
+    }),
+
+  programarVentanaModulo: adminProcedure
+    .input(z.object({
+      fechaDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+      fechaHasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+    }).refine((v) => v.fechaHasta >= v.fechaDesde, {
+      message: '"Hasta" no puede ser antes que "Desde".',
+      path: ["fechaHasta"],
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await programarVentanaModuloInconformidad(input.fechaDesde, input.fechaHasta, ctx.user.id);
+      return { success: true };
+    }),
+
   factoresDisponibles: protectedProcedure.query(async () => {
     return obtenerFactoresConfig();
   }),
@@ -79,6 +122,7 @@ export const inconformidadRouter = router({
       mensaje: z.string().min(10, "Escribe al menos 10 caracteres").max(500),
     }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const resultado = await guardarFactorInconformidad(ctx.user.id, input.factor, input.mensaje);
       if (!resultado.ok) throw traducirError(resultado.error);
       return { success: true, id: resultado.id };
@@ -87,6 +131,7 @@ export const inconformidadRouter = router({
   quitarFactor: protectedProcedure
     .input(z.object({ factorId: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const resultado = await quitarFactorInconformidad(ctx.user.id, input.factorId);
       if (!resultado.ok) throw traducirError(resultado.error);
       if (resultado.s3KeyBorrado) await borrarArchivoSeguro(resultado.s3KeyBorrado);
@@ -101,6 +146,7 @@ export const inconformidadRouter = router({
       tamanoBytes: z.number().positive().max(MAX_PDF_BYTES, "El archivo excede el límite de 10MB"),
     }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const inconformidad = await obtenerInconformidad(ctx.user.id);
       const factor = inconformidad?.factores.find((f) => f.id === input.factorId);
       if (!inconformidad || !factor) throw new TRPCError({ code: "NOT_FOUND", message: "Factor no encontrado." });
@@ -120,6 +166,7 @@ export const inconformidadRouter = router({
   confirmarSubida: protectedProcedure
     .input(z.object({ factorId: z.number(), archivoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const archivo = await obtenerArchivoPorId(input.archivoId);
       if (!archivo || archivo.cargadoPor !== ctx.user.id) {
         throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso sobre ese archivo." });
@@ -218,6 +265,7 @@ export const inconformidadRouter = router({
     }),
 
   enviar: protectedProcedure.mutation(async ({ ctx }) => {
+    await exigirModuloHabilitado();
     const resultado = await enviarInconformidad(ctx.user.id);
     if (!resultado.ok) throw traducirError(resultado.error);
     return { success: true };
