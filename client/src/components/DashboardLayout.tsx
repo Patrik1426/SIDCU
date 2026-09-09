@@ -79,9 +79,18 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const { data: inconformidadHabilitada } = trpc.inconformidad.moduloHabilitado.useQuery(undefined, {
     enabled: role === "user",
   });
+  // Excepcion: un caso YA enviado se sigue viendo aunque el modulo este en
+  // pausa (Inconformidad.tsx tiene el mismo carve-out -- "pausa nunca
+  // esconde trabajo ya hecho"). Sin esto, el trabajador pierde el link del
+  // sidebar a su propio acuse aunque la pagina, si entra directo, se lo
+  // siga mostrando completo -- inconsistencia real entre nav y contenido.
+  const { data: miInconformidad } = trpc.inconformidad.miInconformidad.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const tieneCasoEnviado = miInconformidad?.estado === "enviado";
   const visibleItems = navItems.filter((item) => {
     if (!item.roles.includes(role)) return false;
-    if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false;
+    if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false || tieneCasoEnviado;
     return true;
   });
 

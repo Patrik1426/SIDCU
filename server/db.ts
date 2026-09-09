@@ -1109,10 +1109,14 @@ export function moduloEstaHabilitadoAhora(
   ahora: Date = new Date(),
 ): boolean {
   if (config.fechaDesde && config.fechaHasta) {
-    // Comparacion de fecha pura (YYYY-MM-DD), nunca de Date/timezone -- la
-    // columna es DATE en modo string precisamente para evitar el bug de
-    // fechas-un-dia-adelantadas que ya tuvo este repo (ver exportar.ts).
-    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+    // Comparacion de fecha pura (YYYY-MM-DD) contra el dia calendario en
+    // America/Mexico_City -- fijo a mano, NUNCA a la timezone del proceso.
+    // Si el host termina corriendo en UTC (default comun de contenedores,
+    // ej. Railway) usar getFullYear/getMonth/getDate del proceso correria la
+    // ventana hasta 6 horas alrededor de medianoche real de Mexico. Mexico
+    // abolio el horario de verano en 2022 -- el offset UTC-6 es fijo todo el
+    // año, sin ambiguedad de DST.
+    const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(ahora);
     return hoy >= config.fechaDesde && hoy <= config.fechaHasta;
   }
   return config.habilitado;
@@ -1198,21 +1202,19 @@ function codigoMysql(err: unknown): string | undefined {
   return (err as any)?.code ?? (err as any)?.cause?.code;
 }
 
-export async function guardarFactorInconformidad(
-  userId: number,
-  factor: (typeof schema.FACTORES_INCONFORMIDAD)[number],
-  mensaje: string,
-): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
-  const d = await getDb();
+// Las 4 transacciones de escritura de Inconformidad (guardar/quitar factor,
+// confirmar subida, enviar) toman `.for("update")` sobre la fila cabecera del
+// usuario -- cualquiera puede toparse con un deadlock o timeout de lock real
+// (ej. dos pestañas del mismo usuario operando a la vez), no solo el primer
+// guardado. Un deadlock aborta la transaccion COMPLETA server-side, asi que
+// la unica recuperacion correcta es reintentar la funcion entera desde cero
+// -- verificado con una prueba de concurrencia real contra MySQL, ver ledger.
+async function conReintentoDeadlock<T>(intentar: () => Promise<T>): Promise<T> {
   const MAX_INTENTOS = 3;
   for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
     try {
-      return await intentarGuardarFactorInconformidad(d, userId, factor, mensaje);
+      return await intentar();
     } catch (err: any) {
-      // Solo reintentamos si es una carrera real de primer-guardado (doble
-      // clic, dos pestañas del mismo usuario en su primer factor jamas
-      // guardado) -- verificado con una prueba de concurrencia real, ver
-      // ledger de Inconformidad. Cualquier otro error se propaga tal cual.
       const codigo = codigoMysql(err);
       if (codigo && CODIGOS_MYSQL_REINTENTABLES.has(codigo) && intento < MAX_INTENTOS) continue;
       throw err;
@@ -1220,7 +1222,16 @@ export async function guardarFactorInconformidad(
   }
   // Inalcanzable (el loop siempre retorna o lanza en su ultima vuelta), solo
   // para que TypeScript vea una funcion que siempre retorna algo.
-  throw new Error("guardarFactorInconformidad: agoto reintentos sin exito ni error");
+  throw new Error("conReintentoDeadlock: agoto reintentos sin exito ni error");
+}
+
+export async function guardarFactorInconformidad(
+  userId: number,
+  factor: (typeof schema.FACTORES_INCONFORMIDAD)[number],
+  mensaje: string,
+): Promise<{ ok: true; id: number } | { ok: false; error: "YA_ENVIADA" | "FACTOR_DESHABILITADO" }> {
+  const d = await getDb();
+  return conReintentoDeadlock(() => intentarGuardarFactorInconformidad(d, userId, factor, mensaje));
 }
 
 async function intentarGuardarFactorInconformidad(
@@ -1295,6 +1306,14 @@ export async function quitarFactorInconformidad(
   factorId: number,
 ): Promise<{ ok: true; s3KeyBorrado: string | null } | { ok: false; error: "YA_ENVIADA" | "NO_ENCONTRADO" }> {
   const d = await getDb();
+  return conReintentoDeadlock(() => intentarQuitarFactorInconformidad(d, userId, factorId));
+}
+
+async function intentarQuitarFactorInconformidad(
+  d: Awaited<ReturnType<typeof getDb>>,
+  userId: number,
+  factorId: number,
+): Promise<{ ok: true; s3KeyBorrado: string | null } | { ok: false; error: "YA_ENVIADA" | "NO_ENCONTRADO" }> {
   return d.transaction(async (tx) => {
     const [cabecera] = await tx.select().from(schema.inconformidades)
       .where(eq(schema.inconformidades.userId, userId))
@@ -1373,6 +1392,15 @@ export async function confirmarSubidaInconformidad(
   archivoId: number,
 ): Promise<{ ok: true; s3KeyViejo: string | null } | { ok: false; error: "YA_ENVIADA" | "FACTOR_NO_ENCONTRADO" | "ARCHIVO_NO_ES_TUYO" }> {
   const d = await getDb();
+  return conReintentoDeadlock(() => intentarConfirmarSubidaInconformidad(d, userId, factorId, archivoId));
+}
+
+async function intentarConfirmarSubidaInconformidad(
+  d: Awaited<ReturnType<typeof getDb>>,
+  userId: number,
+  factorId: number,
+  archivoId: number,
+): Promise<{ ok: true; s3KeyViejo: string | null } | { ok: false; error: "YA_ENVIADA" | "FACTOR_NO_ENCONTRADO" | "ARCHIVO_NO_ES_TUYO" }> {
   return d.transaction(async (tx) => {
     const [cabecera] = await tx.select().from(schema.inconformidades)
       .where(eq(schema.inconformidades.userId, userId))
@@ -1446,6 +1474,13 @@ export async function enviarInconformidad(
   userId: number,
 ): Promise<{ ok: true } | { ok: false; error: "YA_ENVIADA" | "SIN_FACTORES" | "NO_INICIADA" }> {
   const d = await getDb();
+  return conReintentoDeadlock(() => intentarEnviarInconformidad(d, userId));
+}
+
+async function intentarEnviarInconformidad(
+  d: Awaited<ReturnType<typeof getDb>>,
+  userId: number,
+): Promise<{ ok: true } | { ok: false; error: "YA_ENVIADA" | "SIN_FACTORES" | "NO_INICIADA" }> {
   return d.transaction(async (tx) => {
     const [cabecera] = await tx.select().from(schema.inconformidades)
       .where(eq(schema.inconformidades.userId, userId))

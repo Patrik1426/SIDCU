@@ -7,47 +7,62 @@ vi.mock("drizzle-orm/mysql2", async (importOriginal) => {
   return { ...actual, drizzle: vi.fn() };
 });
 
-// El constructor Date(y, m, d, ...) SIEMPRE usa la timezone local del
-// proceso que corre el test -- igual que moduloEstaHabilitadoAhora lee la
-// fecha con getFullYear/getMonth/getDate (locales). Usar strings "...Z"
-// (UTC) aqui seria el mismo bug de fecha-un-dia-adelantada que ya tuvo este
-// repo (ver exportar.ts) si el runner corre en una timezone distinta a UTC.
+// moduloEstaHabilitadoAhora fija la comparacion a America/Mexico_City (ver
+// comentario en db.ts) -- por eso aqui SIEMPRE se construye `ahora` con
+// Date.UTC() a un instante conocido (Mexico = UTC-6 fijo, sin DST desde
+// 2022), nunca con el constructor local Date(y,m,d,...), que dependeria de
+// la timezone del proceso que corre el test y volveria estos tests fragiles
+// segun el runner (ej. CI en UTC vs. una maquina en Mexico).
+const mx = (y: number, m: number, d: number, h: number, mi: number, s: number) =>
+  new Date(Date.UTC(y, m, d, h + 6, mi, s)); // +6 horas = mismo instante en UTC
+
 describe("moduloEstaHabilitadoAhora (funcion pura, sin DB)", () => {
   it("sin ventana programada, manda el flag manual (true)", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: true, fechaDesde: null, fechaHasta: null } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 5, 15, 10, 0, 0))).toBe(true);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 15, 10, 0, 0))).toBe(true);
   });
 
   it("sin ventana programada, manda el flag manual (false)", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: false, fechaDesde: null, fechaHasta: null } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 5, 15, 10, 0, 0))).toBe(false);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 15, 10, 0, 0))).toBe(false);
   });
 
   it("con ventana y hoy dentro del rango, esta habilitado sin importar el flag manual", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: false, fechaDesde: "2026-06-01", fechaHasta: "2026-06-30" } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 5, 15, 10, 0, 0))).toBe(true);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 15, 10, 0, 0))).toBe(true);
   });
 
   it("con ventana y hoy fuera del rango (antes), esta deshabilitado aunque el flag manual sea true", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: true, fechaDesde: "2026-06-01", fechaHasta: "2026-06-30" } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 4, 31, 10, 0, 0))).toBe(false);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 4, 31, 10, 0, 0))).toBe(false);
   });
 
   it("con ventana y hoy fuera del rango (despues), esta deshabilitado", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: true, fechaDesde: "2026-06-01", fechaHasta: "2026-06-30" } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 6, 1, 10, 0, 0))).toBe(false);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 6, 1, 10, 0, 0))).toBe(false);
   });
 
   it("los limites del rango (primer y ultimo dia) cuentan como dentro", async () => {
     const { moduloEstaHabilitadoAhora } = await import("./db");
     const config = { habilitado: false, fechaDesde: "2026-06-01", fechaHasta: "2026-06-30" } as any;
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 5, 1, 0, 0, 1))).toBe(true);
-    expect(moduloEstaHabilitadoAhora(config, new Date(2026, 5, 30, 23, 59, 0))).toBe(true);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 1, 0, 0, 1))).toBe(true);
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 30, 23, 59, 0))).toBe(true);
+  });
+
+  it("cerca de medianoche en Mexico, no se corre por la timezone del host (ej. UTC)", async () => {
+    const { moduloEstaHabilitadoAhora } = await import("./db");
+    const config = { habilitado: false, fechaDesde: "2026-06-01", fechaHasta: "2026-06-01" } as any;
+    // 23:00 del 1-jun en Mexico = 05:00 UTC del 2-jun -- un host corriendo en
+    // UTC con el bug viejo (getFullYear/getMonth/getDate del proceso) leeria
+    // "2026-06-02" y diria que ya se salio de la ventana. Debe seguir true.
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 1, 23, 0, 0))).toBe(true);
+    // Un minuto despues de medianoche en Mexico (2-jun) ya cae fuera.
+    expect(moduloEstaHabilitadoAhora(config, mx(2026, 5, 2, 0, 1, 0))).toBe(false);
   });
 });
 
