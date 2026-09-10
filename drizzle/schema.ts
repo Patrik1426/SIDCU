@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, varchar, boolean, bigint, index, foreignKey } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -96,6 +96,57 @@ export const archivosCargados = mysqlTable("archivos_cargados", {
   s3Url: text("s3_url").notNull(),
   cargadoPor: int("cargado_por").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const FACTORES_INCONFORMIDAD = [
+  "capacitacion", "evaluacion_desempeno", "antiguedad", "preparacion_academica",
+] as const;
+
+export const inconformidades = mysqlTable("inconformidades", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  estado: mysqlEnum("estado", ["borrador", "enviado"]).notNull().default("borrador"),
+  enviadoAt: timestamp("enviado_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  estadoIdx: index("inc_estado_idx").on(table.estado),
+}));
+
+export const inconformidadFactores = mysqlTable("inconformidad_factores", {
+  id: int("id").autoincrement().primaryKey(),
+  inconformidadId: int("inconformidad_id").notNull(),
+  factor: mysqlEnum("factor", FACTORES_INCONFORMIDAD).notNull(),
+  mensaje: varchar("mensaje", { length: 500 }).notNull(),
+  archivoId: int("archivo_id").unique().references(() => archivosCargados.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  inconformidadFactorIdx: index("incf_inconformidad_factor_idx").on(table.inconformidadId, table.factor),
+  fk: foreignKey({
+    columns: [table.inconformidadId],
+    foreignColumns: [inconformidades.id],
+    name: "fk_incf_inconformidad",
+  }).onDelete("cascade"),
+}));
+
+export const factoresInconformidadConfig = mysqlTable("factores_inconformidad_config", {
+  factor: mysqlEnum("factor", FACTORES_INCONFORMIDAD).primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+});
+
+// Fila unica (id=1, sembrada por scripts/seed-modulo-inconformidad-config.ts)
+// -- controla si el modulo COMPLETO esta disponible para los trabajadores,
+// no un factor individual. Si fechaDesde/fechaHasta estan seteadas, mandan
+// ellas sobre `habilitado` (ver moduloEstaHabilitadoAhora en db.ts) -- tocar
+// el switch a mano limpia la ventana programada (decision confirmada con el
+// cliente: el switch manual siempre puede forzar apagado/prendido).
+export const inconformidadModuloConfig = mysqlTable("inconformidad_modulo_config", {
+  id: int("id").autoincrement().primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+  fechaDesde: date("fecha_desde", { mode: "string" }),
+  fechaHasta: date("fecha_hasta", { mode: "string" }),
+  actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
 export const passwordResetTokens = mysqlTable("password_reset_tokens", {
@@ -238,3 +289,7 @@ export type CursoInstitucion = typeof cursosInstituciones.$inferSelect;
 export type InsertCursoInstitucion = typeof cursosInstituciones.$inferInsert;
 export type SolicitudCurso = typeof solicitudesCurso.$inferSelect;
 export type InsertSolicitudCurso = typeof solicitudesCurso.$inferInsert;
+export type Inconformidad = typeof inconformidades.$inferSelect;
+export type InconformidadFactor = typeof inconformidadFactores.$inferSelect;
+export type FactorInconformidadConfig = typeof factoresInconformidadConfig.$inferSelect;
+export type InconformidadModuloConfig = typeof inconformidadModuloConfig.$inferSelect;
