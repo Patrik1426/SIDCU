@@ -111,7 +111,7 @@ export const promocionRouter = router({
       if (!resultado.ok) {
         throw new TRPCError({
           code: resultado.error === "USUARIO_INVALIDO" ? "BAD_REQUEST" : "NOT_FOUND",
-          message: resultado.error === "USUARIO_INVALIDO" ? "Ese usuario no tiene una cuenta activa." : "Inscripción no encontrada.",
+          message: resultado.error === "USUARIO_INVALIDO" ? "Ese usuario no es válido para este puesto (sin cuenta activa, o ya ocupa otro lugar en esta inscripción)." : "Inscripción no encontrada.",
         });
       }
       return { success: true };

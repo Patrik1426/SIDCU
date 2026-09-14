@@ -12,7 +12,12 @@ beforeEach(() => {
 });
 
 describe("listarInscripcionesPromocion", () => {
-  it("pagina con LIMIT/OFFSET reales, no carga todo", async () => {
+  // El mock de makeTxRecorder regresa arrays pre-encolados sin importar los
+  // argumentos reales de .limit()/.offset() -- este test solo prueba el
+  // shape del resultado dado un mock, no el LIMIT/OFFSET real. El
+  // comportamiento real de paginacion se verifico en vivo contra MySQL real
+  // en el Task 9 de este plan (ver progress.md).
+  it("regresa items y metadatos de paginación con el shape correcto", async () => {
     const filaEjemplo = { id: 1, enviadoAt: new Date(), trabajadorNombre: "Ana", trabajadorCurp: "X", jefeNombre: "Jefe", companero1Nombre: "C1", companero2Nombre: "C2" };
     const { tx } = makeTxRecorder([[filaEjemplo], [{ count: 1 }]], []);
     const fakeDb = { select: tx.select };

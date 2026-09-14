@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import { randomInt } from "crypto";
 import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
@@ -1623,22 +1624,10 @@ export function elegirDosAlAzar(ids: number[]): [number, number] | null {
   if (ids.length < 2) return null;
   const copia = [...ids];
   for (let i = 0; i < 2; i++) {
-    const j = i + Math.floor(Math.random() * (copia.length - i));
+    const j = i + randomInt(copia.length - i);
     [copia[i], copia[j]] = [copia[j], copia[i]];
   }
   return [copia[0], copia[1]];
-}
-
-export async function elegirCompanerosAlAzar(excluirUserId: number): Promise<[number, number] | null> {
-  const d = await getDb();
-  const filas = await d
-    .select({ userId: schema.promocionCompaneroPool.userId })
-    .from(schema.promocionCompaneroPool)
-    .where(and(
-      eq(schema.promocionCompaneroPool.activo, true),
-      ne(schema.promocionCompaneroPool.userId, excluirUserId),
-    ));
-  return elegirDosAlAzar(filas.map((f) => f.userId));
 }
 
 export async function inscribirmePromocion(userId: number): Promise<
@@ -1660,15 +1649,22 @@ export async function inscribirmePromocion(userId: number): Promise<
       const [jefe] = await tx
         .select({ jefeUserId: schema.promocionJefes.jefeUserId })
         .from(schema.promocionJefes)
-        .where(eq(schema.promocionJefes.userId, userId));
+        .innerJoin(schema.users, eq(schema.users.id, schema.promocionJefes.jefeUserId))
+        .where(and(
+          eq(schema.promocionJefes.userId, userId),
+          eq(schema.users.isActive, true),
+        ));
       if (!jefe) return { ok: false as const, error: "SIN_JEFE_ASIGNADO" as const };
 
       const poolFilas = await tx
         .select({ userId: schema.promocionCompaneroPool.userId })
         .from(schema.promocionCompaneroPool)
+        .innerJoin(schema.users, eq(schema.users.id, schema.promocionCompaneroPool.userId))
         .where(and(
           eq(schema.promocionCompaneroPool.activo, true),
+          eq(schema.users.isActive, true),
           ne(schema.promocionCompaneroPool.userId, userId),
+          ne(schema.promocionCompaneroPool.userId, jefe.jefeUserId),
         ));
       const companeros = elegirDosAlAzar(poolFilas.map((f) => f.userId));
       if (!companeros) return { ok: false as const, error: "POOL_INSUFICIENTE" as const };
@@ -1788,9 +1784,9 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       })
       .from(schema.promociones)
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
-      .innerJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
-      .innerJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
-      .innerJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
+      .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
+      .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
       .where(where)
       .limit(limit)
       .offset(offset),
@@ -1837,13 +1833,23 @@ export async function reasignarEvaluadorPromocion(
   const d = await getDb();
 
   const [cuenta] = await d
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(and(eq(schema.users.id, nuevoUserId), eq(schema.users.isActive, true)));
+    .select({ id: schema.servidoresPublicos.userId })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(eq(schema.servidoresPublicos.userId, nuevoUserId), eq(schema.users.isActive, true)));
   if (!cuenta) return { ok: false, error: "USUARIO_INVALIDO" };
 
   const [promo] = await d.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
   if (!promo) return { ok: false, error: "PROMOCION_NO_ENCONTRADA" };
+
+  if (
+    nuevoUserId === promo.userId ||
+    (rol !== "jefe" && nuevoUserId === promo.jefeAsignadoId) ||
+    (rol !== "companero1" && nuevoUserId === promo.companero1Id) ||
+    (rol !== "companero2" && nuevoUserId === promo.companero2Id)
+  ) {
+    return { ok: false, error: "USUARIO_INVALIDO" };
+  }
 
   let valorAnterior: number;
   let update: Partial<typeof schema.promociones.$inferInsert>;

@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
-import ConfirmModal from "@/components/ConfirmModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
@@ -35,6 +34,15 @@ export default function GestionPromocion() {
       toast.error(err.message);
     },
   });
+
+  useEffect(() => {
+    if (!reasignando) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setReasignando(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [reasignando]);
 
   const inputClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20";
 
@@ -92,7 +100,7 @@ export default function GestionPromocion() {
                   {(["jefe", "companero1", "companero2"] as const).map((rol) => (
                     <td key={rol} className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span>{rol === "jefe" ? item.jefeNombre : rol === "companero1" ? item.companero1Nombre : item.companero2Nombre}</span>
+                        <span>{(rol === "jefe" ? item.jefeNombre : rol === "companero1" ? item.companero1Nombre : item.companero2Nombre) ?? "— (cuenta no encontrada)"}</span>
                         <button
                           type="button"
                           title="Reasignar"
@@ -150,7 +158,7 @@ export default function GestionPromocion() {
       )}
 
       {reasignando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setReasignando(null)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setReasignando(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-sm font-bold text-slate-900">Reasignar {reasignando.rol}</h3>
             <BuscadorEvaluador onElegir={(userId, nombre) => setReasignando({ ...reasignando, nuevoUserId: userId, nuevoNombre: nombre })} />
