@@ -23,6 +23,7 @@ import {
   Building,
   Inbox,
   FileWarning,
+  Award,
   ToggleLeft,
 } from "lucide-react";
 
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { label: "Catálogo Cursos", href: "/portal/cursos", icon: BookOpen, roles: ["user"] },
   { label: "Mis Solicitudes", href: "/portal/solicitudes", icon: ClipboardCheck, roles: ["user"] },
   { label: "Inconformidad", href: "/portal/inconformidad", icon: FileWarning, roles: ["user"] },
+  { label: "Promoción", href: "/portal/promocion", icon: Award, roles: ["user"] },
   { label: "Servidores", href: "/servidores", icon: Users, roles: ["admin", "capturista"] },
   { label: "Importar CSV", href: "/importar", icon: FileUp, roles: ["admin", "capturista"] },
   // { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] }, // En construcción
@@ -46,6 +48,7 @@ const navItems: NavItem[] = [
   { label: "Instituciones", href: "/instituciones", icon: Building, roles: ["admin"] },
   { label: "Solicitudes", href: "/solicitudes", icon: Inbox, roles: ["admin"] },
   { label: "Inconformidades", href: "/inconformidades", icon: FileWarning, roles: ["admin"] },
+  { label: "Promociones", href: "/promociones", icon: Award, roles: ["admin"] },
   { label: "Usuarios", href: "/usuarios", icon: UserCog, roles: ["admin"] },
   { label: "Auditoría", href: "/auditoria", icon: ClipboardList, roles: ["admin"] },
   { label: "Reportes", href: "/reportes", icon: FileText, roles: ["admin", "consultor"] },

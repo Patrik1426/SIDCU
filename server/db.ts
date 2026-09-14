@@ -1,7 +1,9 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, like, or, sql, desc, inArray, getTableColumns } from "drizzle-orm";
+import { randomInt } from "crypto";
+import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -1574,4 +1576,298 @@ export async function actualizarConfigFactorInconformidad(
     accion: "actualizar",
     descripcion: `Inconformidad: ${habilitado ? "habilitó" : "inhabilitó"} el factor "${factor}" para nuevas selecciones`,
   });
+}
+
+// ---- Inscripcion a Promocion ----
+
+// Deliberadamente separada de contarAcreditacion/progresoAcreditacion --
+// esas 2 ya las usan el resumen de admin en Solicitudes y el progreso del
+// Portal. Si el cliente pide despues cambiar la regla de Promocion a un
+// promedio en vez de "cada curso individual >=70", tocar aqui no debe poder
+// romper esas 2 pantallas (decision tomada antes de escribir codigo, ver
+// docs/superpowers/specs/2026-09-13-promocion-design.md).
+export function calcularElegibilidadPromocion(
+  calificaciones: number[],
+): { elegible: true; calificacion1: number; calificacion2: number } | { elegible: false } {
+  const aprobadas = calificaciones.filter((c) => c >= CALIFICACION_APROBATORIA);
+  if (aprobadas.length < CURSOS_REQUERIDOS_ACREDITACION) return { elegible: false };
+  return { elegible: true, calificacion1: aprobadas[0], calificacion2: aprobadas[1] };
+}
+
+export async function elegibilidadPromocion(userId: number) {
+  const d = await getDb();
+  const completadas = await d
+    .select({ calificacion: schema.solicitudesCurso.calificacion })
+    .from(schema.solicitudesCurso)
+    .where(and(
+      eq(schema.solicitudesCurso.userId, userId),
+      eq(schema.solicitudesCurso.estado, "completada"),
+    ));
+  return calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+}
+
+export async function yaInscritoPromocion(userId: number): Promise<boolean> {
+  const d = await getDb();
+  const [row] = await d.select({ id: schema.promociones.id })
+    .from(schema.promociones)
+    .where(eq(schema.promociones.userId, userId));
+  return !!row;
+}
+
+// Sorteo robusto -- NUNCA usar `ORDER BY RAND()` en SQL (anti-patron
+// conocido: escanea y ordena la tabla completa en cada llamada, se pone mas
+// lento entre mas crezca el pool, y con varios trabajadores inscribiendose a
+// la vez es justo el tipo de query que puede saturar la DB). En vez de eso,
+// se trae solo la columna user_id (ligera aunque el pool tenga miles de
+// filas) y se sortea en memoria del proceso.
+export function elegirDosAlAzar(ids: number[]): [number, number] | null {
+  if (ids.length < 2) return null;
+  const copia = [...ids];
+  for (let i = 0; i < 2; i++) {
+    const j = i + randomInt(copia.length - i);
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return [copia[0], copia[1]];
+}
+
+export async function inscribirmePromocion(userId: number): Promise<
+  { ok: true } | { ok: false; error: "NO_ELEGIBLE" | "SIN_JEFE_ASIGNADO" | "POOL_INSUFICIENTE" | "YA_INSCRITO" }
+> {
+  const d = await getDb();
+  try {
+    return await d.transaction(async (tx) => {
+      const completadas = await tx
+        .select({ calificacion: schema.solicitudesCurso.calificacion })
+        .from(schema.solicitudesCurso)
+        .where(and(
+          eq(schema.solicitudesCurso.userId, userId),
+          eq(schema.solicitudesCurso.estado, "completada"),
+        ));
+      const elegibilidad = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+      if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
+
+      const [jefe] = await tx
+        .select({ jefeUserId: schema.promocionJefes.jefeUserId })
+        .from(schema.promocionJefes)
+        .innerJoin(schema.users, eq(schema.users.id, schema.promocionJefes.jefeUserId))
+        .where(and(
+          eq(schema.promocionJefes.userId, userId),
+          eq(schema.users.isActive, true),
+        ));
+      if (!jefe) return { ok: false as const, error: "SIN_JEFE_ASIGNADO" as const };
+
+      const poolFilas = await tx
+        .select({ userId: schema.promocionCompaneroPool.userId })
+        .from(schema.promocionCompaneroPool)
+        .innerJoin(schema.users, eq(schema.users.id, schema.promocionCompaneroPool.userId))
+        .where(and(
+          eq(schema.promocionCompaneroPool.activo, true),
+          eq(schema.users.isActive, true),
+          ne(schema.promocionCompaneroPool.userId, userId),
+          ne(schema.promocionCompaneroPool.userId, jefe.jefeUserId),
+        ));
+      const companeros = elegirDosAlAzar(poolFilas.map((f) => f.userId));
+      if (!companeros) return { ok: false as const, error: "POOL_INSUFICIENTE" as const };
+
+      await tx.insert(schema.promociones).values({
+        userId,
+        jefeAsignadoId: jefe.jefeUserId,
+        companero1Id: companeros[0],
+        companero2Id: companeros[1],
+        calificacionCurso1: elegibilidad.calificacion1,
+        calificacionCurso2: elegibilidad.calificacion2,
+      });
+
+      const [servidor] = await tx
+        .select({ id: schema.servidoresPublicos.id })
+        .from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, userId));
+
+      await tx.insert(schema.auditoria).values({
+        servidorId: servidor?.id ?? null,
+        usuarioId: userId,
+        accion: "crear",
+        descripcion: "Se inscribió a Promoción",
+        cambiosPosterior: JSON.stringify({
+          jefeAsignadoId: jefe.jefeUserId,
+          companero1Id: companeros[0],
+          companero2Id: companeros[1],
+        }),
+      });
+
+      return { ok: true as const };
+    });
+  } catch (err: any) {
+    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "YA_INSCRITO" };
+    throw err;
+  }
+}
+
+// "Cuenta activa" = tiene fila en servidores_publicos con ese CURP Y esa
+// fila tiene userId (cuenta creada) Y esa cuenta esta activa -- las 2 CSVs
+// de Promocion (jefes, companeros) solo pueden referenciar gente que ya
+// existe en el sistema, nunca crean personas nuevas.
+async function buscarCuentaActivaPorCurp(curp: string): Promise<number | null> {
+  const d = await getDb();
+  const [row] = await d
+    .select({ userId: schema.servidoresPublicos.userId })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(
+      eq(schema.servidoresPublicos.curp, curp.toUpperCase()),
+      eq(schema.users.isActive, true),
+    ));
+  return row?.userId ?? null;
+}
+
+export async function importarFilaJefe(
+  curpTrabajador: string,
+  curpJefe: string,
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trabajadorUserId = await buscarCuentaActivaPorCurp(curpTrabajador);
+  if (!trabajadorUserId) return { ok: false, error: `CURP trabajador "${curpTrabajador}" no tiene cuenta activa` };
+
+  const jefeUserId = await buscarCuentaActivaPorCurp(curpJefe);
+  if (!jefeUserId) return { ok: false, error: `CURP jefe "${curpJefe}" no tiene cuenta activa` };
+
+  if (trabajadorUserId === jefeUserId) return { ok: false, error: "El trabajador no puede ser su propio jefe" };
+
+  const d = await getDb();
+  await d.insert(schema.promocionJefes)
+    .values({ userId: trabajadorUserId, jefeUserId, actualizadoPor: adminUserId })
+    .onDuplicateKeyUpdate({ set: { jefeUserId, actualizadoPor: adminUserId } });
+
+  return { ok: true };
+}
+
+export async function importarFilaCompanero(curp: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const userId = await buscarCuentaActivaPorCurp(curp);
+  if (!userId) return { ok: false, error: `CURP "${curp}" no tiene cuenta activa` };
+
+  const d = await getDb();
+  await d.insert(schema.promocionCompaneroPool)
+    .values({ userId, activo: true })
+    .onDuplicateKeyUpdate({ set: { activo: true } });
+
+  return { ok: true };
+}
+
+export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
+  const d = await getDb();
+  const trabajador = alias(schema.servidoresPublicos, "trabajador");
+  const jefe = alias(schema.servidoresPublicos, "jefe");
+  const companero1 = alias(schema.servidoresPublicos, "companero1");
+  const companero2 = alias(schema.servidoresPublicos, "companero2");
+
+  const limit = filtros?.limit ?? 20;
+  const page = filtros?.page ?? 1;
+  const offset = (page - 1) * limit;
+
+  const where = filtros?.search
+    ? or(
+        like(trabajador.nombreCompleto, `%${filtros.search}%`),
+        like(trabajador.curp, `%${filtros.search}%`),
+      )
+    : undefined;
+
+  const [items, countResult] = await Promise.all([
+    d
+      .select({
+        id: schema.promociones.id,
+        enviadoAt: schema.promociones.enviadoAt,
+        trabajadorNombre: trabajador.nombreCompleto,
+        trabajadorCurp: trabajador.curp,
+        jefeNombre: jefe.nombreCompleto,
+        companero1Nombre: companero1.nombreCompleto,
+        companero2Nombre: companero2.nombreCompleto,
+      })
+      .from(schema.promociones)
+      .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
+      .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
+      .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
+      .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .where(where)
+      .limit(limit)
+      .offset(offset),
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.promociones)
+      .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
+      .where(where),
+  ]);
+
+  return {
+    items,
+    total: countResult[0]?.count ?? 0,
+    page,
+    limit,
+    totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
+  };
+}
+
+export async function buscarEvaluadorPromocion(q: string) {
+  const d = await getDb();
+  const term = `%${q}%`;
+  return d
+    .select({
+      userId: schema.servidoresPublicos.userId,
+      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+      curp: schema.servidoresPublicos.curp,
+    })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(
+      eq(schema.users.isActive, true),
+      or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
+    ))
+    .limit(15);
+}
+
+export async function reasignarEvaluadorPromocion(
+  promocionId: number,
+  rol: "jefe" | "companero1" | "companero2",
+  nuevoUserId: number,
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "USUARIO_INVALIDO" }> {
+  const d = await getDb();
+
+  const [cuenta] = await d
+    .select({ id: schema.servidoresPublicos.userId })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(eq(schema.servidoresPublicos.userId, nuevoUserId), eq(schema.users.isActive, true)));
+  if (!cuenta) return { ok: false, error: "USUARIO_INVALIDO" };
+
+  const [promo] = await d.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
+  if (!promo) return { ok: false, error: "PROMOCION_NO_ENCONTRADA" };
+
+  if (
+    nuevoUserId === promo.userId ||
+    (rol !== "jefe" && nuevoUserId === promo.jefeAsignadoId) ||
+    (rol !== "companero1" && nuevoUserId === promo.companero1Id) ||
+    (rol !== "companero2" && nuevoUserId === promo.companero2Id)
+  ) {
+    return { ok: false, error: "USUARIO_INVALIDO" };
+  }
+
+  let valorAnterior: number;
+  let update: Partial<typeof schema.promociones.$inferInsert>;
+  if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
+  else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
+  else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
+
+  await d.transaction(async (tx) => {
+    await tx.update(schema.promociones).set(update).where(eq(schema.promociones.id, promocionId));
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Promoción #${promocionId}: reasignó ${rol}`,
+      cambiosAnteriores: JSON.stringify({ [rol]: valorAnterior }),
+      cambiosPosterior: JSON.stringify({ [rol]: nuevoUserId }),
+    });
+  });
+
+  return { ok: true };
 }

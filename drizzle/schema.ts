@@ -271,6 +271,35 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   }).onDelete("set null"),
 }));
 
+export const promocionJefes = mysqlTable("promocion_jefes", {
+  userId: int("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  jefeUserId: int("jefe_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export const promocionCompaneroPool = mysqlTable("promocion_companero_pool", {
+  userId: int("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  activo: boolean("activo").notNull().default(true),
+});
+
+// onDelete: "restrict" en las FKs de evaluadores (jefeAsignadoId/companeroXId)
+// -- a diferencia del resto del schema que usa "cascade" -- porque borrar la
+// cuenta de un evaluador ya asignado NO debe borrar en cascada el registro
+// de inscripcion del trabajador (perderia evidencia de que se inscribio).
+export const promociones = mysqlTable("promociones", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  jefeAsignadoId: int("jefe_asignado_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  companero1Id: int("companero1_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  companero2Id: int("companero2_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  calificacionCurso1: int("calificacion_curso1").notNull(),
+  calificacionCurso2: int("calificacion_curso2").notNull(),
+  enviadoAt: timestamp("enviado_at").defaultNow().notNull(),
+}, (table) => ({
+  jefeIdx: index("promo_jefe_idx").on(table.jefeAsignadoId),
+}));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ServidorPublico = typeof servidoresPublicos.$inferSelect;
@@ -293,3 +322,6 @@ export type Inconformidad = typeof inconformidades.$inferSelect;
 export type InconformidadFactor = typeof inconformidadFactores.$inferSelect;
 export type FactorInconformidadConfig = typeof factoresInconformidadConfig.$inferSelect;
 export type InconformidadModuloConfig = typeof inconformidadModuloConfig.$inferSelect;
+export type Promocion = typeof promociones.$inferSelect;
+export type PromocionJefe = typeof promocionJefes.$inferSelect;
+export type PromocionCompanero = typeof promocionCompaneroPool.$inferSelect;

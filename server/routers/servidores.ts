@@ -252,7 +252,11 @@ export const servidoresRouter = router({
   }),
 
   actividadReciente: requireRole("admin", "capturista", "consultor").query(async () => {
-    return listarAuditoria({ limit: 10 });
+    const resultado = await listarAuditoria({ limit: 10 });
+    return {
+      ...resultado,
+      items: resultado.items.map(({ cambiosAnteriores, cambiosPosterior, ...resto }) => resto),
+    };
   }),
 
   auditoria: requireRole("admin")

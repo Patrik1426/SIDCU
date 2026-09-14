@@ -22,7 +22,9 @@ import GestionCursos from "@/pages/GestionCursos";
 import Instituciones from "@/pages/Instituciones";
 import GestionSolicitudes from "@/pages/GestionSolicitudes";
 import Inconformidad from "@/pages/Inconformidad";
+import Promocion from "@/pages/Promocion";
 import GestionInconformidades from "@/pages/GestionInconformidades";
+import GestionPromocion from "@/pages/GestionPromocion";
 import CentroModulos from "@/pages/CentroModulos";
 
 class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -194,6 +196,12 @@ export default function App() {
           isLoading={isLoading}
         />
         <ProtectedRoute
+          path="/promociones"
+          component={GestionPromocion}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
           path="/modulos"
           component={CentroModulos}
           isAuthenticated={isAuthenticated}
@@ -214,6 +222,12 @@ export default function App() {
         <ProtectedRoute
           path="/portal/inconformidad"
           component={Inconformidad}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/promocion"
+          component={Promocion}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />
