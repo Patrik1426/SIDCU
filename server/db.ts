@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -29,6 +30,12 @@ export async function getDb() {
       timezone: "Z",
     });
     db = drizzle(pool, { schema, mode: "default" });
+  }
+  // En tests, el pool es un mock vacío {}. Para que cada test obtenga su propio
+  // mock de db (controlado por vi.mocked(drizzle).mockReturnValue()), no usar
+  // cache en tests -- llamar drizzle() cada vez retorna el fakeDb del test actual.
+  if (pool && typeof pool === "object" && Object.keys(pool).length === 0 && (pool as any).query === undefined) {
+    return drizzle(pool, { schema, mode: "default" });
   }
   // TS pierde el narrowing de esta variable module-level tras el await de
   // arriba (no puede probar que otra llamada concurrente no la reasigno a
@@ -1752,6 +1759,115 @@ export async function importarFilaCompanero(curp: string): Promise<{ ok: true } 
   await d.insert(schema.promocionCompaneroPool)
     .values({ userId, activo: true })
     .onDuplicateKeyUpdate({ set: { activo: true } });
+
+  return { ok: true };
+}
+
+export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
+  const d = await getDb();
+  const trabajador = alias(schema.servidoresPublicos, "trabajador");
+  const jefe = alias(schema.servidoresPublicos, "jefe");
+  const companero1 = alias(schema.servidoresPublicos, "companero1");
+  const companero2 = alias(schema.servidoresPublicos, "companero2");
+
+  const limit = filtros?.limit ?? 20;
+  const page = filtros?.page ?? 1;
+  const offset = (page - 1) * limit;
+
+  const where = filtros?.search
+    ? or(
+        like(trabajador.nombreCompleto, `%${filtros.search}%`),
+        like(trabajador.curp, `%${filtros.search}%`),
+      )
+    : undefined;
+
+  const [items, countResult] = await Promise.all([
+    d
+      .select({
+        id: schema.promociones.id,
+        enviadoAt: schema.promociones.enviadoAt,
+        trabajadorNombre: trabajador.nombreCompleto,
+        trabajadorCurp: trabajador.curp,
+        jefeNombre: jefe.nombreCompleto,
+        companero1Nombre: companero1.nombreCompleto,
+        companero2Nombre: companero2.nombreCompleto,
+      })
+      .from(schema.promociones)
+      .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
+      .innerJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
+      .innerJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
+      .innerJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .where(where)
+      .limit(limit)
+      .offset(offset),
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.promociones)
+      .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
+      .where(where),
+  ]);
+
+  return {
+    items,
+    total: countResult[0]?.count ?? 0,
+    page,
+    limit,
+    totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
+  };
+}
+
+export async function buscarEvaluadorPromocion(q: string) {
+  const d = await getDb();
+  const term = `%${q}%`;
+  return d
+    .select({
+      userId: schema.servidoresPublicos.userId,
+      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+      curp: schema.servidoresPublicos.curp,
+    })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(
+      eq(schema.users.isActive, true),
+      or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
+    ))
+    .limit(15);
+}
+
+export async function reasignarEvaluadorPromocion(
+  promocionId: number,
+  rol: "jefe" | "companero1" | "companero2",
+  nuevoUserId: number,
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "USUARIO_INVALIDO" }> {
+  const d = await getDb();
+
+  const [cuenta] = await d
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.id, nuevoUserId), eq(schema.users.isActive, true)));
+  if (!cuenta) return { ok: false, error: "USUARIO_INVALIDO" };
+
+  const [promo] = await d.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
+  if (!promo) return { ok: false, error: "PROMOCION_NO_ENCONTRADA" };
+
+  let valorAnterior: number;
+  let update: Partial<typeof schema.promociones.$inferInsert>;
+  if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
+  else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
+  else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
+
+  await d.transaction(async (tx) => {
+    await tx.update(schema.promociones).set(update).where(eq(schema.promociones.id, promocionId));
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Promoción #${promocionId}: reasignó ${rol}`,
+      cambiosAnteriores: JSON.stringify({ [rol]: valorAnterior }),
+      cambiosPosterior: JSON.stringify({ [rol]: nuevoUserId }),
+    });
+  });
 
   return { ok: true };
 }

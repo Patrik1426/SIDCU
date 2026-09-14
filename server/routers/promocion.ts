@@ -7,6 +7,9 @@ import {
   inscribirmePromocion,
   importarFilaJefe,
   importarFilaCompanero,
+  listarInscripcionesPromocion,
+  buscarEvaluadorPromocion,
+  reasignarEvaluadorPromocion,
 } from "../db";
 
 type ErrorCodigoPromocion = "NO_ELEGIBLE" | "SIN_JEFE_ASIGNADO" | "POOL_INSUFICIENTE" | "YA_INSCRITO";
@@ -83,5 +86,34 @@ export const promocionRouter = router({
         else errores.push({ fila: i + 1, error: resultado.error });
       }
       return { totalProcesados: input.registros.length, creados, errores };
+    }),
+
+  listarInscripciones: adminProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      page: z.number().int().positive().default(1),
+      limit: z.number().int().positive().max(100).default(20),
+    }))
+    .query(async ({ input }) => listarInscripcionesPromocion(input)),
+
+  buscarEvaluador: adminProcedure
+    .input(z.object({ q: z.string().min(2) }))
+    .query(async ({ input }) => buscarEvaluadorPromocion(input.q)),
+
+  reasignarEvaluador: adminProcedure
+    .input(z.object({
+      promocionId: z.number(),
+      rol: z.enum(["jefe", "companero1", "companero2"]),
+      nuevoUserId: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoUserId, ctx.user.id);
+      if (!resultado.ok) {
+        throw new TRPCError({
+          code: resultado.error === "USUARIO_INVALIDO" ? "BAD_REQUEST" : "NOT_FOUND",
+          message: resultado.error === "USUARIO_INVALIDO" ? "Ese usuario no tiene una cuenta activa." : "Inscripción no encontrada.",
+        });
+      }
+      return { success: true };
     }),
 });
