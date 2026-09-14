@@ -23,6 +23,7 @@ import { cursosRouter } from "./routers/cursos";
 import { institucionesRouter } from "./routers/instituciones";
 import { solicitudesRouter } from "./routers/solicitudes";
 import { inconformidadRouter } from "./routers/inconformidad";
+import { promocionRouter } from "./routers/promocion";
 
 export { router, publicProcedure };
 
@@ -187,6 +188,7 @@ export const appRouter = router({
   instituciones: institucionesRouter,
   solicitudes: solicitudesRouter,
   inconformidad: inconformidadRouter,
+  promocion: promocionRouter,
 });
 
 export type AppRouter = typeof appRouter;
