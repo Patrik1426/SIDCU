@@ -1705,3 +1705,53 @@ export async function inscribirmePromocion(userId: number): Promise<
     throw err;
   }
 }
+
+// "Cuenta activa" = tiene fila en servidores_publicos con ese CURP Y esa
+// fila tiene userId (cuenta creada) Y esa cuenta esta activa -- las 2 CSVs
+// de Promocion (jefes, companeros) solo pueden referenciar gente que ya
+// existe en el sistema, nunca crean personas nuevas.
+async function buscarCuentaActivaPorCurp(curp: string): Promise<number | null> {
+  const d = await getDb();
+  const [row] = await d
+    .select({ userId: schema.servidoresPublicos.userId })
+    .from(schema.servidoresPublicos)
+    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .where(and(
+      eq(schema.servidoresPublicos.curp, curp.toUpperCase()),
+      eq(schema.users.isActive, true),
+    ));
+  return row?.userId ?? null;
+}
+
+export async function importarFilaJefe(
+  curpTrabajador: string,
+  curpJefe: string,
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trabajadorUserId = await buscarCuentaActivaPorCurp(curpTrabajador);
+  if (!trabajadorUserId) return { ok: false, error: `CURP trabajador "${curpTrabajador}" no tiene cuenta activa` };
+
+  const jefeUserId = await buscarCuentaActivaPorCurp(curpJefe);
+  if (!jefeUserId) return { ok: false, error: `CURP jefe "${curpJefe}" no tiene cuenta activa` };
+
+  if (trabajadorUserId === jefeUserId) return { ok: false, error: "El trabajador no puede ser su propio jefe" };
+
+  const d = await getDb();
+  await d.insert(schema.promocionJefes)
+    .values({ userId: trabajadorUserId, jefeUserId, actualizadoPor: adminUserId })
+    .onDuplicateKeyUpdate({ set: { jefeUserId, actualizadoPor: adminUserId } });
+
+  return { ok: true };
+}
+
+export async function importarFilaCompanero(curp: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const userId = await buscarCuentaActivaPorCurp(curp);
+  if (!userId) return { ok: false, error: `CURP "${curp}" no tiene cuenta activa` };
+
+  const d = await getDb();
+  await d.insert(schema.promocionCompaneroPool)
+    .values({ userId, activo: true })
+    .onDuplicateKeyUpdate({ set: { activo: true } });
+
+  return { ok: true };
+}
