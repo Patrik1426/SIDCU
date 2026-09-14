@@ -1639,3 +1639,69 @@ export async function elegirCompanerosAlAzar(excluirUserId: number): Promise<[nu
     ));
   return elegirDosAlAzar(filas.map((f) => f.userId));
 }
+
+export async function inscribirmePromocion(userId: number): Promise<
+  { ok: true } | { ok: false; error: "NO_ELEGIBLE" | "SIN_JEFE_ASIGNADO" | "POOL_INSUFICIENTE" | "YA_INSCRITO" }
+> {
+  const d = await getDb();
+  try {
+    return await d.transaction(async (tx) => {
+      const completadas = await tx
+        .select({ calificacion: schema.solicitudesCurso.calificacion })
+        .from(schema.solicitudesCurso)
+        .where(and(
+          eq(schema.solicitudesCurso.userId, userId),
+          eq(schema.solicitudesCurso.estado, "completada"),
+        ));
+      const elegibilidad = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+      if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
+
+      const [jefe] = await tx
+        .select({ jefeUserId: schema.promocionJefes.jefeUserId })
+        .from(schema.promocionJefes)
+        .where(eq(schema.promocionJefes.userId, userId));
+      if (!jefe) return { ok: false as const, error: "SIN_JEFE_ASIGNADO" as const };
+
+      const poolFilas = await tx
+        .select({ userId: schema.promocionCompaneroPool.userId })
+        .from(schema.promocionCompaneroPool)
+        .where(and(
+          eq(schema.promocionCompaneroPool.activo, true),
+          ne(schema.promocionCompaneroPool.userId, userId),
+        ));
+      const companeros = elegirDosAlAzar(poolFilas.map((f) => f.userId));
+      if (!companeros) return { ok: false as const, error: "POOL_INSUFICIENTE" as const };
+
+      await tx.insert(schema.promociones).values({
+        userId,
+        jefeAsignadoId: jefe.jefeUserId,
+        companero1Id: companeros[0],
+        companero2Id: companeros[1],
+        calificacionCurso1: elegibilidad.calificacion1,
+        calificacionCurso2: elegibilidad.calificacion2,
+      });
+
+      const [servidor] = await tx
+        .select({ id: schema.servidoresPublicos.id })
+        .from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, userId));
+
+      await tx.insert(schema.auditoria).values({
+        servidorId: servidor?.id ?? null,
+        usuarioId: userId,
+        accion: "crear",
+        descripcion: "Se inscribió a Promoción",
+        cambiosPosterior: JSON.stringify({
+          jefeAsignadoId: jefe.jefeUserId,
+          companero1Id: companeros[0],
+          companero2Id: companeros[1],
+        }),
+      });
+
+      return { ok: true as const };
+    });
+  } catch (err: any) {
+    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "YA_INSCRITO" };
+    throw err;
+  }
+}
