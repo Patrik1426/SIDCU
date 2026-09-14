@@ -19,7 +19,7 @@ describe("listarInscripcionesPromocion", () => {
   // en el Task 9 de este plan (ver progress.md).
   it("regresa items y metadatos de paginación con el shape correcto", async () => {
     const filaEjemplo = { id: 1, enviadoAt: new Date(), trabajadorNombre: "Ana", trabajadorCurp: "X", jefeNombre: "Jefe", companero1Nombre: "C1", companero2Nombre: "C2" };
-    const { tx } = makeTxRecorder([[filaEjemplo], [{ count: 1 }]], []);
+    const { tx } = makeTxRecorder([[filaEjemplo], [{ count: 1 }], [{ count: 0 }]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
@@ -29,6 +29,18 @@ describe("listarInscripcionesPromocion", () => {
     expect(resultado.items).toEqual([filaEjemplo]);
     expect(resultado.total).toBe(1);
     expect(resultado.totalPages).toBe(1);
+    expect(resultado.conReferenciaRota).toBe(0);
+  });
+
+  it("cuenta inscripciones con referencia de evaluador rota, sin importar el filtro de busqueda", async () => {
+    const { tx } = makeTxRecorder([[], [{ count: 0 }], [{ count: 3 }]], []);
+    const fakeDb = { select: tx.select };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { listarInscripcionesPromocion } = await import("./db");
+    const resultado = await listarInscripcionesPromocion({ search: "algo que no matchea nada", page: 1, limit: 20 });
+    expect(resultado.conReferenciaRota).toBe(3);
   });
 });
 

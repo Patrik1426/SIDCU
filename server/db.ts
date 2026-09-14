@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { randomInt } from "crypto";
-import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne } from "drizzle-orm";
+import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
@@ -1771,7 +1771,7 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       )
     : undefined;
 
-  const [items, countResult] = await Promise.all([
+  const [items, countResult, rotasResult] = await Promise.all([
     d
       .select({
         id: schema.promociones.id,
@@ -1795,14 +1795,29 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       .from(schema.promociones)
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
       .where(where),
+    // Panorama global (sin filtro de busqueda) -- cuantas inscripciones
+    // tienen alguna referencia de evaluador rota (leftJoin no encontro fila
+    // en servidores_publicos), para el resumen que ve el admin arriba de la
+    // lista sin tener que escanear miles de filas una por una.
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.promociones)
+      .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
+      .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
+      .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .where(or(isNull(jefe.userId), isNull(companero1.userId), isNull(companero2.userId))),
   ]);
+
+  const total = countResult[0]?.count ?? 0;
+  const conReferenciaRota = rotasResult[0]?.count ?? 0;
 
   return {
     items,
-    total: countResult[0]?.count ?? 0,
+    total,
     page,
     limit,
-    totalPages: Math.ceil((countResult[0]?.count ?? 0) / limit),
+    totalPages: Math.ceil(total / limit),
+    conReferenciaRota,
   };
 }
 
