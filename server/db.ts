@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, like, or, sql, desc, inArray, getTableColumns } from "drizzle-orm";
+import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne } from "drizzle-orm";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -1574,4 +1574,68 @@ export async function actualizarConfigFactorInconformidad(
     accion: "actualizar",
     descripcion: `Inconformidad: ${habilitado ? "habilitó" : "inhabilitó"} el factor "${factor}" para nuevas selecciones`,
   });
+}
+
+// ---- Inscripcion a Promocion ----
+
+// Deliberadamente separada de contarAcreditacion/progresoAcreditacion --
+// esas 2 ya las usan el resumen de admin en Solicitudes y el progreso del
+// Portal. Si el cliente pide despues cambiar la regla de Promocion a un
+// promedio en vez de "cada curso individual >=70", tocar aqui no debe poder
+// romper esas 2 pantallas (decision tomada antes de escribir codigo, ver
+// docs/superpowers/specs/2026-09-13-promocion-design.md).
+export function calcularElegibilidadPromocion(
+  calificaciones: number[],
+): { elegible: true; calificacion1: number; calificacion2: number } | { elegible: false } {
+  const aprobadas = calificaciones.filter((c) => c >= CALIFICACION_APROBATORIA);
+  if (aprobadas.length < CURSOS_REQUERIDOS_ACREDITACION) return { elegible: false };
+  return { elegible: true, calificacion1: aprobadas[0], calificacion2: aprobadas[1] };
+}
+
+export async function elegibilidadPromocion(userId: number) {
+  const d = await getDb();
+  const completadas = await d
+    .select({ calificacion: schema.solicitudesCurso.calificacion })
+    .from(schema.solicitudesCurso)
+    .where(and(
+      eq(schema.solicitudesCurso.userId, userId),
+      eq(schema.solicitudesCurso.estado, "completada"),
+    ));
+  return calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+}
+
+export async function yaInscritoPromocion(userId: number): Promise<boolean> {
+  const d = await getDb();
+  const [row] = await d.select({ id: schema.promociones.id })
+    .from(schema.promociones)
+    .where(eq(schema.promociones.userId, userId));
+  return !!row;
+}
+
+// Sorteo robusto -- NUNCA usar `ORDER BY RAND()` en SQL (anti-patron
+// conocido: escanea y ordena la tabla completa en cada llamada, se pone mas
+// lento entre mas crezca el pool, y con varios trabajadores inscribiendose a
+// la vez es justo el tipo de query que puede saturar la DB). En vez de eso,
+// se trae solo la columna user_id (ligera aunque el pool tenga miles de
+// filas) y se sortea en memoria del proceso.
+export function elegirDosAlAzar(ids: number[]): [number, number] | null {
+  if (ids.length < 2) return null;
+  const copia = [...ids];
+  for (let i = 0; i < 2; i++) {
+    const j = i + Math.floor(Math.random() * (copia.length - i));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return [copia[0], copia[1]];
+}
+
+export async function elegirCompanerosAlAzar(excluirUserId: number): Promise<[number, number] | null> {
+  const d = await getDb();
+  const filas = await d
+    .select({ userId: schema.promocionCompaneroPool.userId })
+    .from(schema.promocionCompaneroPool)
+    .where(and(
+      eq(schema.promocionCompaneroPool.activo, true),
+      ne(schema.promocionCompaneroPool.userId, excluirUserId),
+    ));
+  return elegirDosAlAzar(filas.map((f) => f.userId));
 }
