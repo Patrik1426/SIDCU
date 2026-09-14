@@ -31,12 +31,6 @@ export async function getDb() {
     });
     db = drizzle(pool, { schema, mode: "default" });
   }
-  // En tests, el pool es un mock vacío {}. Para que cada test obtenga su propio
-  // mock de db (controlado por vi.mocked(drizzle).mockReturnValue()), no usar
-  // cache en tests -- llamar drizzle() cada vez retorna el fakeDb del test actual.
-  if (pool && typeof pool === "object" && Object.keys(pool).length === 0 && (pool as any).query === undefined) {
-    return drizzle(pool, { schema, mode: "default" });
-  }
   // TS pierde el narrowing de esta variable module-level tras el await de
   // arriba (no puede probar que otra llamada concurrente no la reasigno a
   // null) -- el invariante real es que en este punto siempre esta asignada.

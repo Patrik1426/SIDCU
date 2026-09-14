@@ -1,10 +1,14 @@
-import { vi, describe, it, expect } from "vitest";
+import { vi, describe, it, expect, beforeEach } from "vitest";
 import { makeTxRecorder } from "./db.transaction-test-helpers";
 
 vi.mock("mysql2/promise", () => ({ default: { createPool: vi.fn(() => ({})) } }));
 vi.mock("drizzle-orm/mysql2", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm/mysql2")>();
   return { ...actual, drizzle: vi.fn() };
+});
+
+beforeEach(() => {
+  vi.resetModules();
 });
 
 describe("listarInscripcionesPromocion", () => {
