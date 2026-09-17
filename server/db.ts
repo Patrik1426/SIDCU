@@ -9,6 +9,7 @@ import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
 import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
 import { validarCorreoEvaluador } from "./lib/validarCorreo";
+import { generarPasswordTemporal, hashPassword } from "./auth";
 
 let db: (MySql2Database<typeof schema> & { $client: mysql.Pool }) | null = null;
 let pool: mysql.Pool | null = null;
@@ -1605,6 +1606,45 @@ export async function elegibilidadPromocion(userId: number) {
       eq(schema.solicitudesCurso.estado, "completada"),
     ));
   return calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+}
+
+type PromocionTx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
+// Compartida entre confirmarInscripcion (trabajador) y reasignarEvaluadorPromocion
+// (admin, caso de baja) -- un solo lugar que crea la cuenta si falta, para no
+// duplicar la logica de creacion de cuenta en 2 rutas. El password en claro
+// se regresa SOLO para pasarlo en memoria a la fila de
+// promocionCorreosPendientes -- nunca se persiste en ninguna tabla.
+export async function asignarEvaluador(
+  tx: PromocionTx,
+  servidorId: number,
+  correoCapturado: string,
+): Promise<{ userId: number; passwordTemporalEnClaro: string | null }> {
+  const [servidor] = await tx
+    .select({ userId: schema.servidoresPublicos.userId, curp: schema.servidoresPublicos.curp, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
+    .from(schema.servidoresPublicos)
+    .where(eq(schema.servidoresPublicos.id, servidorId));
+
+  if (servidor.userId) {
+    await tx.update(schema.users).set({ email: correoCapturado }).where(eq(schema.users.id, servidor.userId));
+    return { userId: servidor.userId, passwordTemporalEnClaro: null };
+  }
+
+  const passwordTemporalEnClaro = generarPasswordTemporal();
+  const passwordHash = await hashPassword(passwordTemporalEnClaro);
+  const [insertResult] = await tx.insert(schema.users).values({
+    nombre: servidor.nombreCompleto,
+    curp: servidor.curp,
+    email: correoCapturado,
+    passwordHash,
+    role: "user",
+    passwordTemporal: true,
+  });
+  const nuevoUserId = insertResult.insertId;
+
+  await tx.update(schema.servidoresPublicos).set({ userId: nuevoUserId }).where(eq(schema.servidoresPublicos.id, servidorId));
+
+  return { userId: nuevoUserId, passwordTemporalEnClaro };
 }
 
 export async function yaInscritoPromocion(userId: number): Promise<boolean> {
