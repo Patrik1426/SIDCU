@@ -45,37 +45,41 @@ describe("listarInscripcionesPromocion", () => {
 });
 
 describe("reasignarEvaluadorPromocion", () => {
-  it("rechaza si el nuevo usuario no tiene cuenta activa", async () => {
-    const { tx } = makeTxRecorder([[]], []); // cuenta activa: no encontrada
+  it("rechaza si el nuevo servidor no esta en el pool del rol correcto", async () => {
+    const { tx } = makeTxRecorder([[]], []); // servidorEnPool: no encontrado
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 999, 1);
-    expect(resultado).toEqual({ ok: false, error: "USUARIO_INVALIDO" });
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 999, "nuevo@example.com", 1);
+    expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
   });
 
   it("rechaza si la promocion no existe", async () => {
-    const { tx } = makeTxRecorder([[{ id: 5 }], []], []);
+    const { tx } = makeTxRecorder([[{ servidorId: 5 }], []], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(999, "companero1", 5, 1);
+    const resultado = await reasignarEvaluadorPromocion(999, "companero1", 5, "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "PROMOCION_NO_ENCONTRADA" });
   });
 
-  it("reasigna y audita en una transaccion", async () => {
+  it("reasigna via asignarEvaluador y audita en una transaccion", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
-    const { tx, calls } = makeTxRecorder([[{ id: 5 }], [promoExistente]], []);
+    const { tx, calls } = makeTxRecorder([
+      [{ servidorId: 5 }], // servidorEnPool: valido
+      [promoExistente],
+      [{ userId: 55 }], // asignarEvaluador: ya tiene cuenta
+    ], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("update");
     expect(calls).toContain("insert");

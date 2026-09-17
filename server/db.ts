@@ -1935,38 +1935,39 @@ export async function buscarEvaluadorPromocion(q: string) {
 export async function reasignarEvaluadorPromocion(
   promocionId: number,
   rol: "jefe" | "companero1" | "companero2",
-  nuevoUserId: number,
+  nuevoServidorId: number,
+  correoCapturado: string,
   adminUserId: number,
-): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "USUARIO_INVALIDO" }> {
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" }> {
   const d = await getDb();
+  const rolPool = rol === "jefe" ? "jefe" : "companero";
 
-  const [cuenta] = await d
-    .select({ id: schema.servidoresPublicos.userId })
-    .from(schema.servidoresPublicos)
-    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
-    .where(and(eq(schema.servidoresPublicos.userId, nuevoUserId), eq(schema.users.isActive, true)));
-  if (!cuenta) return { ok: false, error: "USUARIO_INVALIDO" };
+  return d.transaction(async (tx) => {
+    const enPool = await servidorEnPool(tx, nuevoServidorId, rolPool);
+    if (!enPool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
-  const [promo] = await d.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
-  if (!promo) return { ok: false, error: "PROMOCION_NO_ENCONTRADA" };
+    const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
+    if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
 
-  if (
-    nuevoUserId === promo.userId ||
-    (rol !== "jefe" && nuevoUserId === promo.jefeAsignadoId) ||
-    (rol !== "companero1" && nuevoUserId === promo.companero1Id) ||
-    (rol !== "companero2" && nuevoUserId === promo.companero2Id)
-  ) {
-    return { ok: false, error: "USUARIO_INVALIDO" };
-  }
+    const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
 
-  let valorAnterior: number;
-  let update: Partial<typeof schema.promociones.$inferInsert>;
-  if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
-  else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
-  else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
+    if (
+      nuevoUserId === promo.userId ||
+      (rol !== "jefe" && nuevoUserId === promo.jefeAsignadoId) ||
+      (rol !== "companero1" && nuevoUserId === promo.companero1Id) ||
+      (rol !== "companero2" && nuevoUserId === promo.companero2Id)
+    ) {
+      return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+    }
 
-  await d.transaction(async (tx) => {
+    let valorAnterior: number;
+    let update: Partial<typeof schema.promociones.$inferInsert>;
+    if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
+    else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
+    else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
+
     await tx.update(schema.promociones).set(update).where(eq(schema.promociones.id, promocionId));
+    await tx.insert(schema.promocionCorreosPendientes).values({ promocionId, destinatarioUserId: nuevoUserId, rol, passwordTemporalEnClaro });
     await tx.insert(schema.auditoria).values({
       servidorId: null,
       usuarioId: adminUserId,
@@ -1975,7 +1976,7 @@ export async function reasignarEvaluadorPromocion(
       cambiosAnteriores: JSON.stringify({ [rol]: valorAnterior }),
       cambiosPosterior: JSON.stringify({ [rol]: nuevoUserId }),
     });
-  });
 
-  return { ok: true };
+    return { ok: true as const };
+  });
 }
