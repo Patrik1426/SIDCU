@@ -1,6 +1,7 @@
 import Piscina from "piscina";
 import { fileURLToPath } from "node:url";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import type { User } from "../drizzle/schema";
 
 // Sin fallback silencioso: si NODE_ENV no queda exacto "production" en
@@ -24,6 +25,22 @@ const bcryptPool = new Piscina({
   minThreads: 1,
   maxThreads: 2,
 });
+
+// Aleatorio real, NUNCA derivado del CURP -- el CURP es consultable
+// publicamente en RENAPO y ya es el username de login en este sistema; un
+// password derivado de el equivaldria a "username = password". Se manda
+// solo por el correo capturado por quien selecciona al evaluador (ver
+// asignarEvaluador en db.ts), nunca se persiste en texto plano.
+const PASSWORD_TEMPORAL_ALFABETO = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+export function generarPasswordTemporal(): string {
+  const bytes = randomBytes(12);
+  let resultado = "";
+  for (let i = 0; i < 12; i++) {
+    resultado += PASSWORD_TEMPORAL_ALFABETO[bytes[i] % PASSWORD_TEMPORAL_ALFABETO.length];
+  }
+  return resultado;
+}
 
 // saltRounds=10: medido con carga real (k6), 12 rondas = ~230ms CPU/hash,
 // satura el pool de workers bajo rafaga concurrente de logins (p95 subia a

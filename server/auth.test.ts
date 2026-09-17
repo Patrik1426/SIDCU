@@ -4,6 +4,7 @@ import {
   verifyPassword,
   generateToken,
   verifyToken,
+  generarPasswordTemporal,
 } from "./auth";
 
 describe("auth", () => {
@@ -34,5 +35,19 @@ describe("auth", () => {
 
   it("should return null for invalid token", () => {
     expect(verifyToken("invalid-token")).toBeNull();
+  });
+});
+
+describe("generarPasswordTemporal", () => {
+  it("genera un password de 12 caracteres alfanumericos", () => {
+    const password = generarPasswordTemporal();
+    expect(password).toHaveLength(12);
+    expect(password).toMatch(/^[A-Za-z0-9]{12}$/);
+  });
+
+  it("genera valores distintos en llamadas sucesivas", () => {
+    const a = generarPasswordTemporal();
+    const b = generarPasswordTemporal();
+    expect(a).not.toBe(b);
   });
 });
