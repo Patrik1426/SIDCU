@@ -1608,7 +1608,7 @@ export async function elegibilidadPromocion(userId: number) {
   return calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
 }
 
-type PromocionTx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+type PromocionTx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
 
 // Compartida entre confirmarInscripcion (trabajador) y reasignarEvaluadorPromocion
 // (admin, caso de baja) -- un solo lugar que crea la cuenta si falta, para no
