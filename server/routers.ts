@@ -156,6 +156,20 @@ const authRouter = router({
   cambiarPasswordTemporal: protectedProcedure
     .input(z.object({ nuevoPassword: z.string().min(8, "Mínimo 8 caracteres") }))
     .mutation(async ({ ctx, input }) => {
+      // I5 (revision final de rama): antes esta mutation no chequeaba nada
+      // mas que "hay sesion" -- usable por CUALQUIER cuenta autenticada
+      // (incluyendo un admin, o una sesion secuestrada) como un cambio de
+      // password self-service sin verificar el password actual, mientras que
+      // su unico proposito real es cerrar el flujo forzado de password
+      // temporal (ver miEstadoPassword/CambiarPasswordTemporal.tsx). Se
+      // relee el usuario FRESCO de la DB (no de ctx.user, que viene del JWT
+      // y puede estar desactualizado si passwordTemporal cambio despues de
+      // que se emitio el token) y se rechaza si no esta en ese estado --
+      // mensaje generico, sin revelar el estado interno de la cuenta.
+      const user = await getUserById(ctx.user.id);
+      if (!user?.passwordTemporal) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes una acción de cambio de contraseña pendiente." });
+      }
       const hash = await hashPassword(input.nuevoPassword);
       await actualizarPasswordUsuario(ctx.user.id, hash);
       const { getDb } = await import("./db");
