@@ -1949,16 +1949,31 @@ export async function reasignarEvaluadorPromocion(
     const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
     if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
 
-    const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
+    // Chequeo de conflicto ANTES de asignarEvaluador: si el servidor destino
+    // ya tiene cuenta vinculada, usamos ESE userId para detectar auto-conflicto
+    // sin llamar todavia a asignarEvaluador (que haria un UPDATE users.email
+    // que quedaria commiteado aunque rechacemos despues -- Drizzle solo hace
+    // rollback ante un throw, no ante un return de fallo logico). Si el
+    // servidor aun no tiene cuenta (userId null), no hay nada que pueda
+    // coincidir todavia, asi que se sigue derecho a asignarEvaluador.
+    const [servidorVinculado] = await tx
+      .select({ userId: schema.servidoresPublicos.userId })
+      .from(schema.servidoresPublicos)
+      .where(eq(schema.servidoresPublicos.id, nuevoServidorId));
 
     if (
-      nuevoUserId === promo.userId ||
-      (rol !== "jefe" && nuevoUserId === promo.jefeAsignadoId) ||
-      (rol !== "companero1" && nuevoUserId === promo.companero1Id) ||
-      (rol !== "companero2" && nuevoUserId === promo.companero2Id)
+      servidorVinculado?.userId != null &&
+      (
+        servidorVinculado.userId === promo.userId ||
+        (rol !== "jefe" && servidorVinculado.userId === promo.jefeAsignadoId) ||
+        (rol !== "companero1" && servidorVinculado.userId === promo.companero1Id) ||
+        (rol !== "companero2" && servidorVinculado.userId === promo.companero2Id)
+      )
     ) {
       return { ok: false as const, error: "SELECCION_INVALIDA" as const };
     }
+
+    const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
 
     let valorAnterior: number;
     let update: Partial<typeof schema.promociones.$inferInsert>;

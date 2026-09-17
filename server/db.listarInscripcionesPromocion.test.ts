@@ -72,7 +72,8 @@ describe("reasignarEvaluadorPromocion", () => {
     const { tx, calls } = makeTxRecorder([
       [{ servidorId: 5 }], // servidorEnPool: valido
       [promoExistente],
-      [{ userId: 55 }], // asignarEvaluador: ya tiene cuenta
+      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
+      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
     ], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
@@ -83,5 +84,28 @@ describe("reasignarEvaluadorPromocion", () => {
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("update");
     expect(calls).toContain("insert");
+  });
+
+  it("rechaza por conflicto SIN llamar asignarEvaluador si el servidor ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
+    // Regresion del hallazgo de revision: antes, el chequeo de conflicto corria
+    // DESPUES de asignarEvaluador, asi que un UPDATE users.email ya commiteado
+    // sobrevivia aunque la reasignacion se rechazara. Ahora el chequeo usa el
+    // userId ya vinculado en servidoresPublicos (un simple select) ANTES de
+    // tocar asignarEvaluador -- si hay conflicto, no debe haber ningun "update".
+    const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
+    const { tx, calls } = makeTxRecorder([
+      [{ servidorId: 5 }], // servidorEnPool: valido
+      [promoExistente],
+      [{ userId: 30 }], // servidoresPublicos.userId ya vinculado: coincide con companero2Id -> conflicto
+    ], []);
+    const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
+    expect(calls).not.toContain("update");
+    expect(calls).not.toContain("insert");
   });
 });
