@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2 } from "lucide-react";
+import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2, X } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -120,17 +120,27 @@ export default function GestionPromocion() {
         </div>
       </motion.div>
 
-      <AnimatePresence initial={false}>
+      <AnimatePresence>
         {catalogoAbierto && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="overflow-hidden"
-          >
-            <div className="rounded-2xl border border-gray-100 bg-white shadow-card-rest">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setCatalogoAbierto(false)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-primary-500" />
+                  <h2 className="text-base font-bold text-slate-800">Catálogo de evaluadores</h2>
+                </div>
+                <button onClick={() => setCatalogoAbierto(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
                 <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
                   {(["jefe", "companero"] as const).map((rol) => (
                     <button
@@ -142,7 +152,7 @@ export default function GestionPromocion() {
                     </button>
                   ))}
                 </div>
-                <div className="relative max-w-xs flex-1">
+                <div className="relative min-w-0 flex-1">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
@@ -154,44 +164,46 @@ export default function GestionPromocion() {
                 </div>
               </div>
 
-              {poolCargando ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">Cargando...</div>
-              ) : pool?.items.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">
-                  {searchPool ? "Sin resultados" : `Sin nadie en el pool de ${tabPool === "jefe" ? "Jefes" : "Compañeros"} todavía`}
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {pool?.items.map((p) => (
-                    <div key={p.servidorId} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombreCompleto}</p>
-                        <p className="text-[11.5px] text-gray-400 tabular-nums">{p.curp}</p>
+              <div className="flex-1 overflow-y-auto">
+                {poolCargando ? (
+                  <div className="px-4 py-8 text-center text-sm text-gray-400">Cargando...</div>
+                ) : pool?.items.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-sm text-gray-400">
+                    {searchPool ? "Sin resultados" : `Sin nadie en el pool de ${tabPool === "jefe" ? "Jefes" : "Compañeros"} todavía`}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {pool?.items.map((p) => (
+                      <div key={p.servidorId} className="flex items-center justify-between gap-3 px-5 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombreCompleto}</p>
+                          <p className="text-[11.5px] text-gray-400 tabular-nums">{p.curp}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <button
+                            onClick={() => moverRolMut.mutate({ servidorId: p.servidorId, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
+                            disabled={moverRolMut.isPending}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <ArrowLeftRight size={12} />
+                            Mover a {tabPool === "jefe" ? "Compañeros" : "Jefes"}
+                          </button>
+                          <button
+                            onClick={() => setQuitando({ servidorId: p.servidorId, rol: tabPool, nombreCompleto: p.nombreCompleto })}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11.5px] font-semibold text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 size={12} />
+                            Quitar
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button
-                          onClick={() => moverRolMut.mutate({ servidorId: p.servidorId, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
-                          disabled={moverRolMut.isPending}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          <ArrowLeftRight size={12} />
-                          Mover a {tabPool === "jefe" ? "Compañeros" : "Jefes"}
-                        </button>
-                        <button
-                          onClick={() => setQuitando({ servidorId: p.servidorId, rol: tabPool, nombreCompleto: p.nombreCompleto })}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11.5px] font-semibold text-rose-600 hover:bg-rose-50"
-                        >
-                          <Trash2 size={12} />
-                          Quitar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {pool && pool.totalPages > 1 && (
-                <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-gray-600">
+                <div className="flex items-center justify-between border-t px-5 py-3 text-sm text-gray-600">
                   <span>Página {pool.page} de {pool.totalPages} ({pool.total} en el pool)</span>
                   <div className="flex gap-1">
                     <button onClick={() => setPagePool((p) => Math.max(1, p - 1))} disabled={pagePool <= 1} className="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30">
@@ -203,8 +215,8 @@ export default function GestionPromocion() {
                   </div>
                 </div>
               )}
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
