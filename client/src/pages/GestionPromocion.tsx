@@ -244,7 +244,13 @@ export default function GestionPromocion() {
             { key: "nombre", label: "Nombre", ejemplo: "Juan Pérez López" },
             { key: "correo", label: "Correo (opcional)", ejemplo: "juan.perez@example.com" },
           ]}
-          onImportar={(registros) => importarEvaluadoresMut.mutateAsync({ rol: modalImport, registros })}
+          onImportar={async (registros) => {
+            const resultado = await importarEvaluadoresMut.mutateAsync({ rol: modalImport, registros });
+            if (resultado.advertencias.length > 0) {
+              toast.warning(`${resultado.advertencias.length} fila(s) con advertencia: revisa el nombre capturado.`);
+            }
+            return resultado;
+          }}
           onClose={() => setModalImport(null)}
           onSuccess={() => utils.promocion.listarInscripciones.invalidate()}
         />
