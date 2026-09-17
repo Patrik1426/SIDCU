@@ -8,6 +8,7 @@ import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
 import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
+import { validarCorreoEvaluador } from "./lib/validarCorreo";
 
 let db: (MySql2Database<typeof schema> & { $client: mysql.Pool }) | null = null;
 let pool: mysql.Pool | null = null;
@@ -1722,11 +1723,6 @@ async function buscarServidorActivoPorCurp(curp: string): Promise<{ servidorId: 
 
 function normalizarNombre(n: string): string {
   return n.trim().toUpperCase().replace(/\s+/g, " ");
-}
-
-// TEMPORAL -- se reemplaza en Task 5 por la validacion real (formato + MX).
-async function validarCorreoEvaluador(correo: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) ? { ok: true } : { ok: false, error: "formato inválido" };
 }
 
 export async function importarFilaEvaluador(
