@@ -7,70 +7,55 @@ vi.mock("drizzle-orm/mysql2", async (importOriginal) => {
   return { ...actual, drizzle: vi.fn() };
 });
 
-describe("importarFilaJefe", () => {
+describe("importarFilaEvaluador", () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
-  it("rechaza si el CURP del trabajador no tiene cuenta activa", async () => {
-    const { tx } = makeTxRecorder([[]], []); // primer select (trabajador): vacio
+  it("rechaza CURP sin registro activo en servidores_publicos", async () => {
+    const { tx } = makeTxRecorder([[]], []); // buscarServidorActivoPorCurp: vacio
     const fakeDb = { select: tx.select, insert: tx.insert };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { importarFilaJefe } = await import("./db");
-    const resultado = await importarFilaJefe("CURPTRABAJADOR01", "CURPJEFE00000001", 1);
+    const { importarFilaEvaluador } = await import("./db");
+    const resultado = await importarFilaEvaluador("CURPINVALIDA0001", "Juan Perez", "jefe", undefined, 1);
     expect(resultado.ok).toBe(false);
   });
 
-  it("rechaza si trabajador y jefe son la misma persona", async () => {
-    const { tx } = makeTxRecorder([[{ userId: 5 }], [{ userId: 5 }]], []);
+  it("importa sin exigir cuenta users previa", async () => {
+    const { tx, calls } = makeTxRecorder([[{ servidorId: 5, nombreCompleto: "Juan Perez" }]], []);
     const fakeDb = { select: tx.select, insert: tx.insert };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { importarFilaJefe } = await import("./db");
-    const resultado = await importarFilaJefe("CURPX", "CURPX", 1);
-    expect(resultado).toEqual({ ok: false, error: "El trabajador no puede ser su propio jefe" });
-  });
-
-  it("importa correctamente cuando ambos CURPs son validos", async () => {
-    const { tx, calls } = makeTxRecorder([[{ userId: 5 }], [{ userId: 9 }]], []);
-    const fakeDb = { select: tx.select, insert: tx.insert };
-    const { drizzle } = await import("drizzle-orm/mysql2");
-    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
-
-    const { importarFilaJefe } = await import("./db");
-    const resultado = await importarFilaJefe("CURPTRABAJADOR01", "CURPJEFE00000001", 1);
+    const { importarFilaEvaluador } = await import("./db");
+    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "jefe", undefined, 1);
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("insert");
   });
-});
 
-describe("importarFilaCompanero", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  it("rechaza CURP sin cuenta activa", async () => {
-    const { tx } = makeTxRecorder([[]], []);
+  it("marca advertencia si el nombre del CSV no coincide, pero importa igual", async () => {
+    const { tx } = makeTxRecorder([[{ servidorId: 5, nombreCompleto: "Juan Perez Lopez" }]], []);
     const fakeDb = { select: tx.select, insert: tx.insert };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { importarFilaCompanero } = await import("./db");
-    const resultado = await importarFilaCompanero("CURPINVALIDA0001");
-    expect(resultado.ok).toBe(false);
+    const { importarFilaEvaluador } = await import("./db");
+    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Peres", "companero", undefined, 1);
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok) expect(resultado.advertencia).toBeDefined();
   });
 
-  it("importa correctamente un CURP valido", async () => {
-    const { tx } = makeTxRecorder([[{ userId: 5 }]], []);
+  it("guarda correoSugerido solo si el formato+dominio son validos", async () => {
+    const { tx, calls } = makeTxRecorder([[{ servidorId: 5, nombreCompleto: "Juan Perez" }]], []);
     const fakeDb = { select: tx.select, insert: tx.insert };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { importarFilaCompanero } = await import("./db");
-    const resultado = await importarFilaCompanero("CURPVALIDA000001");
-    expect(resultado).toEqual({ ok: true });
+    const { importarFilaEvaluador } = await import("./db");
+    // correo con formato invalido -- se importa sin sugerencia, no se rechaza la fila
+    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "companero", "no-es-correo", 1);
+    expect(resultado.ok).toBe(true);
   });
 });

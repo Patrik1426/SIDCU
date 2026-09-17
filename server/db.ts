@@ -1703,54 +1703,65 @@ export async function inscribirmePromocion(userId: number): Promise<
   }
 }
 
-// "Cuenta activa" = tiene fila en servidores_publicos con ese CURP Y esa
-// fila tiene userId (cuenta creada) Y esa cuenta esta activa -- las 2 CSVs
-// de Promocion (jefes, companeros) solo pueden referenciar gente que ya
-// existe en el sistema, nunca crean personas nuevas.
-async function buscarCuentaActivaPorCurp(curp: string): Promise<number | null> {
+// Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
+// NO exige que la persona ya tenga cuenta `users` -- solo que exista un
+// registro activo en servidores_publicos. Si el pool exigiera cuenta previa,
+// la creacion de cuenta on-the-fly (asignarEvaluador) nunca se activaria.
+// Ver spec, seccion 2, "Por que el pool ya no exige cuenta users previa".
+async function buscarServidorActivoPorCurp(curp: string): Promise<{ servidorId: number; nombreCompleto: string } | null> {
   const d = await getDb();
   const [row] = await d
-    .select({ userId: schema.servidoresPublicos.userId })
+    .select({ servidorId: schema.servidoresPublicos.id, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
     .from(schema.servidoresPublicos)
-    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
     .where(and(
       eq(schema.servidoresPublicos.curp, curp.toUpperCase()),
-      eq(schema.users.isActive, true),
+      eq(schema.servidoresPublicos.estatus, "activo"),
     ));
-  return row?.userId ?? null;
+  return row ?? null;
 }
 
-export async function importarFilaJefe(
-  curpTrabajador: string,
-  curpJefe: string,
+function normalizarNombre(n: string): string {
+  return n.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+// TEMPORAL -- se reemplaza en Task 5 por la validacion real (formato + MX).
+async function validarCorreoEvaluador(correo: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) ? { ok: true } : { ok: false, error: "formato inválido" };
+}
+
+export async function importarFilaEvaluador(
+  curp: string,
+  nombreCsv: string,
+  rol: "jefe" | "companero",
+  correoCsv: string | undefined,
   adminUserId: number,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const trabajadorUserId = await buscarCuentaActivaPorCurp(curpTrabajador);
-  if (!trabajadorUserId) return { ok: false, error: `CURP trabajador "${curpTrabajador}" no tiene cuenta activa` };
+): Promise<{ ok: true; advertencia?: string } | { ok: false; error: string }> {
+  const servidor = await buscarServidorActivoPorCurp(curp);
+  if (!servidor) return { ok: false, error: `CURP "${curp}" no tiene registro activo en el padrón` };
 
-  const jefeUserId = await buscarCuentaActivaPorCurp(curpJefe);
-  if (!jefeUserId) return { ok: false, error: `CURP jefe "${curpJefe}" no tiene cuenta activa` };
+  let advertencia: string | undefined;
+  if (normalizarNombre(nombreCsv) !== normalizarNombre(servidor.nombreCompleto)) {
+    advertencia = `Nombre del CSV ("${nombreCsv}") no coincide con el registrado ("${servidor.nombreCompleto}")`;
+  }
 
-  if (trabajadorUserId === jefeUserId) return { ok: false, error: "El trabajador no puede ser su propio jefe" };
+  let correoSugerido: string | null = null;
+  if (correoCsv) {
+    const correoValido = await validarCorreoEvaluador(correoCsv);
+    if (!correoValido.ok) {
+      advertencia = advertencia
+        ? `${advertencia}; correo del CSV inválido: ${correoValido.error}`
+        : `Correo del CSV inválido: ${correoValido.error}`;
+    } else {
+      correoSugerido = correoCsv.trim().toLowerCase();
+    }
+  }
 
   const d = await getDb();
-  await d.insert(schema.promocionJefes)
-    .values({ userId: trabajadorUserId, jefeUserId, actualizadoPor: adminUserId })
-    .onDuplicateKeyUpdate({ set: { jefeUserId, actualizadoPor: adminUserId } });
+  await d.insert(schema.promocionEvaluadorPool)
+    .values({ servidorId: servidor.servidorId, rol, activo: true, correoSugerido, actualizadoPor: adminUserId })
+    .onDuplicateKeyUpdate({ set: { activo: true, correoSugerido, actualizadoPor: adminUserId } });
 
-  return { ok: true };
-}
-
-export async function importarFilaCompanero(curp: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const userId = await buscarCuentaActivaPorCurp(curp);
-  if (!userId) return { ok: false, error: `CURP "${curp}" no tiene cuenta activa` };
-
-  const d = await getDb();
-  await d.insert(schema.promocionCompaneroPool)
-    .values({ userId, activo: true })
-    .onDuplicateKeyUpdate({ set: { activo: true } });
-
-  return { ok: true };
+  return advertencia ? { ok: true, advertencia } : { ok: true };
 }
 
 export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
