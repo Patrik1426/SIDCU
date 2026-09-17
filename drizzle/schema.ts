@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey, primaryKey } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -8,6 +8,7 @@ export const users = mysqlTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "capturista", "consultor", "user"]).default("user").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  passwordTemporal: boolean("password_temporal").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -271,17 +272,19 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
   }).onDelete("set null"),
 }));
 
-export const promocionJefes = mysqlTable("promocion_jefes", {
-  userId: int("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  jefeUserId: int("jefe_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+export const PROMOCION_ROLES_POOL = ["jefe", "companero"] as const;
+
+export const promocionEvaluadorPool = mysqlTable("promocion_evaluador_pool", {
+  servidorId: int("servidor_id").notNull().references(() => servidoresPublicos.id, { onDelete: "cascade" }),
+  rol: mysqlEnum("rol", PROMOCION_ROLES_POOL).notNull(),
+  activo: boolean("activo").notNull().default(true),
+  correoSugerido: varchar("correo_sugerido", { length: 320 }),
   actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
-});
-
-export const promocionCompaneroPool = mysqlTable("promocion_companero_pool", {
-  userId: int("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  activo: boolean("activo").notNull().default(true),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.servidorId, table.rol] }),
+  rolActivoIdx: index("promo_pool_rol_activo_idx").on(table.rol, table.activo),
+}));
 
 // onDelete: "restrict" en las FKs de evaluadores (jefeAsignadoId/companeroXId)
 // -- a diferencia del resto del schema que usa "cascade" -- porque borrar la
@@ -298,6 +301,28 @@ export const promociones = mysqlTable("promociones", {
   enviadoAt: timestamp("enviado_at").defaultNow().notNull(),
 }, (table) => ({
   jefeIdx: index("promo_jefe_idx").on(table.jefeAsignadoId),
+}));
+
+export const promocionCorreosPendientes = mysqlTable("promocion_correos_pendientes", {
+  id: int("id").autoincrement().primaryKey(),
+  promocionId: int("promocion_id").notNull().references(() => promociones.id, { onDelete: "cascade" }),
+  destinatarioUserId: int("destinatario_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rol: mysqlEnum("rol", ["jefe", "companero1", "companero2"]).notNull(),
+  estado: mysqlEnum("estado", ["pendiente", "enviado", "fallido"]).notNull().default("pendiente"),
+  intentos: int("intentos").notNull().default(0),
+  ultimoError: text("ultimo_error"),
+  // Solo se llena si asignarEvaluador creo cuenta nueva (ver Task 6/7) --
+  // el worker (Task 9) lo necesita para poder mandarlo por correo de forma
+  // asincrona, ya que el valor en claro no sobrevive fuera de la transaccion
+  // que lo genero. Se limpia (set a null) en el mismo update que marca
+  // estado='enviado' -- ventana de exposicion acotada a "hasta que se
+  // manda", mismo principio que ya usa password_reset_tokens (secreto de un
+  // solo uso, vive en la tabla hasta consumirse).
+  passwordTemporalEnClaro: varchar("password_temporal_en_claro", { length: 32 }),
+  enviadoAt: timestamp("enviado_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  estadoIdx: index("promo_correo_estado_idx").on(table.estado),
 }));
 
 export type User = typeof users.$inferSelect;
@@ -323,5 +348,5 @@ export type InconformidadFactor = typeof inconformidadFactores.$inferSelect;
 export type FactorInconformidadConfig = typeof factoresInconformidadConfig.$inferSelect;
 export type InconformidadModuloConfig = typeof inconformidadModuloConfig.$inferSelect;
 export type Promocion = typeof promociones.$inferSelect;
-export type PromocionJefe = typeof promocionJefes.$inferSelect;
-export type PromocionCompanero = typeof promocionCompaneroPool.$inferSelect;
+export type PromocionEvaluadorPool = typeof promocionEvaluadorPool.$inferSelect;
+export type PromocionCorreoPendiente = typeof promocionCorreosPendientes.$inferSelect;
