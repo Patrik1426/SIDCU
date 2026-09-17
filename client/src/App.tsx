@@ -1,10 +1,12 @@
 import { Component, type ReactNode } from "react";
 import { Route, Switch, Redirect, useLocation } from "wouter";
 import { Toaster } from "sonner";
+import { trpc } from "@/lib/trpc";
 import { useAuthState } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Home from "@/pages/Home";
+import CambiarPasswordTemporal from "@/pages/CambiarPasswordTemporal";
 import RecuperarContrasena from "@/pages/RecuperarContrasena";
 import RestablecerContrasena from "@/pages/RestablecerContrasena";
 import NotFound from "@/pages/NotFound";
@@ -116,6 +118,19 @@ function AuthRoute({ isAuthenticated, isLoading }: { isAuthenticated: boolean; i
 
 export default function App() {
   const { isAuthenticated, isLoading } = useAuthState();
+  const utils = trpc.useUtils();
+  const { data: estadoPassword } = trpc.auth.miEstadoPassword.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+
+  if (isAuthenticated && estadoPassword?.passwordTemporal) {
+    return (
+      <ThemeProvider>
+        <CambiarPasswordTemporal onListo={() => utils.auth.miEstadoPassword.invalidate()} />
+        <Toaster position="bottom-right" richColors />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider>

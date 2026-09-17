@@ -7,6 +7,7 @@ import { capitalizarNombre } from "../shared/utils";
 import {
   getUserByEmail,
   getUserByCurp,
+  getUserById,
   createUser,
   crearTokenRestablecimiento,
   obtenerTokenRestablecimiento,
@@ -135,6 +136,7 @@ const authRouter = router({
           nombre: user.nombre,
           email: user.email ?? null,
           role: user.role,
+          passwordTemporal: user.passwordTemporal,
         },
       };
     }),
@@ -145,6 +147,24 @@ const authRouter = router({
     ctx.res.clearCookie(COOKIE_NAME);
     return { success: true };
   }),
+
+  miEstadoPassword: protectedProcedure.query(async ({ ctx }) => {
+    const user = await getUserById(ctx.user.id);
+    return { passwordTemporal: user?.passwordTemporal ?? false };
+  }),
+
+  cambiarPasswordTemporal: protectedProcedure
+    .input(z.object({ nuevoPassword: z.string().min(8, "Mínimo 8 caracteres") }))
+    .mutation(async ({ ctx, input }) => {
+      const hash = await hashPassword(input.nuevoPassword);
+      await actualizarPasswordUsuario(ctx.user.id, hash);
+      const { getDb } = await import("./db");
+      const schema = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const d = await getDb();
+      await d.update(schema.users).set({ passwordTemporal: false }).where(eq(schema.users.id, ctx.user.id));
+      return { success: true };
+    }),
 
   solicitarRestablecimiento: publicProcedure
     .input(z.object({ email: z.string().email() }))
