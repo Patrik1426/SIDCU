@@ -119,9 +119,26 @@ function AuthRoute({ isAuthenticated, isLoading }: { isAuthenticated: boolean; i
 export default function App() {
   const { isAuthenticated, isLoading } = useAuthState();
   const utils = trpc.useUtils();
-  const { data: estadoPassword } = trpc.auth.miEstadoPassword.useQuery(undefined, {
+  const { data: estadoPassword, isLoading: isLoadingEstadoPassword } = trpc.auth.miEstadoPassword.useQuery(undefined, {
     enabled: isAuthenticated,
   });
+
+  // Mientras la query de estadoPassword esta resolviendo (primer render tras
+  // isAuthenticated pasar a true), NO caer al <Switch> normal -- sin este
+  // guard, ese frame renderiza la pagina real del usuario antes de que
+  // sepamos si tiene password temporal pendiente. No hay enforcement en el
+  // backend detras de las mutations reales (es puro gate de cliente), asi
+  // que esa ventana de "una pagina real de golpe" es real, no solo teorica.
+  if (isAuthenticated && isLoadingEstadoPassword) {
+    return (
+      <ThemeProvider>
+        <div className="flex h-screen items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+        </div>
+        <Toaster position="bottom-right" richColors />
+      </ThemeProvider>
+    );
+  }
 
   if (isAuthenticated && estadoPassword?.passwordTemporal) {
     return (
