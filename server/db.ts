@@ -1832,6 +1832,47 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
   };
 }
 
+// Espeja buscarEvaluadorPromocion (admin) pero filtra por el pool curado en
+// vez de buscar en todo el padron. `excluirUserId` es users.id (lo que ya
+// tiene el router en ctx.user.id) -- comparamos contra
+// servidoresPublicos.userId, que puede ser NULL (persona sin cuenta
+// todavia). ne(columna, valor) contra NULL evalua a NULL en SQL, no a true
+// -- sin el or(isNull(...), ...) esas filas desaparecerian del resultado
+// por accidente para TODOS los que buscan, no solo para el propio
+// trabajador.
+export async function buscarEnPoolPromocion(
+  q: string,
+  rol: "jefe" | "companero",
+  excluirUserId: number,
+): Promise<Array<{ servidorId: number; nombreCompleto: string; curp: string; tieneCuenta: boolean }>> {
+  const d = await getDb();
+  const term = `%${q}%`;
+  const filas = await d
+    .select({
+      servidorId: schema.servidoresPublicos.id,
+      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+      curp: schema.servidoresPublicos.curp,
+      userId: schema.servidoresPublicos.userId,
+    })
+    .from(schema.promocionEvaluadorPool)
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+    .where(and(
+      eq(schema.promocionEvaluadorPool.rol, rol),
+      eq(schema.promocionEvaluadorPool.activo, true),
+      eq(schema.servidoresPublicos.estatus, "activo"),
+      or(isNull(schema.servidoresPublicos.userId), ne(schema.servidoresPublicos.userId, excluirUserId)),
+      or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
+    ))
+    .limit(15);
+
+  return filas.map((f) => ({
+    servidorId: f.servidorId,
+    nombreCompleto: f.nombreCompleto,
+    curp: f.curp,
+    tieneCuenta: f.userId !== null,
+  }));
+}
+
 export async function buscarEvaluadorPromocion(q: string) {
   const d = await getDb();
   const term = `%${q}%`;
