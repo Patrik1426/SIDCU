@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle } from "lucide-react";
+import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2 } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type RolPool = "jefe" | "companero";
 
@@ -31,10 +32,41 @@ export default function GestionPromocion() {
   // ningun override.
   const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; trabajadorUserId: number; nuevoServidorId: number; nuevoNombre: string; correo?: string } | null>(null);
 
+  // Catalogo de evaluadores: ver y corregir lo que ya se subio por CSV a
+  // cada pool (antes no habia ninguna pantalla para esto, solo se podia
+  // re-subir el CSV completo o buscar indirectamente dentro de "Reasignar").
+  const [catalogoAbierto, setCatalogoAbierto] = useState(false);
+  const [tabPool, setTabPool] = useState<RolPool>("jefe");
+  const [searchPool, setSearchPool] = useState("");
+  const [pagePool, setPagePool] = useState(1);
+  const [quitando, setQuitando] = useState<{ servidorId: number; rol: RolPool; nombreCompleto: string } | null>(null);
+
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery({ search: search || undefined, page, limit: 20 });
   const { data: correosFallidos } = trpc.promocion.listarCorreosFallidos.useQuery();
+  const { data: pool, isLoading: poolCargando } = trpc.promocion.listarPool.useQuery(
+    { rol: tabPool, search: searchPool || undefined, page: pagePool, limit: 20 },
+    { enabled: catalogoAbierto },
+  );
 
   const importarEvaluadoresMut = trpc.promocion.importarEvaluadores.useMutation();
+  const moverRolMut = trpc.promocion.moverRolPool.useMutation({
+    onSuccess: () => {
+      utils.promocion.listarPool.invalidate();
+      toast.success("Movido al otro pool");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const quitarDelPoolMut = trpc.promocion.quitarDelPool.useMutation({
+    onSuccess: () => {
+      utils.promocion.listarPool.invalidate();
+      setQuitando(null);
+      toast.success("Quitado del pool");
+    },
+    onError: (err) => {
+      setQuitando(null);
+      toast.error(err.message);
+    },
+  });
   const reintentarMut = trpc.promocion.reintentarCorreo.useMutation({
     onSuccess: () => {
       utils.promocion.listarCorreosFallidos.invalidate();
@@ -73,6 +105,12 @@ export default function GestionPromocion() {
           <p className="mt-0.5 text-sm text-gray-500">Catálogos y evaluadores asignados.</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setCatalogoAbierto((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${catalogoAbierto ? "border-primary-300 bg-primary-50 text-primary-700" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}
+          >
+            Catálogo de evaluadores
+          </button>
           <button onClick={() => setModalImport("jefe")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Importar Jefes
           </button>
@@ -81,6 +119,94 @@ export default function GestionPromocion() {
           </button>
         </div>
       </motion.div>
+
+      <AnimatePresence initial={false}>
+        {catalogoAbierto && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-card-rest">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4">
+                <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+                  {(["jefe", "companero"] as const).map((rol) => (
+                    <button
+                      key={rol}
+                      onClick={() => { setTabPool(rol); setPagePool(1); }}
+                      className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${tabPool === rol ? "bg-white text-primary-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                    >
+                      {rol === "jefe" ? "Jefes" : "Compañeros"}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative max-w-xs flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre o CURP..."
+                    value={searchPool}
+                    onChange={(e) => { setSearchPool(e.target.value); setPagePool(1); }}
+                    className={`${inputClass} pl-8 w-full`}
+                  />
+                </div>
+              </div>
+
+              {poolCargando ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">Cargando...</div>
+              ) : pool?.items.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">
+                  {searchPool ? "Sin resultados" : `Sin nadie en el pool de ${tabPool === "jefe" ? "Jefes" : "Compañeros"} todavía`}
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {pool?.items.map((p) => (
+                    <div key={p.servidorId} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombreCompleto}</p>
+                        <p className="text-[11.5px] text-gray-400 tabular-nums">{p.curp}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          onClick={() => moverRolMut.mutate({ servidorId: p.servidorId, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
+                          disabled={moverRolMut.isPending}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <ArrowLeftRight size={12} />
+                          Mover a {tabPool === "jefe" ? "Compañeros" : "Jefes"}
+                        </button>
+                        <button
+                          onClick={() => setQuitando({ servidorId: p.servidorId, rol: tabPool, nombreCompleto: p.nombreCompleto })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11.5px] font-semibold text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 size={12} />
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pool && pool.totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-gray-600">
+                  <span>Página {pool.page} de {pool.totalPages} ({pool.total} en el pool)</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => setPagePool((p) => Math.max(1, p - 1))} disabled={pagePool <= 1} className="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30">
+                      <ChevronRight size={16} className="rotate-180" />
+                    </button>
+                    <button onClick={() => setPagePool((p) => Math.min(pool.totalPages, p + 1))} disabled={pagePool >= pool.totalPages} className="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30">
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {correosFallidos && correosFallidos.length > 0 && (
         <motion.div variants={fadeUp} className="rounded-xl border border-rose-200 bg-rose-50 p-4">
@@ -271,6 +397,17 @@ export default function GestionPromocion() {
           onSuccess={() => utils.promocion.listarInscripciones.invalidate()}
         />
       )}
+
+      <ConfirmModal
+        open={!!quitando}
+        variant="danger"
+        title="¿Quitar del pool?"
+        message={quitando ? `${quitando.nombreCompleto} ya no aparecerá como opción elegible de ${quitando.rol === "jefe" ? "Jefe" : "Compañero"}. No afecta inscripciones ya confirmadas.` : ""}
+        confirmLabel="Sí, quitar"
+        loading={quitarDelPoolMut.isPending}
+        onCancel={() => setQuitando(null)}
+        onConfirm={() => quitando && quitarDelPoolMut.mutate({ servidorId: quitando.servidorId, rol: quitando.rol })}
+      />
 
       {reasignando && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setReasignando(null)}>

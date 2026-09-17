@@ -11,6 +11,9 @@ import {
   reasignarEvaluadorPromocion,
   listarCorreosFallidosPromocion,
   reintentarCorreoPromocion,
+  listarPoolPromocion,
+  moverRolPoolPromocion,
+  quitarDelPoolPromocion,
 } from "../db";
 
 type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" | "CORREO_INVALIDO";
@@ -134,6 +137,40 @@ export const promocionRouter = router({
     .mutation(async ({ ctx, input }) => {
       const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoServidorId, input.correo, ctx.user.id);
       if (!resultado.ok) throw traducirErrorReasignar(resultado.error);
+      return { success: true };
+    }),
+
+  listarPool: adminProcedure
+    .input(z.object({
+      rol: z.enum(["jefe", "companero"]),
+      search: z.string().optional(),
+      page: z.number().int().positive().default(1),
+      limit: z.number().int().positive().max(100).default(20),
+    }))
+    .query(async ({ input }) => listarPoolPromocion(input.rol, input)),
+
+  moverRolPool: adminProcedure
+    .input(z.object({
+      servidorId: z.number().int().positive(),
+      rolActual: z.enum(["jefe", "companero"]),
+      rolNuevo: z.enum(["jefe", "companero"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const resultado = await moverRolPoolPromocion(input.servidorId, input.rolActual, input.rolNuevo, ctx.user.id);
+      if (!resultado.ok) {
+        throw new TRPCError({
+          code: resultado.error === "NO_ENCONTRADO" ? "NOT_FOUND" : "CONFLICT",
+          message: resultado.error === "NO_ENCONTRADO" ? "No se encontró en ese pool." : "Ya está en el pool destino.",
+        });
+      }
+      return { success: true };
+    }),
+
+  quitarDelPool: adminProcedure
+    .input(z.object({ servidorId: z.number().int().positive(), rol: z.enum(["jefe", "companero"]) }))
+    .mutation(async ({ input }) => {
+      const resultado = await quitarDelPoolPromocion(input.servidorId, input.rol);
+      if (!resultado.ok) throw new TRPCError({ code: "NOT_FOUND", message: "No se encontró en ese pool." });
       return { success: true };
     }),
 

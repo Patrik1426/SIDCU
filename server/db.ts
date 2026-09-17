@@ -1839,6 +1839,114 @@ export async function importarFilaEvaluador(
   return advertencia ? { ok: true, advertencia } : { ok: true };
 }
 
+// Vista de administrador para revisar (y corregir) lo que ya se subio a los
+// 2 pools por CSV -- sin esto no habia forma de ver el contenido del pool
+// salvo re-subir el CSV o buscar indirectamente dentro del flujo de
+// reasignar un evaluador de una inscripcion ya confirmada.
+export async function listarPoolPromocion(
+  rol: "jefe" | "companero",
+  filtros?: { search?: string; page?: number; limit?: number },
+): Promise<{
+  items: Array<{ servidorId: number; nombreCompleto: string; curp: string }>;
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  const d = await getDb();
+  const limit = filtros?.limit ?? 20;
+  const page = filtros?.page ?? 1;
+  const offset = (page - 1) * limit;
+  const term = filtros?.search ? `%${escaparComodinesLike(filtros.search)}%` : null;
+  const where = and(
+    eq(schema.promocionEvaluadorPool.rol, rol),
+    term ? or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)) : undefined,
+  );
+
+  const [items, countResult] = await Promise.all([
+    d
+      .select({
+        servidorId: schema.servidoresPublicos.id,
+        nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+        curp: schema.servidoresPublicos.curp,
+      })
+      .from(schema.promocionEvaluadorPool)
+      .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+      .where(where)
+      .limit(limit)
+      .offset(offset),
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.promocionEvaluadorPool)
+      .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+      .where(where),
+  ]);
+
+  const total = countResult[0]?.count ?? 0;
+  return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+}
+
+// Corrige el caso "subimos a alguien en el pool equivocado" sin tener que
+// quitarlo y volver a subir un CSV. Si el servidor ya esta en rolNuevo, no
+// se duplica -- se rechaza con un error claro (la PK compuesta
+// (servidorId, rol) tambien lo evitaria a nivel DB, pero aqui se detecta
+// antes para dar un mensaje entendible en vez de un error de duplicado).
+export async function moverRolPoolPromocion(
+  servidorId: number,
+  rolActual: "jefe" | "companero",
+  rolNuevo: "jefe" | "companero",
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADO" | "YA_EN_ROL_DESTINO" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [actual] = await tx
+      .select()
+      .from(schema.promocionEvaluadorPool)
+      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolActual)));
+    if (!actual) return { ok: false as const, error: "NO_ENCONTRADO" as const };
+
+    const [destino] = await tx
+      .select()
+      .from(schema.promocionEvaluadorPool)
+      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolNuevo)));
+    if (destino) return { ok: false as const, error: "YA_EN_ROL_DESTINO" as const };
+
+    await tx
+      .delete(schema.promocionEvaluadorPool)
+      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolActual)));
+    await tx.insert(schema.promocionEvaluadorPool).values({
+      servidorId,
+      rol: rolNuevo,
+      activo: true,
+      correoSugerido: actual.correoSugerido,
+      actualizadoPor: adminUserId,
+    });
+
+    return { ok: true as const };
+  });
+}
+
+// Hard delete a proposito (no un toggle de `activo`): quitar del pool a
+// alguien que nunca debio subirse no debe dejar rastro confuso -- no afecta
+// ninguna inscripcion ya confirmada (promociones.jefeAsignadoId/companeroXId
+// referencian directo a users.id, independientes de este pool).
+export async function quitarDelPoolPromocion(
+  servidorId: number,
+  rol: "jefe" | "companero",
+): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADO" }> {
+  const d = await getDb();
+  const [fila] = await d
+    .select()
+    .from(schema.promocionEvaluadorPool)
+    .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rol)));
+  if (!fila) return { ok: false, error: "NO_ENCONTRADO" };
+
+  await d
+    .delete(schema.promocionEvaluadorPool)
+    .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rol)));
+  return { ok: true };
+}
+
 export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
   const d = await getDb();
   const trabajador = alias(schema.servidoresPublicos, "trabajador");
