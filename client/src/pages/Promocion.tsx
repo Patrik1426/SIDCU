@@ -11,14 +11,19 @@ const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transi
 
 type Seleccion = { servidorId: number; nombre: string; correo: string } | null;
 
+// I4 (revision final de rama): antes, tras elegir, la unica forma de
+// cambiar era recargar la pagina completa (perdiendo los otros 2 picks ya
+// hechos) -- el spec (seccion 4) exige poder "regresar y cambiar libremente
+// antes de confirmar". El boton "Cambiar" solo limpia ESTE slot.
 function CampoEvaluador({
-  etiqueta, rol, seleccion, onElegir, onCorreo,
+  etiqueta, rol, seleccion, onElegir, onCorreo, onCambiar,
 }: {
   etiqueta: string;
   rol: "jefe" | "companero";
   seleccion: Seleccion;
-  onElegir: (servidorId: number, nombre: string) => void;
+  onElegir: (servidorId: number, nombre: string, correoPrellenado: string | null) => void;
   onCorreo: (correo: string) => void;
+  onCambiar: () => void;
 }) {
   return (
     <div>
@@ -27,7 +32,16 @@ function CampoEvaluador({
         <BuscadorEvaluador rol={rol} onElegir={onElegir} placeholder={`Buscar ${etiqueta.toLowerCase()}...`} />
       ) : (
         <div className="mt-1 space-y-2">
-          <p className="rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-700">{seleccion.nombre}</p>
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-primary-50 px-3 py-2">
+            <p className="text-sm text-primary-700">{seleccion.nombre}</p>
+            <button
+              type="button"
+              onClick={onCambiar}
+              className="shrink-0 text-xs font-semibold text-primary-600 hover:text-primary-800 hover:underline"
+            >
+              Cambiar
+            </button>
+          </div>
           <input
             type="email"
             value={seleccion.correo}
@@ -53,9 +67,15 @@ export default function Promocion() {
   // El backend ya rechaza (SELECCION_INVALIDA) si 2 de los 3 slots terminan
   // con el mismo servidorId -- este check es solo para no dejar que el
   // trabajador llegue hasta "Confirmar" y se entere del error hasta ahi.
+  //
+  // I2: correoPrellenado sigue la precedencia del spec (seccion 4) --
+  // users.email -> correoSugerido -> servidoresPublicos.email -> "". Antes
+  // se hardcodeaba correo: "" siempre, aunque el backend ya calculaba y
+  // regresaba las 3 fuentes (nadie del lado de lectura las leia).
   function elegirSiNoEstaRepetido(
     servidorId: number,
     nombre: string,
+    correoPrellenado: string | null,
     yaElegidos: number[],
     setter: (s: Seleccion) => void,
   ) {
@@ -63,7 +83,7 @@ export default function Promocion() {
       toast.error("Esa persona ya está elegida en otro lugar de esta inscripción.");
       return;
     }
-    setter({ servidorId, nombre, correo: "" });
+    setter({ servidorId, nombre, correo: correoPrellenado ?? "" });
   }
 
   const confirmarMut = trpc.promocion.confirmarInscripcion.useMutation({
@@ -88,6 +108,13 @@ export default function Promocion() {
 
   const listoParaConfirmar = jefe?.correo && companero1?.correo && companero2?.correo;
 
+  // I4: el modal mostraba un texto generico -- el spec (seccion 4) pide un
+  // "resumen de los 3 elegidos + correos" antes de confirmar, para que el
+  // trabajador pueda revisar sin tener que recordar lo que ya elegio.
+  const resumenSeleccion = jefe && companero1 && companero2
+    ? `Jefe inmediato: ${jefe.nombre} (${jefe.correo}). Compañero 1: ${companero1.nombre} (${companero1.correo}). Compañero 2: ${companero2.nombre} (${companero2.correo}). No podrás cambiarla después salvo que el administrador reasigne un lugar por baja.`
+    : "";
+
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={fadeUp}>
@@ -104,14 +131,17 @@ export default function Promocion() {
         ) : data.elegible ? (
           <div className="mt-6 space-y-5">
             <CampoEvaluador etiqueta="Jefe Inmediato" rol="jefe" seleccion={jefe}
-              onElegir={(servidorId, nombre) => elegirSiNoEstaRepetido(servidorId, nombre, [companero1?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setJefe)}
-              onCorreo={(correo) => setJefe((s) => s && { ...s, correo })} />
+              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [companero1?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setJefe)}
+              onCorreo={(correo) => setJefe((s) => s && { ...s, correo })}
+              onCambiar={() => setJefe(null)} />
             <CampoEvaluador etiqueta="Compañero 1" rol="companero" seleccion={companero1}
-              onElegir={(servidorId, nombre) => elegirSiNoEstaRepetido(servidorId, nombre, [jefe?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setCompanero1)}
-              onCorreo={(correo) => setCompanero1((s) => s && { ...s, correo })} />
+              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [jefe?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setCompanero1)}
+              onCorreo={(correo) => setCompanero1((s) => s && { ...s, correo })}
+              onCambiar={() => setCompanero1(null)} />
             <CampoEvaluador etiqueta="Compañero 2" rol="companero" seleccion={companero2}
-              onElegir={(servidorId, nombre) => elegirSiNoEstaRepetido(servidorId, nombre, [jefe?.servidorId, companero1?.servidorId].filter((x): x is number => !!x), setCompanero2)}
-              onCorreo={(correo) => setCompanero2((s) => s && { ...s, correo })} />
+              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [jefe?.servidorId, companero1?.servidorId].filter((x): x is number => !!x), setCompanero2)}
+              onCorreo={(correo) => setCompanero2((s) => s && { ...s, correo })}
+              onCambiar={() => setCompanero2(null)} />
 
             <button
               type="button"
@@ -134,7 +164,7 @@ export default function Promocion() {
         open={confirmando}
         variant="warning"
         title="¿Confirmas esta selección?"
-        message="No podrás cambiarla después salvo que el administrador reasigne un lugar por baja."
+        message={resumenSeleccion}
         confirmLabel="Sí, confirmar"
         loading={confirmarMut.isPending}
         onCancel={() => setConfirmando(false)}

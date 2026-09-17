@@ -1,33 +1,31 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 
-interface ResultadoBusqueda {
-  servidorId?: number;
-  userId?: number | null;
-  nombreCompleto: string;
-  curp: string;
-}
-
 interface BuscadorEvaluadorProps {
-  onElegir: (id: number, nombre: string) => void;
+  // I2: correoPrellenado sigue la precedencia del spec (seccion 4) --
+  // users.email -> correoSugerido -> servidoresPublicos.email -> null. El
+  // caller decide que hacer si viene null (ej. Promocion.tsx cae a "").
+  onElegir: (servidorId: number, nombre: string, correoPrellenado: string | null) => void;
   placeholder?: string;
-  // Sin rol: usa la busqueda de admin (buscarEvaluador, todo el padron).
-  // Con rol: usa la busqueda del pool (buscarEnPool, protectedProcedure).
-  rol?: "jefe" | "companero";
+  rol: "jefe" | "companero";
+  // M4: a quien excluir de los resultados -- por defecto (sin pasar esto) el
+  // backend excluye al propio llamante (ctx.user.id). El panel admin lo pasa
+  // explicito para excluir al TRABAJADOR de la inscripcion, no al admin.
+  excluirUserId?: number;
 }
 
 // Mismo look que ComboInput, pero busca en el servidor en vez de filtrar una
 // lista precargada -- ComboInput carga TODAS las opciones al cliente, no
-// escala a miles de personas (ver spec, seccion "Frontend admin").
-export default function BuscadorEvaluador({ onElegir, placeholder, rol }: BuscadorEvaluadorProps) {
+// escala a miles de personas (ver spec, seccion "Frontend admin"). Antes
+// tambien soportaba una busqueda sin `rol` (todo el padron, para el admin) --
+// se quito (M3, revision final de rama): esa variante (buscarEvaluador) ya no
+// tenia ningun caller real, todos pasan rol y usan el pool curado.
+export default function BuscadorEvaluador({ onElegir, placeholder, rol, excluirUserId }: BuscadorEvaluadorProps) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const admin = trpc.promocion.buscarEvaluador.useQuery({ q }, { enabled: !rol && q.length >= 2 });
-  const enPool = trpc.promocion.buscarEnPool.useQuery({ q, rol: rol! }, { enabled: !!rol && q.length >= 2 });
-
-  const resultados: ResultadoBusqueda[] | undefined = rol ? enPool.data : admin.data;
+  const { data: resultados } = trpc.promocion.buscarEnPool.useQuery({ q, rol, excluirUserId }, { enabled: q.length >= 2 });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -49,20 +47,17 @@ export default function BuscadorEvaluador({ onElegir, placeholder, rol }: Buscad
       />
       {open && q.length >= 2 && resultados && resultados.length > 0 && (
         <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-          {resultados.map((r) => {
-            const id = rol ? r.servidorId! : r.userId!;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => { onElegir(id, r.nombreCompleto); setQ(""); setOpen(false); }}
-                className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-slate-50"
-              >
-                <span className="font-medium text-slate-700">{r.nombreCompleto}</span>
-                <span className="text-xs text-slate-400">{r.curp}</span>
-              </button>
-            );
-          })}
+          {resultados.map((r) => (
+            <button
+              key={r.servidorId}
+              type="button"
+              onClick={() => { onElegir(r.servidorId, r.nombreCompleto, r.correoPrellenado); setQ(""); setOpen(false); }}
+              className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-slate-50"
+            >
+              <span className="font-medium text-slate-700">{r.nombreCompleto}</span>
+              <span className="text-xs text-slate-400">{r.curp}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>

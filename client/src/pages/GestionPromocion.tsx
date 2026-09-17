@@ -24,7 +24,12 @@ export default function GestionPromocion() {
   const [page, setPage] = useState(1);
   const [expandido, setExpandido] = useState<number | null>(null);
   const [modalImport, setModalImport] = useState<RolPool | null>(null);
-  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; nuevoServidorId: number; nuevoNombre: string; correo?: string } | null>(null);
+  // M4: trabajadorUserId es a quien hay que EXCLUIR del pool al buscar
+  // reemplazo (la propia persona de esta inscripcion), no al admin que esta
+  // haciendo la reasignacion -- antes BuscadorEvaluador excluia
+  // implicitamente a ctx.user.id (el admin) porque buscarEnPool no recibia
+  // ningun override.
+  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; trabajadorUserId: number; nuevoServidorId: number; nuevoNombre: string; correo?: string } | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery({ search: search || undefined, page, limit: 20 });
   const { data: correosFallidos } = trpc.promocion.listarCorreosFallidos.useQuery();
@@ -202,7 +207,7 @@ export default function GestionPromocion() {
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, nuevoServidorId: 0, nuevoNombre: "" })}
+                                  onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoServidorId: 0, nuevoNombre: "" })}
                                   className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
                                 >
                                   <RefreshCw size={11} />
@@ -246,8 +251,19 @@ export default function GestionPromocion() {
           ]}
           onImportar={async (registros) => {
             const resultado = await importarEvaluadoresMut.mutateAsync({ rol: modalImport, registros });
+            // M7: antes el toast siempre decia "revisa el nombre capturado"
+            // sin importar la causa real -- importarFilaEvaluador tambien
+            // genera advertencia cuando el correo del CSV es invalido (formato
+            // o dominio sin MX), que no tiene nada que ver con el nombre.
+            // Mostrar el texto real de cada advertencia en vez de adivinar.
             if (resultado.advertencias.length > 0) {
-              toast.warning(`${resultado.advertencias.length} fila(s) con advertencia: revisa el nombre capturado.`);
+              const MAX_MOSTRADAS = 3;
+              const detalle = resultado.advertencias
+                .slice(0, MAX_MOSTRADAS)
+                .map((a) => `Fila ${a.fila}: ${a.advertencia}`)
+                .join(" — ");
+              const resto = resultado.advertencias.length - MAX_MOSTRADAS;
+              toast.warning(`${resultado.advertencias.length} fila(s) con advertencia. ${detalle}${resto > 0 ? ` (y ${resto} más)` : ""}`);
             }
             return resultado;
           }}
@@ -262,7 +278,8 @@ export default function GestionPromocion() {
             <h3 className="mb-3 text-sm font-bold text-slate-900">Reasignar {reasignando.rol}</h3>
             <BuscadorEvaluador
               rol={reasignando.rol === "jefe" ? "jefe" : "companero"}
-              onElegir={(servidorId, nombre) => setReasignando({ ...reasignando, nuevoServidorId: servidorId, nuevoNombre: nombre })}
+              excluirUserId={reasignando.trabajadorUserId}
+              onElegir={(servidorId, nombre, correoPrellenado) => setReasignando({ ...reasignando, nuevoServidorId: servidorId, nuevoNombre: nombre, correo: correoPrellenado ?? reasignando.correo })}
             />
             {reasignando.nuevoServidorId > 0 && (
               <>
