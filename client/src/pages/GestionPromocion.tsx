@@ -6,6 +6,8 @@ import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle } from "
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 
+type RolPool = "jefe" | "companero";
+
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
 
@@ -21,14 +23,20 @@ export default function GestionPromocion() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [expandido, setExpandido] = useState<number | null>(null);
-  const [modalJefes, setModalJefes] = useState(false);
-  const [modalCompaneros, setModalCompaneros] = useState(false);
-  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; nuevoUserId: number; nuevoNombre: string } | null>(null);
+  const [modalImport, setModalImport] = useState<RolPool | null>(null);
+  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; nuevoServidorId: number; nuevoNombre: string; correo?: string } | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery({ search: search || undefined, page, limit: 20 });
+  const { data: correosFallidos } = trpc.promocion.listarCorreosFallidos.useQuery();
 
-  const importarJefesMut = trpc.promocion.importarJefes.useMutation();
-  const importarCompanerosMut = trpc.promocion.importarCompaneros.useMutation();
+  const importarEvaluadoresMut = trpc.promocion.importarEvaluadores.useMutation();
+  const reintentarMut = trpc.promocion.reintentarCorreo.useMutation({
+    onSuccess: () => {
+      utils.promocion.listarCorreosFallidos.invalidate();
+      toast.success("Correo regresado a la cola de envío");
+    },
+    onError: (err) => toast.error(err.message),
+  });
   const reasignarMut = trpc.promocion.reasignarEvaluador.useMutation({
     onSuccess: () => {
       utils.promocion.listarInscripciones.invalidate();
@@ -60,14 +68,32 @@ export default function GestionPromocion() {
           <p className="mt-0.5 text-sm text-gray-500">Catálogos y evaluadores asignados.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setModalJefes(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <button onClick={() => setModalImport("jefe")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Importar Jefes
           </button>
-          <button onClick={() => setModalCompaneros(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <button onClick={() => setModalImport("companero")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Importar Compañeros
           </button>
         </div>
       </motion.div>
+
+      {correosFallidos && correosFallidos.length > 0 && (
+        <motion.div variants={fadeUp} className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-semibold text-rose-700">{correosFallidos.length} correo(s) sin poder enviarse</p>
+          {correosFallidos.map((c) => (
+            <div key={c.id} className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-rose-600">{c.destinatarioNombre} ({c.rol}) — {c.ultimoError}</span>
+              <button
+                onClick={() => reintentarMut.mutate({ id: c.id })}
+                disabled={reintentarMut.isPending}
+                className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                Reintentar
+              </button>
+            </div>
+          ))}
+        </motion.div>
+      )}
 
       {/* Panorama antes del detalle -- para no tener que escanear miles de
           filas para saber si algo necesita atencion */}
@@ -176,7 +202,7 @@ export default function GestionPromocion() {
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, nuevoUserId: 0, nuevoNombre: "" })}
+                                  onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, nuevoServidorId: 0, nuevoNombre: "" })}
                                   className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
                                 >
                                   <RefreshCw size={11} />
@@ -210,25 +236,16 @@ export default function GestionPromocion() {
         )}
       </motion.div>
 
-      {modalJefes && (
+      {modalImport && (
         <ImportarCSVModal
-          titulo="Jefes"
+          titulo={modalImport === "jefe" ? "Jefes" : "Compañeros"}
           columnas={[
-            { key: "curp_trabajador", label: "CURP Trabajador", ejemplo: "AAAA000101HDFXXX01" },
-            { key: "curp_jefe", label: "CURP Jefe", ejemplo: "BBBB000101HDFXXX02" },
+            { key: "curp", label: "CURP", ejemplo: "AAAA000101HDFXXX01" },
+            { key: "nombre", label: "Nombre", ejemplo: "Juan Pérez López" },
+            { key: "correo", label: "Correo (opcional)", ejemplo: "juan.perez@example.com" },
           ]}
-          onImportar={(registros) => importarJefesMut.mutateAsync({ registros })}
-          onClose={() => setModalJefes(false)}
-          onSuccess={() => utils.promocion.listarInscripciones.invalidate()}
-        />
-      )}
-
-      {modalCompaneros && (
-        <ImportarCSVModal
-          titulo="Compañeros"
-          columnas={[{ key: "curp", label: "CURP", ejemplo: "CCCC000101HDFXXX03" }]}
-          onImportar={(registros) => importarCompanerosMut.mutateAsync({ registros })}
-          onClose={() => setModalCompaneros(false)}
+          onImportar={(registros) => importarEvaluadoresMut.mutateAsync({ rol: modalImport, registros })}
+          onClose={() => setModalImport(null)}
           onSuccess={() => utils.promocion.listarInscripciones.invalidate()}
         />
       )}
@@ -237,17 +254,34 @@ export default function GestionPromocion() {
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setReasignando(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-sm font-bold text-slate-900">Reasignar {reasignando.rol}</h3>
-            <BuscadorEvaluador onElegir={(userId, nombre) => setReasignando({ ...reasignando, nuevoUserId: userId, nuevoNombre: nombre })} />
-            {reasignando.nuevoUserId > 0 && (
-              <p className="mt-2 text-xs text-slate-500">Elegido: {reasignando.nuevoNombre}</p>
+            <BuscadorEvaluador
+              rol={reasignando.rol === "jefe" ? "jefe" : "companero"}
+              onElegir={(servidorId, nombre) => setReasignando({ ...reasignando, nuevoServidorId: servidorId, nuevoNombre: nombre })}
+            />
+            {reasignando.nuevoServidorId > 0 && (
+              <>
+                <p className="mt-2 text-xs text-slate-500">Elegido: {reasignando.nuevoNombre}</p>
+                <input
+                  type="email"
+                  value={reasignando.correo ?? ""}
+                  onChange={(e) => setReasignando({ ...reasignando, correo: e.target.value })}
+                  placeholder="Correo de contacto"
+                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </>
             )}
             <div className="mt-4 flex gap-3">
               <button onClick={() => setReasignando(null)} className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
                 Cancelar
               </button>
               <button
-                onClick={() => reasignarMut.mutate({ promocionId: reasignando.promocionId, rol: reasignando.rol, nuevoUserId: reasignando.nuevoUserId })}
-                disabled={reasignando.nuevoUserId === 0 || reasignarMut.isPending}
+                onClick={() => reasignarMut.mutate({
+                  promocionId: reasignando.promocionId,
+                  rol: reasignando.rol,
+                  nuevoServidorId: reasignando.nuevoServidorId,
+                  correo: reasignando.correo ?? "",
+                })}
+                disabled={reasignando.nuevoServidorId === 0 || !reasignando.correo || reasignarMut.isPending}
                 className="flex-1 rounded-xl bg-primary-600 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
               >
                 Confirmar

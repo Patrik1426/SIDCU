@@ -2064,3 +2064,43 @@ export async function procesarLotePendientesCorreo(limite = 50): Promise<{ proce
 
   return { procesados: pendientes.length, enviados, fallidos };
 }
+
+export type CorreoFallidoPromocion = {
+  id: number;
+  promocionId: number;
+  rol: "jefe" | "companero1" | "companero2";
+  ultimoError: string | null;
+  destinatarioNombre: string;
+};
+
+// Panel admin (Task 12): correos que ya agotaron TOPE_INTENTOS_CORREO y
+// necesitan intervencion manual (revisar el correo capturado, reintentar).
+// Join a promociones+servidoresPublicos (via destinatarioUserId) para poder
+// mostrar de quien es cada correo sin que el admin tenga que cruzar el id
+// con otra pantalla.
+export async function listarCorreosFallidosPromocion(): Promise<CorreoFallidoPromocion[]> {
+  const d = await getDb();
+  return d
+    .select({
+      id: schema.promocionCorreosPendientes.id,
+      promocionId: schema.promocionCorreosPendientes.promocionId,
+      rol: schema.promocionCorreosPendientes.rol,
+      ultimoError: schema.promocionCorreosPendientes.ultimoError,
+      destinatarioNombre: schema.servidoresPublicos.nombreCompleto,
+    })
+    .from(schema.promocionCorreosPendientes)
+    .innerJoin(schema.promociones, eq(schema.promociones.id, schema.promocionCorreosPendientes.promocionId))
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.promocionCorreosPendientes.destinatarioUserId))
+    .where(eq(schema.promocionCorreosPendientes.estado, "fallido"));
+}
+
+// Regresa un correo fallido a la cola (procesarLotePendientesCorreo lo vuelve
+// a intentar en su siguiente corrida) -- resetea intentos a 0 para que tenga
+// otra vez el margen completo de TOPE_INTENTOS_CORREO antes de volver a
+// marcarse fallido.
+export async function reintentarCorreoPromocion(id: number): Promise<void> {
+  const d = await getDb();
+  await d.update(schema.promocionCorreosPendientes)
+    .set({ estado: "pendiente", intentos: 0 })
+    .where(eq(schema.promocionCorreosPendientes.id, id));
+}

@@ -10,6 +10,8 @@ import {
   listarInscripcionesPromocion,
   buscarEvaluadorPromocion,
   reasignarEvaluadorPromocion,
+  listarCorreosFallidosPromocion,
+  reintentarCorreoPromocion,
 } from "../db";
 
 type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA";
@@ -114,6 +116,15 @@ export const promocionRouter = router({
           message: resultado.error === "SELECCION_INVALIDA" ? "Ese servidor no es válido para este puesto (no está en el pool del rol, o ya ocupa otro lugar en esta inscripción)." : "Inscripción no encontrada.",
         });
       }
+      return { success: true };
+    }),
+
+  listarCorreosFallidos: adminProcedure.query(async () => listarCorreosFallidosPromocion()),
+
+  reintentarCorreo: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await reintentarCorreoPromocion(input.id);
       return { success: true };
     }),
 });
