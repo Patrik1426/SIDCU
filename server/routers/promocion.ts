@@ -4,33 +4,35 @@ import { router, protectedProcedure, adminProcedure } from "../trpc";
 import {
   elegibilidadPromocion,
   yaInscritoPromocion,
-  inscribirmePromocion,
-  importarFilaJefe,
-  importarFilaCompanero,
+  confirmarInscripcion,
+  buscarEnPoolPromocion,
+  importarFilaEvaluador,
   listarInscripcionesPromocion,
   buscarEvaluadorPromocion,
   reasignarEvaluadorPromocion,
 } from "../db";
 
-type ErrorCodigoPromocion = "NO_ELEGIBLE" | "SIN_JEFE_ASIGNADO" | "POOL_INSUFICIENTE" | "YA_INSCRITO";
+type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA";
 
-function traducirError(error: ErrorCodigoPromocion): TRPCError {
+function traducirErrorConfirmar(error: ErrorCodigoConfirmar): TRPCError {
   switch (error) {
     case "NO_ELEGIBLE":
       return new TRPCError({ code: "FORBIDDEN", message: "No cumples el requisito de calificación para inscribirte." });
-    case "SIN_JEFE_ASIGNADO":
-      return new TRPCError({ code: "BAD_REQUEST", message: "Tu jefe inmediato no está asignado en el sistema. Contacta al administrador." });
-    case "POOL_INSUFICIENTE":
-      return new TRPCError({ code: "BAD_REQUEST", message: "No hay suficientes compañeros disponibles para asignar. Contacta al administrador." });
+    case "SELECCION_INVALIDA":
+      return new TRPCError({ code: "BAD_REQUEST", message: "Alguno de los evaluadores elegidos no es válido. Vuelve a elegir." });
     case "YA_INSCRITO":
       return new TRPCError({ code: "CONFLICT", message: "Ya estás inscrito a Promoción." });
     default: {
-      // Exhaustividad en compile-time, mismo patron que inconformidad.ts.
       const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
     }
   }
 }
+
+const evaluadorSeleccionSchema = z.object({
+  servidorId: z.number().int().positive(),
+  correo: z.string().email(),
+});
 
 const filaImportSchema = z.object({ registros: z.array(z.record(z.string(), z.any())) });
 
@@ -43,49 +45,46 @@ export const promocionRouter = router({
     return { ...elegibilidad, yaInscrito };
   }),
 
-  inscribirme: protectedProcedure.mutation(async ({ ctx }) => {
-    const resultado = await inscribirmePromocion(ctx.user.id);
-    if (!resultado.ok) throw traducirError(resultado.error);
-    return { success: true };
-  }),
+  buscarEnPool: protectedProcedure
+    .input(z.object({ q: z.string().min(2), rol: z.enum(["jefe", "companero"]) }))
+    .query(async ({ ctx, input }) => buscarEnPoolPromocion(input.q, input.rol, ctx.user.id)),
 
-  importarJefes: adminProcedure
-    .input(filaImportSchema)
+  confirmarInscripcion: protectedProcedure
+    .input(z.object({
+      jefe: evaluadorSeleccionSchema,
+      companero1: evaluadorSeleccionSchema,
+      companero2: evaluadorSeleccionSchema,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const resultado = await confirmarInscripcion(ctx.user.id, input);
+      if (!resultado.ok) throw traducirErrorConfirmar(resultado.error);
+      return { success: true };
+    }),
+
+  importarEvaluadores: adminProcedure
+    .input(z.object({ rol: z.enum(["jefe", "companero"]), ...filaImportSchema.shape }))
     .mutation(async ({ ctx, input }) => {
       let creados = 0;
       const errores: { fila: number; error: string }[] = [];
-      for (let i = 0; i < input.registros.length; i++) {
-        const row = input.registros[i];
-        const curpTrabajador = (row["curp_trabajador"] ?? "").toString().trim();
-        const curpJefe = (row["curp_jefe"] ?? "").toString().trim();
-        if (!curpTrabajador || !curpJefe) {
-          errores.push({ fila: i + 1, error: "Faltan columnas curp_trabajador/curp_jefe" });
-          continue;
-        }
-        const resultado = await importarFilaJefe(curpTrabajador, curpJefe, ctx.user.id);
-        if (resultado.ok) creados++;
-        else errores.push({ fila: i + 1, error: resultado.error });
-      }
-      return { totalProcesados: input.registros.length, creados, errores };
-    }),
-
-  importarCompaneros: adminProcedure
-    .input(filaImportSchema)
-    .mutation(async ({ input }) => {
-      let creados = 0;
-      const errores: { fila: number; error: string }[] = [];
+      const advertencias: { fila: number; advertencia: string }[] = [];
       for (let i = 0; i < input.registros.length; i++) {
         const row = input.registros[i];
         const curp = (row["curp"] ?? "").toString().trim();
-        if (!curp) {
-          errores.push({ fila: i + 1, error: "Falta columna curp" });
+        const nombre = (row["nombre"] ?? "").toString().trim();
+        const correo = (row["correo"] ?? "").toString().trim() || undefined;
+        if (!curp || !nombre) {
+          errores.push({ fila: i + 1, error: "Faltan columnas curp/nombre" });
           continue;
         }
-        const resultado = await importarFilaCompanero(curp);
-        if (resultado.ok) creados++;
-        else errores.push({ fila: i + 1, error: resultado.error });
+        const resultado = await importarFilaEvaluador(curp, nombre, input.rol, correo, ctx.user.id);
+        if (resultado.ok) {
+          creados++;
+          if (resultado.advertencia) advertencias.push({ fila: i + 1, advertencia: resultado.advertencia });
+        } else {
+          errores.push({ fila: i + 1, error: resultado.error });
+        }
       }
-      return { totalProcesados: input.registros.length, creados, errores };
+      return { totalProcesados: input.registros.length, creados, errores, advertencias };
     }),
 
   listarInscripciones: adminProcedure
@@ -104,14 +103,15 @@ export const promocionRouter = router({
     .input(z.object({
       promocionId: z.number(),
       rol: z.enum(["jefe", "companero1", "companero2"]),
-      nuevoUserId: z.number(),
+      nuevoServidorId: z.number(),
+      correo: z.string().email(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoUserId, ctx.user.id);
+      const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoServidorId, input.correo, ctx.user.id);
       if (!resultado.ok) {
         throw new TRPCError({
-          code: resultado.error === "USUARIO_INVALIDO" ? "BAD_REQUEST" : "NOT_FOUND",
-          message: resultado.error === "USUARIO_INVALIDO" ? "Ese usuario no es válido para este puesto (sin cuenta activa, o ya ocupa otro lugar en esta inscripción)." : "Inscripción no encontrada.",
+          code: resultado.error === "SELECCION_INVALIDA" ? "BAD_REQUEST" : "NOT_FOUND",
+          message: resultado.error === "SELECCION_INVALIDA" ? "Ese servidor no es válido para este puesto (no está en el pool del rol, o ya ocupa otro lugar en esta inscripción)." : "Inscripción no encontrada.",
         });
       }
       return { success: true };
