@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { randomInt } from "crypto";
 import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
@@ -1655,25 +1654,29 @@ export async function yaInscritoPromocion(userId: number): Promise<boolean> {
   return !!row;
 }
 
-// Sorteo robusto -- NUNCA usar `ORDER BY RAND()` en SQL (anti-patron
-// conocido: escanea y ordena la tabla completa en cada llamada, se pone mas
-// lento entre mas crezca el pool, y con varios trabajadores inscribiendose a
-// la vez es justo el tipo de query que puede saturar la DB). En vez de eso,
-// se trae solo la columna user_id (ligera aunque el pool tenga miles de
-// filas) y se sortea en memoria del proceso.
-export function elegirDosAlAzar(ids: number[]): [number, number] | null {
-  if (ids.length < 2) return null;
-  const copia = [...ids];
-  for (let i = 0; i < 2; i++) {
-    const j = i + randomInt(copia.length - i);
-    [copia[i], copia[j]] = [copia[j], copia[i]];
-  }
-  return [copia[0], copia[1]];
+async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" | "companero"): Promise<boolean> {
+  const [fila] = await tx
+    .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
+    .from(schema.promocionEvaluadorPool)
+    .where(and(
+      eq(schema.promocionEvaluadorPool.servidorId, servidorId),
+      eq(schema.promocionEvaluadorPool.rol, rol),
+      eq(schema.promocionEvaluadorPool.activo, true),
+    ));
+  return !!fila;
 }
 
-export async function inscribirmePromocion(userId: number): Promise<
-  { ok: true } | { ok: false; error: "NO_ELEGIBLE" | "SIN_JEFE_ASIGNADO" | "POOL_INSUFICIENTE" | "YA_INSCRITO" }
-> {
+export async function confirmarInscripcion(
+  userId: number,
+  seleccion: {
+    jefe: { servidorId: number; correo: string };
+    companero1: { servidorId: number; correo: string };
+    companero2: { servidorId: number; correo: string };
+  },
+): Promise<{ ok: true } | { ok: false; error: "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" }> {
+  const ids = [seleccion.jefe.servidorId, seleccion.companero1.servidorId, seleccion.companero2.servidorId];
+  if (new Set(ids).size !== 3) return { ok: false, error: "SELECCION_INVALIDA" };
+
   const d = await getDb();
   try {
     return await d.transaction(async (tx) => {
@@ -1687,37 +1690,39 @@ export async function inscribirmePromocion(userId: number): Promise<
       const elegibilidad = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
       if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
 
-      const [jefe] = await tx
-        .select({ jefeUserId: schema.promocionJefes.jefeUserId })
-        .from(schema.promocionJefes)
-        .innerJoin(schema.users, eq(schema.users.id, schema.promocionJefes.jefeUserId))
-        .where(and(
-          eq(schema.promocionJefes.userId, userId),
-          eq(schema.users.isActive, true),
-        ));
-      if (!jefe) return { ok: false as const, error: "SIN_JEFE_ASIGNADO" as const };
+      const [jefeValido, c1Valido, c2Valido] = await Promise.all([
+        servidorEnPool(tx, seleccion.jefe.servidorId, "jefe"),
+        servidorEnPool(tx, seleccion.companero1.servidorId, "companero"),
+        servidorEnPool(tx, seleccion.companero2.servidorId, "companero"),
+      ]);
+      if (!jefeValido || !c1Valido || !c2Valido) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
-      const poolFilas = await tx
-        .select({ userId: schema.promocionCompaneroPool.userId })
-        .from(schema.promocionCompaneroPool)
-        .innerJoin(schema.users, eq(schema.users.id, schema.promocionCompaneroPool.userId))
-        .where(and(
-          eq(schema.promocionCompaneroPool.activo, true),
-          eq(schema.users.isActive, true),
-          ne(schema.promocionCompaneroPool.userId, userId),
-          ne(schema.promocionCompaneroPool.userId, jefe.jefeUserId),
-        ));
-      const companeros = elegirDosAlAzar(poolFilas.map((f) => f.userId));
-      if (!companeros) return { ok: false as const, error: "POOL_INSUFICIENTE" as const };
+      const jefe = await asignarEvaluador(tx, seleccion.jefe.servidorId, seleccion.jefe.correo);
+      const companero1 = await asignarEvaluador(tx, seleccion.companero1.servidorId, seleccion.companero1.correo);
+      const companero2 = await asignarEvaluador(tx, seleccion.companero2.servidorId, seleccion.companero2.correo);
 
-      await tx.insert(schema.promociones).values({
+      if ([jefe.userId, companero1.userId, companero2.userId].includes(userId)) {
+        return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+      }
+
+      const [promoInsert] = await tx.insert(schema.promociones).values({
         userId,
-        jefeAsignadoId: jefe.jefeUserId,
-        companero1Id: companeros[0],
-        companero2Id: companeros[1],
+        jefeAsignadoId: jefe.userId,
+        companero1Id: companero1.userId,
+        companero2Id: companero2.userId,
         calificacionCurso1: elegibilidad.calificacion1,
         calificacionCurso2: elegibilidad.calificacion2,
       });
+      const promocionId = promoInsert.insertId;
+
+      // passwordTemporalEnClaro solo viene poblado si asignarEvaluador creo
+      // cuenta nueva -- si ya tenia cuenta, viene null y el worker (Task 9)
+      // manda la plantilla sin credenciales.
+      await tx.insert(schema.promocionCorreosPendientes).values([
+        { promocionId, destinatarioUserId: jefe.userId, rol: "jefe", passwordTemporalEnClaro: jefe.passwordTemporalEnClaro },
+        { promocionId, destinatarioUserId: companero1.userId, rol: "companero1", passwordTemporalEnClaro: companero1.passwordTemporalEnClaro },
+        { promocionId, destinatarioUserId: companero2.userId, rol: "companero2", passwordTemporalEnClaro: companero2.passwordTemporalEnClaro },
+      ]);
 
       const [servidor] = await tx
         .select({ id: schema.servidoresPublicos.id })
@@ -1728,11 +1733,11 @@ export async function inscribirmePromocion(userId: number): Promise<
         servidorId: servidor?.id ?? null,
         usuarioId: userId,
         accion: "crear",
-        descripcion: "Se inscribió a Promoción",
+        descripcion: "Se inscribió a Promoción (selección manual de evaluadores)",
         cambiosPosterior: JSON.stringify({
-          jefeAsignadoId: jefe.jefeUserId,
-          companero1Id: companeros[0],
-          companero2Id: companeros[1],
+          jefeAsignadoId: jefe.userId,
+          companero1Id: companero1.userId,
+          companero2Id: companero2.userId,
         }),
       });
 
