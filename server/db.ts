@@ -9,6 +9,7 @@ import { dbCircuitBreaker } from "./middleware/circuitBreaker";
 import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
 import { validarCorreoEvaluador } from "./lib/validarCorreo";
 import { generarPasswordTemporal, hashPassword } from "./auth";
+import { enviarCorreoEvaluador } from "./lib/email";
 
 let db: (MySql2Database<typeof schema> & { $client: mysql.Pool }) | null = null;
 let pool: mysql.Pool | null = null;
@@ -1994,4 +1995,72 @@ export async function reasignarEvaluadorPromocion(
 
     return { ok: true as const };
   });
+}
+
+const TOPE_INTENTOS_CORREO = 5;
+
+export async function procesarLotePendientesCorreo(limite = 50): Promise<{ procesados: number; enviados: number; fallidos: number }> {
+  const d = await getDb();
+  const pendientes = await d
+    .select()
+    .from(schema.promocionCorreosPendientes)
+    .where(eq(schema.promocionCorreosPendientes.estado, "pendiente"))
+    .limit(limite);
+
+  let enviados = 0;
+  let fallidos = 0;
+
+  for (const fila of pendientes) {
+    const [destinatario] = await d
+      .select({ email: schema.users.email, nombre: schema.users.nombre, curp: schema.users.curp })
+      .from(schema.users)
+      .where(eq(schema.users.id, fila.destinatarioUserId));
+
+    if (!destinatario?.email) {
+      fallidos++;
+      await d.update(schema.promocionCorreosPendientes)
+        .set({ estado: "fallido", intentos: fila.intentos + 1, ultimoError: "destinatario sin correo" })
+        .where(eq(schema.promocionCorreosPendientes.id, fila.id));
+      continue;
+    }
+
+    const [promocion] = await d
+      .select({ nombreCompleto: schema.servidoresPublicos.nombreCompleto })
+      .from(schema.promociones)
+      .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.promociones.userId))
+      .where(eq(schema.promociones.id, fila.promocionId));
+
+    // La plantilla se elige por si ESTA fila trae password (creada junto con
+    // la cuenta nueva), no por el estado ACTUAL de users.passwordTemporal --
+    // ese flag se apaga en cuanto la persona cambia su password, pero el
+    // correo original con las credenciales ya se tuvo que mandar antes de
+    // que eso pasara. Ver Task 6/7 (asignarEvaluador guarda el password en
+    // claro en esta misma fila, nunca en una columna permanente).
+    const plantilla = fila.passwordTemporalEnClaro ? "evaluador_nueva_cuenta" : "evaluador_cuenta_existente";
+    const resultado = await enviarCorreoEvaluador(destinatario.email, plantilla, {
+      nombre: destinatario.nombre,
+      curp: destinatario.curp ?? "",
+      trabajador: promocion?.nombreCompleto ?? "",
+      passwordTemporal: fila.passwordTemporalEnClaro ?? "",
+    });
+
+    if (resultado.ok) {
+      enviados++;
+      await d.update(schema.promocionCorreosPendientes)
+        .set({ estado: "enviado", enviadoAt: new Date(), passwordTemporalEnClaro: null })
+        .where(eq(schema.promocionCorreosPendientes.id, fila.id));
+    } else {
+      fallidos++;
+      const nuevosIntentos = fila.intentos + 1;
+      await d.update(schema.promocionCorreosPendientes)
+        .set({
+          estado: nuevosIntentos >= TOPE_INTENTOS_CORREO ? "fallido" : "pendiente",
+          intentos: nuevosIntentos,
+          ultimoError: resultado.error,
+        })
+        .where(eq(schema.promocionCorreosPendientes.id, fila.id));
+    }
+  }
+
+  return { procesados: pendientes.length, enviados, fallidos };
 }
