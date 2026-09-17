@@ -1655,14 +1655,25 @@ export async function yaInscritoPromocion(userId: number): Promise<boolean> {
   return !!row;
 }
 
+// I1 (revision final): antes solo chequeaba promocionEvaluadorPool.rol+activo --
+// una persona dada de baja (servidoresPublicos.estatus != "activo") o con
+// cuenta desactivada (users.isActive = false) seguia siendo aceptada si se
+// referenciaba directo, aunque buscarEnPoolPromocion (la busqueda que usa la
+// UI) ya la escondiera -- regresion del fix c55d401 del diseño anterior.
+// leftJoin a users porque un servidor sin cuenta todavia (userId null) no
+// tiene isActive que chequear -- eso es valido, no se rechaza por esa razon.
 async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" | "companero"): Promise<boolean> {
   const [fila] = await tx
     .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
     .from(schema.promocionEvaluadorPool)
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
     .where(and(
       eq(schema.promocionEvaluadorPool.servidorId, servidorId),
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
+      eq(schema.servidoresPublicos.estatus, "activo"),
+      or(isNull(schema.servidoresPublicos.userId), eq(schema.users.isActive, true)),
     ));
   return !!fila;
 }
@@ -1674,9 +1685,21 @@ export async function confirmarInscripcion(
     companero1: { servidorId: number; correo: string };
     companero2: { servidorId: number; correo: string };
   },
-): Promise<{ ok: true } | { ok: false; error: "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" }> {
+): Promise<{ ok: true } | { ok: false; error: "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" }> {
   const ids = [seleccion.jefe.servidorId, seleccion.companero1.servidorId, seleccion.companero2.servidorId];
   if (new Set(ids).size !== 3) return { ok: false, error: "SELECCION_INVALIDA" };
+
+  // I3: formato+MX de los 3 correos capturados, ANTES de abrir la
+  // transaccion -- resolveMx es I/O de red, no queremos tener un lock/tx de
+  // MySQL abierto mientras esperamos DNS.
+  const [correoJefeValido, correoC1Valido, correoC2Valido] = await Promise.all([
+    validarCorreoEvaluador(seleccion.jefe.correo),
+    validarCorreoEvaluador(seleccion.companero1.correo),
+    validarCorreoEvaluador(seleccion.companero2.correo),
+  ]);
+  if (!correoJefeValido.ok || !correoC1Valido.ok || !correoC2Valido.ok) {
+    return { ok: false, error: "CORREO_INVALIDO" };
+  }
 
   const d = await getDb();
   try {
@@ -1698,13 +1721,28 @@ export async function confirmarInscripcion(
       ]);
       if (!jefeValido || !c1Valido || !c2Valido) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
+      // C1: chequeo de auto-seleccion ANTES de llamar asignarEvaluador.
+      // Version anterior llamaba asignarEvaluador para los 3 PRIMERO y
+      // comparaba el userId resultante contra `userId` DESPUES -- si el
+      // trabajador se auto-seleccionaba, asignarEvaluador ya habia hecho un
+      // INSERT (cuenta nueva + password) o UPDATE (correo) que quedaba
+      // commiteado aunque este return rechazara la inscripcion, huerfanando
+      // esa cuenta (notNull + auto-increment en servidoresPublicos.id impide
+      // reusar el mismo id despues). Este chequeo no necesita
+      // asignarEvaluador en absoluto: basta el servidorId propio del
+      // llamante (el mismo select que antes se hacia solo hasta el final,
+      // para auditoria -- se reusa aqui, ver mas abajo).
+      const [servidorPropio] = await tx
+        .select({ id: schema.servidoresPublicos.id })
+        .from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.userId, userId));
+      if (servidorPropio && ids.includes(servidorPropio.id)) {
+        return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+      }
+
       const jefe = await asignarEvaluador(tx, seleccion.jefe.servidorId, seleccion.jefe.correo);
       const companero1 = await asignarEvaluador(tx, seleccion.companero1.servidorId, seleccion.companero1.correo);
       const companero2 = await asignarEvaluador(tx, seleccion.companero2.servidorId, seleccion.companero2.correo);
-
-      if ([jefe.userId, companero1.userId, companero2.userId].includes(userId)) {
-        return { ok: false as const, error: "SELECCION_INVALIDA" as const };
-      }
 
       const [promoInsert] = await tx.insert(schema.promociones).values({
         userId,
@@ -1725,13 +1763,8 @@ export async function confirmarInscripcion(
         { promocionId, destinatarioUserId: companero2.userId, rol: "companero2", passwordTemporalEnClaro: companero2.passwordTemporalEnClaro },
       ]);
 
-      const [servidor] = await tx
-        .select({ id: schema.servidoresPublicos.id })
-        .from(schema.servidoresPublicos)
-        .where(eq(schema.servidoresPublicos.userId, userId));
-
       await tx.insert(schema.auditoria).values({
-        servidorId: servidor?.id ?? null,
+        servidorId: servidorPropio?.id ?? null,
         usuarioId: userId,
         accion: "crear",
         descripcion: "Se inscribió a Promoción (selección manual de evaluadores)",
@@ -1829,6 +1862,10 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       .select({
         id: schema.promociones.id,
         enviadoAt: schema.promociones.enviadoAt,
+        // M4: para que el admin pueda excluir al TRABAJADOR de esta
+        // inscripcion (no a si mismo) al buscar un reemplazo en el pool --
+        // ver buscarEnPoolPromocion/GestionPromocion.tsx.
+        trabajadorUserId: schema.promociones.userId,
         trabajadorNombre: trabajador.nombreCompleto,
         trabajadorCurp: trabajador.curp,
         jefeNombre: jefe.nombreCompleto,
@@ -1874,30 +1911,49 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
   };
 }
 
-// Espeja buscarEvaluadorPromocion (admin) pero filtra por el pool curado en
-// vez de buscar en todo el padron. `excluirUserId` es users.id (lo que ya
-// tiene el router en ctx.user.id) -- comparamos contra
+// M8: escapa % y _ (los 2 wildcards de LIKE) del termino de busqueda antes
+// de envolverlo en %...% -- sin esto, alguien podia mandar "%" y traer TODO
+// el pool activo de un rol en una sola pagina, o "_" para matchear un
+// caracter cualquiera. MySQL usa "\" como escape por default (sin
+// NO_BACKSLASH_ESCAPES en este proyecto), consistente con como drizzle liga
+// el parametro.
+function escaparComodinesLike(valor: string): string {
+  return valor.replace(/[%_\\]/g, (c) => `\\${c}`);
+}
+
+// Filtra por el pool curado (promocion_evaluador_pool) en vez de buscar en
+// todo el padron -- reemplaza a la extinta buscarEvaluadorPromocion (admin,
+// sin pool), que ya no tenia ningun caller real (ver revision final de
+// rama, M3). `excluirUserId` es users.id -- comparamos contra
 // servidoresPublicos.userId, que puede ser NULL (persona sin cuenta
 // todavia). ne(columna, valor) contra NULL evalua a NULL en SQL, no a true
 // -- sin el or(isNull(...), ...) esas filas desaparecerian del resultado
 // por accidente para TODOS los que buscan, no solo para el propio
 // trabajador.
+//
+// I2: correoPrellenado sigue la precedencia del spec (seccion 4):
+// users.email (cuenta ya existente) -> correoSugerido (CSV) ->
+// servidoresPublicos.email (padron) -> null (el frontend cae a "").
 export async function buscarEnPoolPromocion(
   q: string,
   rol: "jefe" | "companero",
   excluirUserId: number,
-): Promise<Array<{ servidorId: number; nombreCompleto: string; curp: string; tieneCuenta: boolean }>> {
+): Promise<Array<{ servidorId: number; nombreCompleto: string; curp: string; tieneCuenta: boolean; correoPrellenado: string | null }>> {
   const d = await getDb();
-  const term = `%${q}%`;
+  const term = `%${escaparComodinesLike(q)}%`;
   const filas = await d
     .select({
       servidorId: schema.servidoresPublicos.id,
       nombreCompleto: schema.servidoresPublicos.nombreCompleto,
       curp: schema.servidoresPublicos.curp,
       userId: schema.servidoresPublicos.userId,
+      emailPadron: schema.servidoresPublicos.email,
+      correoSugerido: schema.promocionEvaluadorPool.correoSugerido,
+      emailCuenta: schema.users.email,
     })
     .from(schema.promocionEvaluadorPool)
     .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
     .where(and(
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
@@ -1912,25 +1968,8 @@ export async function buscarEnPoolPromocion(
     nombreCompleto: f.nombreCompleto,
     curp: f.curp,
     tieneCuenta: f.userId !== null,
+    correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? f.emailPadron ?? null,
   }));
-}
-
-export async function buscarEvaluadorPromocion(q: string) {
-  const d = await getDb();
-  const term = `%${q}%`;
-  return d
-    .select({
-      userId: schema.servidoresPublicos.userId,
-      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
-      curp: schema.servidoresPublicos.curp,
-    })
-    .from(schema.servidoresPublicos)
-    .innerJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
-    .where(and(
-      eq(schema.users.isActive, true),
-      or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
-    ))
-    .limit(15);
 }
 
 export async function reasignarEvaluadorPromocion(
@@ -1939,7 +1978,13 @@ export async function reasignarEvaluadorPromocion(
   nuevoServidorId: number,
   correoCapturado: string,
   adminUserId: number,
-): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" }> {
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" }> {
+  // I3: formato+MX del correo capturado por el admin, antes de abrir la
+  // transaccion (mismo motivo que confirmarInscripcion: no tener I/O de DNS
+  // colgado adentro de un tx de MySQL).
+  const correoValido = await validarCorreoEvaluador(correoCapturado);
+  if (!correoValido.ok) return { ok: false, error: "CORREO_INVALIDO" };
+
   const d = await getDb();
   const rolPool = rol === "jefe" ? "jefe" : "companero";
 
@@ -2048,6 +2093,19 @@ export async function procesarLotePendientesCorreo(limite = 50): Promise<{ proce
       enviados++;
       await d.update(schema.promocionCorreosPendientes)
         .set({ estado: "enviado", enviadoAt: new Date(), passwordTemporalEnClaro: null })
+        .where(eq(schema.promocionCorreosPendientes.id, fila.id));
+    } else if (resultado.configuracionFaltante) {
+      // I6: un RESEND_API_KEY/RESEND_FROM_EMAIL faltante es un error de
+      // CONFIGURACION, no una falla real de envio -- si contara como
+      // intento, un deploy con las variables todavia sin poner en Railway
+      // quemaria los 5 reintentos de TODA la cola en los primeros 10 minutos
+      // (el worker corre cada 2 min) y todo terminaria en "fallido"
+      // (dead-letter) sin que nada estuviera realmente mal con esos correos.
+      // Se deja la fila en "pendiente" sin tocar `intentos`, para que quede
+      // esperando indefinidamente a que se corrija la configuracion.
+      fallidos++;
+      await d.update(schema.promocionCorreosPendientes)
+        .set({ ultimoError: resultado.error })
         .where(eq(schema.promocionCorreosPendientes.id, fila.id));
     } else {
       fallidos++;

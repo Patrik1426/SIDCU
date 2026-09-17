@@ -8,13 +8,12 @@ import {
   buscarEnPoolPromocion,
   importarFilaEvaluador,
   listarInscripcionesPromocion,
-  buscarEvaluadorPromocion,
   reasignarEvaluadorPromocion,
   listarCorreosFallidosPromocion,
   reintentarCorreoPromocion,
 } from "../db";
 
-type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA";
+type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" | "CORREO_INVALIDO";
 
 function traducirErrorConfirmar(error: ErrorCodigoConfirmar): TRPCError {
   switch (error) {
@@ -24,6 +23,25 @@ function traducirErrorConfirmar(error: ErrorCodigoConfirmar): TRPCError {
       return new TRPCError({ code: "BAD_REQUEST", message: "Alguno de los evaluadores elegidos no es válido. Vuelve a elegir." });
     case "YA_INSCRITO":
       return new TRPCError({ code: "CONFLICT", message: "Ya estás inscrito a Promoción." });
+    case "CORREO_INVALIDO":
+      return new TRPCError({ code: "BAD_REQUEST", message: "Alguno de los correos capturados no es válido o su dominio no existe." });
+    default: {
+      const _exhaustivo: never = error;
+      return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
+    }
+  }
+}
+
+type ErrorCodigoReasignar = "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO";
+
+function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
+  switch (error) {
+    case "PROMOCION_NO_ENCONTRADA":
+      return new TRPCError({ code: "NOT_FOUND", message: "Inscripción no encontrada." });
+    case "SELECCION_INVALIDA":
+      return new TRPCError({ code: "BAD_REQUEST", message: "Ese servidor no es válido para este puesto (no está en el pool del rol, o ya ocupa otro lugar en esta inscripción)." });
+    case "CORREO_INVALIDO":
+      return new TRPCError({ code: "BAD_REQUEST", message: "El correo capturado no es válido o su dominio no existe." });
     default: {
       const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
@@ -47,9 +65,18 @@ export const promocionRouter = router({
     return { ...elegibilidad, yaInscrito };
   }),
 
+  // M4: excluirUserId opcional -- por defecto excluye al propio llamante
+  // (caso del trabajador buscando sus 3 evaluadores, donde nunca debe verse
+  // a si mismo). El panel admin (GestionPromocion.tsx, reasignacion por
+  // baja) pasa el userId del TRABAJADOR de la inscripcion en cuestion en vez
+  // del suyo -- antes excluia al admin (su propio ctx.user.id), que no es a
+  // quien hay que excluir en ese flujo. Bajo impacto si se omite (el select
+  // solo filtra resultados de busqueda; reasignarEvaluadorPromocion vuelve a
+  // validar todo server-side de cualquier forma), por eso protectedProcedure
+  // basta -- no hace falta restringir el override a adminProcedure.
   buscarEnPool: protectedProcedure
-    .input(z.object({ q: z.string().min(2), rol: z.enum(["jefe", "companero"]) }))
-    .query(async ({ ctx, input }) => buscarEnPoolPromocion(input.q, input.rol, ctx.user.id)),
+    .input(z.object({ q: z.string().min(2), rol: z.enum(["jefe", "companero"]), excluirUserId: z.number().int().positive().optional() }))
+    .query(async ({ ctx, input }) => buscarEnPoolPromocion(input.q, input.rol, input.excluirUserId ?? ctx.user.id)),
 
   confirmarInscripcion: protectedProcedure
     .input(z.object({
@@ -97,10 +124,6 @@ export const promocionRouter = router({
     }))
     .query(async ({ input }) => listarInscripcionesPromocion(input)),
 
-  buscarEvaluador: adminProcedure
-    .input(z.object({ q: z.string().min(2) }))
-    .query(async ({ input }) => buscarEvaluadorPromocion(input.q)),
-
   reasignarEvaluador: adminProcedure
     .input(z.object({
       promocionId: z.number(),
@@ -110,12 +133,7 @@ export const promocionRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoServidorId, input.correo, ctx.user.id);
-      if (!resultado.ok) {
-        throw new TRPCError({
-          code: resultado.error === "SELECCION_INVALIDA" ? "BAD_REQUEST" : "NOT_FOUND",
-          message: resultado.error === "SELECCION_INVALIDA" ? "Ese servidor no es válido para este puesto (no está en el pool del rol, o ya ocupa otro lugar en esta inscripción)." : "Inscripción no encontrada.",
-        });
-      }
+      if (!resultado.ok) throw traducirErrorReasignar(resultado.error);
       return { success: true };
     }),
 

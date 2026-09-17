@@ -6,6 +6,12 @@ vi.mock("drizzle-orm/mysql2", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm/mysql2")>();
   return { ...actual, drizzle: vi.fn() };
 });
+// I3: reasignarEvaluadorPromocion ahora valida formato+MX del correo
+// capturado ANTES de abrir la transaccion -- default ok:true, los tests que
+// quieren probar el rechazo lo sobreescriben.
+vi.mock("./lib/validarCorreo", () => ({
+  validarCorreoEvaluador: vi.fn(async () => ({ ok: true })),
+}));
 
 beforeEach(() => {
   vi.resetModules();
@@ -54,6 +60,42 @@ describe("reasignarEvaluadorPromocion", () => {
     const { reasignarEvaluadorPromocion } = await import("./db");
     const resultado = await reasignarEvaluadorPromocion(1, "companero1", 999, "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
+  });
+
+  // I1 (revision final de rama): servidorEnPool (compartido con
+  // confirmarInscripcion) ahora exige servidoresPublicos.estatus="activo" y
+  // (si tiene cuenta) users.isActive -- antes solo miraba
+  // promocionEvaluadorPool.rol+activo, una regresion del fix c55d401 del
+  // diseño anterior. El mock no evalua el WHERE real (limitacion de este
+  // arnes de pruebas, ver db.transaction-test-helpers.ts): esta prueba fija
+  // el CONTRATO -- si MySQL excluye la fila por el join nuevo, se rechaza
+  // igual que si nunca hubiera estado en el pool.
+  it("rechaza si el servidor/usuario esta inactivo (simulado por MySQL sin regresar fila)", async () => {
+    const { tx } = makeTxRecorder([[]], []); // servidorEnPool: excluido por estatus/isActive
+    const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
+  });
+
+  // I3 (revision final de rama): validarCorreoEvaluador (formato+MX) antes
+  // solo se llamaba desde importarFilaEvaluador -- el correo capturado por
+  // el admin al reasignar solo pasaba por z.string().email() en el router.
+  // Corre ANTES de abrir la transaccion.
+  it("rechaza con CORREO_INVALIDO sin abrir transaccion ni consultar el pool", async () => {
+    const { validarCorreoEvaluador } = await import("./lib/validarCorreo");
+    vi.mocked(validarCorreoEvaluador).mockResolvedValueOnce({ ok: false, error: "formato de correo inválido" });
+    const fakeDb = { select: vi.fn(), transaction: vi.fn() };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "no-es-correo", 1);
+    expect(resultado).toEqual({ ok: false, error: "CORREO_INVALIDO" });
+    expect(fakeDb.transaction).not.toHaveBeenCalled();
   });
 
   it("rechaza si la promocion no existe", async () => {

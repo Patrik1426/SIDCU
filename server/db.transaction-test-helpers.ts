@@ -1,5 +1,13 @@
 export function makeTxRecorder(selectResults: any[][] = [], insertResults: any[] = []) {
   const calls: string[] = [];
+  // setCalls: cada objeto pasado a un .set(...) en la cadena, en orden. El
+  // recorder original solo registraba NOMBRES de metodo (calls), nunca los
+  // argumentos -- insuficiente para probar QUE campos toca un .update().set()
+  // (ej. I6: procesarLotePendientesCorreo no debe incluir `intentos`/`estado`
+  // cuando el error es de configuracion, no de envio real). Aditivo y
+  // retro-compatible: los tests existentes que solo desestructuran { tx, calls }
+  // siguen funcionando igual, y la cadena sigue resolviendo lo mismo que antes.
+  const setCalls: any[] = [];
   let selectIndex = 0;
   let insertIndex = 0;
 
@@ -19,7 +27,10 @@ export function makeTxRecorder(selectResults: any[][] = [], insertResults: any[]
           }
           return (resolve: (value: any) => void) => resolve(result);
         }
-        return () => makeChain(methodName);
+        return (...args: any[]) => {
+          if (prop === "set" && args.length > 0) setCalls.push(args[0]);
+          return makeChain(methodName);
+        };
       },
     });
   }
@@ -33,5 +44,5 @@ export function makeTxRecorder(selectResults: any[][] = [], insertResults: any[]
     },
   });
 
-  return { tx, calls };
+  return { tx, calls, setCalls };
 }
