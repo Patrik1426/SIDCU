@@ -1816,7 +1816,7 @@ export async function importarFilaEvaluador(
 
   let advertencia: string | undefined;
   if (normalizarNombre(nombreCsv) !== normalizarNombre(servidor.nombreCompleto)) {
-    advertencia = `Nombre del CSV ("${nombreCsv}") no coincide con el registrado ("${servidor.nombreCompleto}")`;
+    advertencia = `${servidor.nombreCompleto}: el nombre no coincide con el CSV`;
   }
 
   let correoSugerido: string | null = null;
@@ -1824,8 +1824,8 @@ export async function importarFilaEvaluador(
     const correoValido = await validarCorreoEvaluador(correoCsv);
     if (!correoValido.ok) {
       advertencia = advertencia
-        ? `${advertencia}; correo del CSV inválido: ${correoValido.error}`
-        : `Correo del CSV inválido: ${correoValido.error}`;
+        ? `${advertencia}, correo inválido`
+        : `${servidor.nombreCompleto}: correo inválido`;
     } else {
       correoSugerido = correoCsv.trim().toLowerCase();
     }

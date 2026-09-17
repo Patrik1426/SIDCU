@@ -260,10 +260,10 @@ export default function GestionPromocion() {
               const MAX_MOSTRADAS = 3;
               const detalle = resultado.advertencias
                 .slice(0, MAX_MOSTRADAS)
-                .map((a) => `Fila ${a.fila}: ${a.advertencia}`)
+                .map((a) => a.advertencia)
                 .join(" — ");
               const resto = resultado.advertencias.length - MAX_MOSTRADAS;
-              toast.warning(`${resultado.advertencias.length} fila(s) con advertencia. ${detalle}${resto > 0 ? ` (y ${resto} más)` : ""}`);
+              toast.warning(`${detalle}${resto > 0 ? ` (y ${resto} más)` : ""}`);
             }
             return resultado;
           }}
