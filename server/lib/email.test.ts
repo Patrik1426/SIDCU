@@ -67,4 +67,31 @@ describe("enviarCorreoEvaluador", () => {
     const resultado = await enviarCorreoEvaluador("persona@example.com", "evaluador_cuenta_existente", {});
     expect(resultado).toEqual({ ok: false, error: "dominio no verificado" });
   });
+
+  // Hallazgo de auditoria de seguridad 2026-09-21: `datos.trabajador` viene
+  // de servidoresPublicos.nombreCompleto, que un trabajador controla 100%
+  // desde su propio registro publico (authRouter.register solo exige
+  // min(2), sin escapar HTML). Sin escapar, un nombre malicioso se inyecta
+  // crudo en el HTML del correo que llega a evaluadores reales (terceros,
+  // via Resend) -- vector de phishing sobre un canal transaccional
+  // confiable. Mismo riesgo para `datos.nombre` (nombre de cuenta, tambien
+  // editable via CSV de evaluadores/registro).
+  it("escapa HTML de datos.nombre y datos.trabajador antes de mandarlos (previene inyeccion HTML en correo a terceros)", async () => {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.RESEND_FROM_EMAIL = "SIDCU <no-reply@dominio-verificado.mx>";
+    sendMock.mockResolvedValue({ data: { id: "abc" }, error: null });
+
+    const { enviarCorreoEvaluador } = await import("./email");
+    await enviarCorreoEvaluador("persona@example.com", "evaluador_nueva_cuenta", {
+      nombre: "Ana",
+      trabajador: '<img src=x onerror=alert(1)><a href="http://phishing.example">click</a>',
+      curp: "AAAA800101HDFXXX01",
+      passwordTemporal: "abc123",
+    });
+
+    const html = sendMock.mock.calls[0][0].html;
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<a href");
+    expect(html).toContain("&lt;img");
+  });
 });

@@ -1,13 +1,25 @@
 import { Resend } from "resend";
 
+const ENTIDADES_HTML: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+// `datos.nombre`/`datos.trabajador` vienen de texto libre que un trabajador
+// controla 100% desde su propio registro publico (authRouter.register solo
+// exige min(2) caracteres, sin restriccion de contenido) -- sin escapar,
+// un nombre malicioso se inyecta crudo en el HTML del correo que Resend
+// manda a evaluadores reales (terceros), abriendo phishing sobre un canal
+// transaccional confiable (hallazgo de auditoria de seguridad 2026-09-21).
+function escapeHtml(valor: string | undefined): string {
+  return (valor ?? "").replace(/[&<>"']/g, (c) => ENTIDADES_HTML[c]);
+}
+
 const PLANTILLAS: Record<"evaluador_nueva_cuenta" | "evaluador_cuenta_existente", (datos: Record<string, string>) => { subject: string; html: string }> = {
   evaluador_nueva_cuenta: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",
-    html: `<p>Hola ${datos.nombre},</p><p>Fuiste seleccionado como evaluador de ${datos.trabajador} en el proceso de Promoción.</p><p>Tu usuario es tu CURP (<strong>${datos.curp}</strong>) y tu contraseña es <strong>${datos.passwordTemporal}</strong>. Consérvala, es la que debes usar para entrar.</p>`,
+    html: `<p>Hola ${escapeHtml(datos.nombre)},</p><p>Fuiste seleccionado como evaluador de ${escapeHtml(datos.trabajador)} en el proceso de Promoción.</p><p>Tu usuario es tu CURP (<strong>${escapeHtml(datos.curp)}</strong>) y tu contraseña es <strong>${escapeHtml(datos.passwordTemporal)}</strong>. Consérvala, es la que debes usar para entrar.</p>`,
   }),
   evaluador_cuenta_existente: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",
-    html: `<p>Hola ${datos.nombre},</p><p>Fuiste seleccionado como evaluador de ${datos.trabajador} en el proceso de Promoción. Entra a tu portal de SIDCU con tu cuenta habitual para más detalles.</p>`,
+    html: `<p>Hola ${escapeHtml(datos.nombre)},</p><p>Fuiste seleccionado como evaluador de ${escapeHtml(datos.trabajador)} en el proceso de Promoción. Entra a tu portal de SIDCU con tu cuenta habitual para más detalles.</p>`,
   }),
 };
 
