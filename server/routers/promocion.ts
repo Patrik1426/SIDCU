@@ -6,6 +6,7 @@ import {
   yaInscritoPromocion,
   confirmarInscripcion,
   buscarEnPoolPromocion,
+  poolPromocionTieneRegistros,
   importarFilaEvaluador,
   listarInscripcionesPromocion,
   reasignarEvaluadorPromocion,
@@ -122,6 +123,10 @@ export const promocionRouter = router({
   buscarEnPool: protectedProcedure
     .input(z.object({ q: z.string().min(2), rol: z.enum(["jefe", "companero"]), excluirUserId: z.number().int().positive().optional() }))
     .query(async ({ ctx, input }) => buscarEnPoolPromocion(input.q, input.rol, input.excluirUserId ?? ctx.user.id)),
+
+  poolTieneRegistros: protectedProcedure
+    .input(z.object({ rol: z.enum(["jefe", "companero"]) }))
+    .query(async ({ input }) => poolPromocionTieneRegistros(input.rol)),
 
   confirmarInscripcion: protectedProcedure
     .input(z.object({

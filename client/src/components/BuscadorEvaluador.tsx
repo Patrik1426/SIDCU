@@ -20,12 +20,20 @@ interface BuscadorEvaluadorProps {
 // tambien soportaba una busqueda sin `rol` (todo el padron, para el admin) --
 // se quito (M3, revision final de rama): esa variante (buscarEvaluador) ya no
 // tenia ningun caller real, todos pasan rol y usan el pool curado.
+const ETIQUETA_ROL: Record<"jefe" | "companero", string> = { jefe: "Jefes", companero: "Compañeros" };
+
 export default function BuscadorEvaluador({ onElegir, placeholder, rol, excluirUserId }: BuscadorEvaluadorProps) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const { data: resultados } = trpc.promocion.buscarEnPool.useQuery({ q, rol, excluirUserId }, { enabled: q.length >= 2 });
+  // Distingue "catálogo vacío" (nadie de este rol cargado por el admin
+  // todavía) de "sin coincidencias para esta búsqueda" (catálogo con gente,
+  // solo no encontró lo que escribiste) -- antes ambos casos se veían
+  // igual (dropdown vacío, sin ningún mensaje). Se consulta una sola vez al
+  // abrir, independiente de lo que se escriba.
+  const { data: tieneRegistros } = trpc.promocion.poolTieneRegistros.useQuery({ rol }, { enabled: open });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -45,7 +53,17 @@ export default function BuscadorEvaluador({ onElegir, placeholder, rol, excluirU
         placeholder={placeholder ?? "Buscar por nombre o CURP..."}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
       />
-      {open && q.length >= 2 && resultados && resultados.length > 0 && (
+      {open && tieneRegistros === false && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-gray-500 shadow-lg">
+          Todavía no hay {ETIQUETA_ROL[rol]} cargados en el catálogo. Contacta al administrador.
+        </div>
+      )}
+      {open && tieneRegistros !== false && q.length >= 2 && resultados && resultados.length === 0 && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-gray-500 shadow-lg">
+          No se encontró nadie con ese nombre o CURP.
+        </div>
+      )}
+      {open && tieneRegistros !== false && q.length >= 2 && resultados && resultados.length > 0 && (
         <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
           {resultados.map((r) => (
             <button

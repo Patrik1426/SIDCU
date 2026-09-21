@@ -2157,6 +2157,26 @@ export async function buscarEnPoolPromocion(
   }));
 }
 
+// Existencia (no listado) del catálogo por rol -- usado por
+// BuscadorEvaluador.tsx para distinguir "catálogo vacío" (nadie de ese rol
+// cargado por el admin todavía) de "sin coincidencias para esta búsqueda"
+// (catálogo con gente, solo no encontró lo que escribiste). Mismos filtros
+// de activo/estatus que buscarEnPoolPromocion, sin término de búsqueda.
+export async function poolPromocionTieneRegistros(rol: "jefe" | "companero"): Promise<boolean> {
+  const d = await getDb();
+  const filas = await d
+    .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
+    .from(schema.promocionEvaluadorPool)
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
+    .where(and(
+      eq(schema.promocionEvaluadorPool.rol, rol),
+      eq(schema.promocionEvaluadorPool.activo, true),
+      eq(schema.servidoresPublicos.estatus, "activo"),
+    ))
+    .limit(1);
+  return filas.length > 0;
+}
+
 export async function reasignarEvaluadorPromocion(
   promocionId: number,
   rol: "jefe" | "companero1" | "companero2",
