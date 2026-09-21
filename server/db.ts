@@ -1133,6 +1133,80 @@ export function calcularPuntajeAutoevaluacion(aciertos: number): number {
   return aciertos;
 }
 
+type EstadoAutoevaluacion =
+  | { estado: "sin_promocion" }
+  | { estado: "no_iniciada" }
+  | { estado: "borrador"; preguntas: { preguntaId: number; texto: string; respuestaElegida: (typeof schema.LIKERT_OPCIONES)[number] | null }[] }
+  | { estado: "enviado"; puntaje: number; enviadoAt: Date };
+
+// Lectura -- nunca se esconde, igual que el resto del sistema (un borrador
+// en progreso o ya enviado siempre se puede volver a ver).
+export async function miAutoevaluacion(userId: number): Promise<EstadoAutoevaluacion> {
+  const d = await getDb();
+  const [promocion] = await d.select({ id: schema.promociones.id })
+    .from(schema.promociones)
+    .where(eq(schema.promociones.userId, userId));
+  if (!promocion) return { estado: "sin_promocion" };
+
+  const [autoevaluacion] = await d.select({
+    id: schema.autoevaluaciones.id,
+    estado: schema.autoevaluaciones.estado,
+    puntaje: schema.autoevaluaciones.puntaje,
+    enviadoAt: schema.autoevaluaciones.enviadoAt,
+  })
+    .from(schema.autoevaluaciones)
+    .where(eq(schema.autoevaluaciones.promocionId, promocion.id));
+  if (!autoevaluacion) return { estado: "no_iniciada" };
+
+  if (autoevaluacion.estado === "enviado") {
+    return { estado: "enviado", puntaje: autoevaluacion.puntaje ?? 0, enviadoAt: autoevaluacion.enviadoAt! };
+  }
+
+  const preguntas = await d.select({
+    preguntaId: schema.autoevaluacionRespuestas.preguntaId,
+    texto: schema.autoevaluacionPreguntas.texto,
+    respuestaElegida: schema.autoevaluacionRespuestas.respuestaElegida,
+  })
+    .from(schema.autoevaluacionRespuestas)
+    .innerJoin(schema.autoevaluacionPreguntas, eq(schema.autoevaluacionPreguntas.id, schema.autoevaluacionRespuestas.preguntaId))
+    .where(eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id));
+
+  return { estado: "borrador", preguntas };
+}
+
+export async function iniciarAutoevaluacion(userId: number): Promise<{ ok: true } | { ok: false; error: "SIN_PROMOCION" | "YA_INICIADA" }> {
+  const d = await getDb();
+  try {
+    return await d.transaction(async (tx) => {
+      const [promocion] = await tx.select({ id: schema.promociones.id })
+        .from(schema.promociones)
+        .where(eq(schema.promociones.userId, userId));
+      if (!promocion) return { ok: false as const, error: "SIN_PROMOCION" as const };
+
+      const banco = await tx.select({ id: schema.autoevaluacionPreguntas.id })
+        .from(schema.autoevaluacionPreguntas)
+        .where(eq(schema.autoevaluacionPreguntas.activo, true));
+
+      const sorteadas = sortearPreguntasAutoevaluacion(banco.map((p) => p.id), 28);
+
+      const [insertAutoevaluacion] = await tx.insert(schema.autoevaluaciones).values({
+        promocionId: promocion.id,
+        estado: "borrador",
+      });
+      const autoevaluacionId = insertAutoevaluacion.insertId;
+
+      await tx.insert(schema.autoevaluacionRespuestas).values(
+        sorteadas.map((preguntaId) => ({ autoevaluacionId, preguntaId })),
+      );
+
+      return { ok: true as const };
+    });
+  } catch (err: any) {
+    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "YA_INICIADA" };
+    throw err;
+  }
+}
+
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
 // Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal

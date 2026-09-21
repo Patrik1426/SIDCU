@@ -36,7 +36,15 @@ export function makeTxRecorder(selectResults: any[][] = [], insertResults: any[]
   }
 
   const tx: any = new Proxy(function () {}, {
-    get(_target, prop: string) {
+    get(target, prop: string) {
+      // Si el test reasigno explicitamente tx.<metodo> = vi.fn(...) (via el
+      // Proxy's default `set` behavior, que escribe en `target`), respetar
+      // ese override en vez de siempre sintetizar el closure de tracking --
+      // sin esto, reasignar tx.insert para simular un error (ej.
+      // ER_DUP_ENTRY) era un no-op silencioso.
+      if (Object.prototype.hasOwnProperty.call(target, prop)) {
+        return (target as any)[prop];
+      }
       return () => {
         calls.push(prop);
         return makeChain(prop);
