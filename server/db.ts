@@ -3,6 +3,7 @@ import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
+import { randomInt } from "crypto";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
@@ -1104,6 +1105,32 @@ export async function obtenerConfigModuloInconformidad() {
   // se comporta como si estuviera habilitado (mismo estado que tenia antes
   // de que existiera este control).
   return { id: 1, habilitado: true, fechaDesde: null, fechaHasta: null, actualizadoPor: null, actualizadoPorNombre: null, updatedAt: new Date() };
+}
+
+// ─── Autoevaluación ──────────────────────────────────────────────
+
+// Pura, sin DB -- Fisher-Yates con crypto.randomInt (nunca Math.random,
+// nunca ORDER BY RAND() -- mismo criterio que el sorteo de Compañeros que
+// tenía Promoción antes del replanteo a selección manual, ver
+// docs/superpowers/specs/2026-09-16-promocion-replanteo-design.md sección
+// 9). El banco de Autoevaluación es chico (60 filas) -- se trae completo a
+// memoria y se randomiza en el proceso, nunca en SQL.
+export function sortearPreguntasAutoevaluacion(idsDisponibles: number[], cantidad: number): number[] {
+  const copia = [...idsDisponibles];
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia.slice(0, cantidad);
+}
+
+// Aislada a propósito: la fórmula real (aciertos -> puntaje final) sigue
+// sin confirmar con el cliente (mismo problema documentado para Evaluadores,
+// ver docs/preguntas-cliente-modulos-desempeno.md puntos 7 y 9). Hoy
+// regresa el conteo crudo -- cuando se calibre la fórmula real, el cambio
+// es solo esta función, no un rediseño del módulo.
+export function calcularPuntajeAutoevaluacion(aciertos: number): number {
+  return aciertos;
 }
 
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
