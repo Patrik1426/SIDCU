@@ -23,6 +23,7 @@ import Instituciones from "@/pages/Instituciones";
 import GestionSolicitudes from "@/pages/GestionSolicitudes";
 import Inconformidad from "@/pages/Inconformidad";
 import Promocion from "@/pages/Promocion";
+import Autoevaluacion from "@/pages/Autoevaluacion";
 import GestionInconformidades from "@/pages/GestionInconformidades";
 import GestionPromocion from "@/pages/GestionPromocion";
 import CentroModulos from "@/pages/CentroModulos";
@@ -228,6 +229,12 @@ export default function App() {
         <ProtectedRoute
           path="/portal/promocion"
           component={Promocion}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/autoevaluacion"
+          component={Autoevaluacion}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />

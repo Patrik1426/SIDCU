@@ -25,6 +25,7 @@ import {
   FileWarning,
   Award,
   ToggleLeft,
+  ListChecks,
 } from "lucide-react";
 
 interface NavItem {
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { label: "Mis Solicitudes", href: "/portal/solicitudes", icon: ClipboardCheck, roles: ["user"] },
   { label: "Inconformidad", href: "/portal/inconformidad", icon: FileWarning, roles: ["user"] },
   { label: "Promoción", href: "/portal/promocion", icon: Award, roles: ["user"] },
+  { label: "Autoevaluación", href: "/portal/autoevaluacion", icon: ListChecks, roles: ["user"] },
   { label: "Servidores", href: "/servidores", icon: Users, roles: ["admin", "capturista"] },
   { label: "Importar CSV", href: "/importar", icon: FileUp, roles: ["admin", "capturista"] },
   // { label: "Archivos", href: "/archivos", icon: Upload, roles: ["admin", "capturista"] }, // En construcción
