@@ -64,6 +64,29 @@ describe("enviarAutoevaluacion", () => {
     expect(resultado).toEqual({ ok: false, error: "RESPUESTAS_INVALIDAS" });
   });
 
+  it("regresa RESPUESTAS_INVALIDAS si el arreglo trae un preguntaId real duplicado (padding para inflar aciertos)", async () => {
+    const autoevaluacion = { id: 5, estado: "borrador" };
+    const asignadas = [
+      { preguntaId: 1, respuestaCorrecta: "siempre" },
+      { preguntaId: 2, respuestaCorrecta: "nunca" },
+    ];
+    const { tx } = makeTxRecorder([[autoevaluacion], asignadas], []);
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { enviarAutoevaluacion } = await import("./db");
+    // trae los 2 preguntaId reales (1 y 2), pero repite el 1 -- el Set de ids
+    // coincidiria (mismo tamano/contenido), pero el arreglo es mas largo que
+    // el sorteo guardado.
+    const resultado = await enviarAutoevaluacion(1, [
+      { preguntaId: 1, respuestaElegida: "siempre" },
+      { preguntaId: 1, respuestaElegida: "siempre" },
+      { preguntaId: 2, respuestaElegida: "nunca" },
+    ]);
+    expect(resultado).toEqual({ ok: false, error: "RESPUESTAS_INVALIDAS" });
+  });
+
   it("califica correctamente, guarda el puntaje y marca enviado -- todo en una transaccion", async () => {
     const autoevaluacion = { id: 5, estado: "borrador" };
     const asignadas = [

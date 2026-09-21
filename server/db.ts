@@ -1231,6 +1231,8 @@ export async function enviarAutoevaluacion(
       .innerJoin(schema.autoevaluacionPreguntas, eq(schema.autoevaluacionPreguntas.id, schema.autoevaluacionRespuestas.preguntaId))
       .where(eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id));
 
+    if (respuestas.length !== asignadas.length) return { ok: false, error: "RESPUESTAS_INVALIDAS" };
+
     const idsAsignados = new Set(asignadas.map((a) => a.preguntaId));
     const idsRecibidos = new Set(respuestas.map((r) => r.preguntaId));
     const mismoSet = idsAsignados.size === idsRecibidos.size && [...idsAsignados].every((id) => idsRecibidos.has(id));
