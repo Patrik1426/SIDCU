@@ -1207,6 +1207,64 @@ export async function iniciarAutoevaluacion(userId: number): Promise<{ ok: true 
   }
 }
 
+export async function enviarAutoevaluacion(
+  userId: number,
+  respuestas: { preguntaId: number; respuestaElegida: (typeof schema.LIKERT_OPCIONES)[number] }[],
+): Promise<{ ok: true; puntaje: number } | { ok: false; error: "NO_INICIADA" | "YA_ENVIADA" | "RESPUESTAS_INVALIDAS" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [autoevaluacion] = await tx.select({
+      id: schema.autoevaluaciones.id,
+      estado: schema.autoevaluaciones.estado,
+    })
+      .from(schema.autoevaluaciones)
+      .innerJoin(schema.promociones, eq(schema.promociones.id, schema.autoevaluaciones.promocionId))
+      .where(eq(schema.promociones.userId, userId));
+    if (!autoevaluacion) return { ok: false, error: "NO_INICIADA" };
+    if (autoevaluacion.estado !== "borrador") return { ok: false, error: "YA_ENVIADA" };
+
+    const asignadas = await tx.select({
+      preguntaId: schema.autoevaluacionRespuestas.preguntaId,
+      respuestaCorrecta: schema.autoevaluacionPreguntas.respuestaCorrecta,
+    })
+      .from(schema.autoevaluacionRespuestas)
+      .innerJoin(schema.autoevaluacionPreguntas, eq(schema.autoevaluacionPreguntas.id, schema.autoevaluacionRespuestas.preguntaId))
+      .where(eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id));
+
+    const idsAsignados = new Set(asignadas.map((a) => a.preguntaId));
+    const idsRecibidos = new Set(respuestas.map((r) => r.preguntaId));
+    const mismoSet = idsAsignados.size === idsRecibidos.size && [...idsAsignados].every((id) => idsRecibidos.has(id));
+    if (!mismoSet) return { ok: false, error: "RESPUESTAS_INVALIDAS" };
+
+    const mapaCorrectas = new Map(asignadas.map((a) => [a.preguntaId, a.respuestaCorrecta]));
+    let aciertos = 0;
+    for (const r of respuestas) {
+      const correcta = mapaCorrectas.get(r.preguntaId);
+      if (correcta === r.respuestaElegida) aciertos++;
+      await tx.update(schema.autoevaluacionRespuestas)
+        .set({ respuestaElegida: r.respuestaElegida })
+        .where(and(
+          eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id),
+          eq(schema.autoevaluacionRespuestas.preguntaId, r.preguntaId),
+        ));
+    }
+
+    const puntaje = calcularPuntajeAutoevaluacion(aciertos);
+    await tx.update(schema.autoevaluaciones)
+      .set({ estado: "enviado", puntaje, enviadoAt: new Date() })
+      .where(eq(schema.autoevaluaciones.id, autoevaluacion.id));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: userId,
+      accion: "actualizar",
+      descripcion: `Envió su Autoevaluación (${aciertos}/${respuestas.length} aciertos)`,
+    });
+
+    return { ok: true, puntaje };
+  });
+}
+
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
 // Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal
