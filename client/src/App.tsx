@@ -26,6 +26,7 @@ import Promocion from "@/pages/Promocion";
 import Autoevaluacion from "@/pages/Autoevaluacion";
 import GestionInconformidades from "@/pages/GestionInconformidades";
 import GestionPromocion from "@/pages/GestionPromocion";
+import GestionAutoevaluacion from "@/pages/GestionAutoevaluacion";
 import CentroModulos from "@/pages/CentroModulos";
 
 class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -199,6 +200,12 @@ export default function App() {
         <ProtectedRoute
           path="/promociones"
           component={GestionPromocion}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/autoevaluaciones"
+          component={GestionAutoevaluacion}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />
