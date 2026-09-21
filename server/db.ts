@@ -1267,6 +1267,38 @@ export async function enviarAutoevaluacion(
   });
 }
 
+function normalizarOpcionLikert(valor: string): (typeof schema.LIKERT_OPCIONES)[number] | null {
+  const normalizado = valor.trim().toLowerCase().replace(/\s+/g, "_");
+  return (schema.LIKERT_OPCIONES as readonly string[]).includes(normalizado)
+    ? (normalizado as (typeof schema.LIKERT_OPCIONES)[number])
+    : null;
+}
+
+export async function importarFilaPreguntaAutoevaluacion(
+  texto: string,
+  respuestaCorrectaCsv: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const textoLimpio = texto.trim();
+  if (!textoLimpio) return { ok: false, error: "Falta el texto de la pregunta" };
+
+  const respuestaCorrecta = normalizarOpcionLikert(respuestaCorrectaCsv);
+  if (!respuestaCorrecta) {
+    return { ok: false, error: `respuesta_correcta inválida: "${respuestaCorrectaCsv}" (usa siempre/frecuente/algunas_veces/nunca)` };
+  }
+
+  const d = await getDb();
+  await d.insert(schema.autoevaluacionPreguntas).values({ texto: textoLimpio, respuestaCorrecta });
+  return { ok: true };
+}
+
+export async function contarPreguntasActivasAutoevaluacion(): Promise<number> {
+  const d = await getDb();
+  const [fila] = await d.select({ count: sql<number>`count(*)` })
+    .from(schema.autoevaluacionPreguntas)
+    .where(eq(schema.autoevaluacionPreguntas.activo, true));
+  return fila?.count ?? 0;
+}
+
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
 // Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal
