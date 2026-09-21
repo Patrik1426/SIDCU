@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey, primaryKey } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey, primaryKey, unique } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -325,6 +325,56 @@ export const promociones = mysqlTable("promociones", {
   jefeIdx: index("promo_jefe_idx").on(table.jefeAsignadoId),
 }));
 
+export const LIKERT_OPCIONES = ["siempre", "frecuente", "algunas_veces", "nunca"] as const;
+
+// Banco maestro de preguntas de Autoevaluación -- lo sube el admin vía
+// import CSV (texto + columna correcta), mismo patrón que cursos/
+// instituciones/pool de evaluadores. `activo` permite retirar una pregunta
+// del sorteo sin borrar historial de quien ya la contestó.
+export const autoevaluacionPreguntas = mysqlTable("autoevaluacion_preguntas", {
+  id: int("id").autoincrement().primaryKey(),
+  texto: varchar("texto", { length: 500 }).notNull(),
+  respuestaCorrecta: mysqlEnum("respuesta_correcta", LIKERT_OPCIONES).notNull(),
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// 1 autoevaluación por inscripción a Promoción (unique en promocionId) --
+// no es libre para cualquier trabajador, está ligada al proceso de
+// Promoción (decisión confirmada 2026-09-21, ver spec sección 2).
+export const autoevaluaciones = mysqlTable("autoevaluaciones", {
+  id: int("id").autoincrement().primaryKey(),
+  promocionId: int("promocion_id").notNull().unique().references(() => promociones.id, { onDelete: "cascade" }),
+  estado: mysqlEnum("estado", ["borrador", "enviado"]).notNull().default("borrador"),
+  puntaje: int("puntaje"),
+  enviadoAt: timestamp("enviado_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Las 28 filas creadas al "iniciar" SON el registro del sorteo -- evita una
+// columna JSON separada y evita re-sortear si el trabajador recarga a
+// medias. onDelete "restrict" en preguntaId: no se puede borrar una
+// pregunta que alguien ya tiene asignada/contestada (a diferencia de
+// `activo=false`, que sí la saca de sorteos futuros sin tocar el historial).
+export const autoevaluacionRespuestas = mysqlTable("autoevaluacion_respuestas", {
+  id: int("id").autoincrement().primaryKey(),
+  autoevaluacionId: int("autoevaluacion_id").notNull(),
+  preguntaId: int("pregunta_id").notNull(),
+  respuestaElegida: mysqlEnum("respuesta_elegida", LIKERT_OPCIONES),
+}, (table) => ({
+  respuestaUnicaIdx: unique("autoeval_resp_unica_idx").on(table.autoevaluacionId, table.preguntaId),
+  fkAutoeval: foreignKey({
+    columns: [table.autoevaluacionId],
+    foreignColumns: [autoevaluaciones.id],
+    name: "fk_autoeval_resp_autoeval",
+  }).onDelete("cascade"),
+  fkPregunta: foreignKey({
+    columns: [table.preguntaId],
+    foreignColumns: [autoevaluacionPreguntas.id],
+    name: "fk_autoeval_resp_pregunta",
+  }).onDelete("restrict"),
+}));
+
 export const promocionCorreosPendientes = mysqlTable("promocion_correos_pendientes", {
   id: int("id").autoincrement().primaryKey(),
   promocionId: int("promocion_id").notNull().references(() => promociones.id, { onDelete: "cascade" }),
@@ -373,3 +423,6 @@ export type Promocion = typeof promociones.$inferSelect;
 export type PromocionEvaluadorPool = typeof promocionEvaluadorPool.$inferSelect;
 export type PromocionCorreoPendiente = typeof promocionCorreosPendientes.$inferSelect;
 export type PromocionModuloConfig = typeof promocionModuloConfig.$inferSelect;
+export type AutoevaluacionPregunta = typeof autoevaluacionPreguntas.$inferSelect;
+export type Autoevaluacion = typeof autoevaluaciones.$inferSelect;
+export type AutoevaluacionRespuesta = typeof autoevaluacionRespuestas.$inferSelect;
