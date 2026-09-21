@@ -1,0 +1,85 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { router, protectedProcedure, adminProcedure } from "../trpc";
+import {
+  miAutoevaluacion,
+  iniciarAutoevaluacion,
+  enviarAutoevaluacion,
+  importarFilaPreguntaAutoevaluacion,
+  contarPreguntasActivasAutoevaluacion,
+} from "../db";
+import { LIKERT_OPCIONES } from "../../drizzle/schema";
+
+type ErrorCodigoIniciar = "SIN_PROMOCION" | "YA_INICIADA";
+type ErrorCodigoEnviar = "NO_INICIADA" | "YA_ENVIADA" | "RESPUESTAS_INVALIDAS";
+
+function traducirErrorIniciar(error: ErrorCodigoIniciar): TRPCError {
+  switch (error) {
+    case "SIN_PROMOCION":
+      return new TRPCError({ code: "FORBIDDEN", message: "Necesitas tener una inscripción a Promoción confirmada para hacer tu autoevaluación." });
+    case "YA_INICIADA":
+      return new TRPCError({ code: "CONFLICT", message: "Ya iniciaste tu autoevaluación." });
+    default: {
+      const _exhaustivo: never = error;
+      return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
+    }
+  }
+}
+
+function traducirErrorEnviar(error: ErrorCodigoEnviar): TRPCError {
+  switch (error) {
+    case "NO_INICIADA":
+      return new TRPCError({ code: "BAD_REQUEST", message: "Todavía no has iniciado tu autoevaluación." });
+    case "YA_ENVIADA":
+      return new TRPCError({ code: "CONFLICT", message: "Tu autoevaluación ya fue enviada." });
+    case "RESPUESTAS_INVALIDAS":
+      return new TRPCError({ code: "BAD_REQUEST", message: "Las respuestas no corresponden a tu sorteo de preguntas. Recarga la página e intenta de nuevo." });
+    default: {
+      const _exhaustivo: never = error;
+      return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
+    }
+  }
+}
+
+const filaImportSchema = z.object({ registros: z.array(z.record(z.string(), z.any())) });
+
+export const autoevaluacionRouter = router({
+  miEstado: protectedProcedure.query(({ ctx }) => miAutoevaluacion(ctx.user.id)),
+
+  iniciar: protectedProcedure.mutation(async ({ ctx }) => {
+    const resultado = await iniciarAutoevaluacion(ctx.user.id);
+    if (!resultado.ok) throw traducirErrorIniciar(resultado.error);
+    return { success: true };
+  }),
+
+  enviar: protectedProcedure
+    .input(z.object({
+      respuestas: z.array(z.object({
+        preguntaId: z.number().int().positive(),
+        respuestaElegida: z.enum(LIKERT_OPCIONES),
+      })).length(28, "Debes contestar las 28 preguntas"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const resultado = await enviarAutoevaluacion(ctx.user.id, input.respuestas);
+      if (!resultado.ok) throw traducirErrorEnviar(resultado.error);
+      return { success: true, puntaje: resultado.puntaje };
+    }),
+
+  importarPreguntas: adminProcedure
+    .input(filaImportSchema)
+    .mutation(async ({ input }) => {
+      let creados = 0;
+      const errores: { fila: number; error: string }[] = [];
+      for (let i = 0; i < input.registros.length; i++) {
+        const row = input.registros[i];
+        const texto = (row["texto"] ?? "").toString();
+        const respuestaCorrecta = (row["respuesta_correcta"] ?? "").toString();
+        const resultado = await importarFilaPreguntaAutoevaluacion(texto, respuestaCorrecta);
+        if (resultado.ok) creados++;
+        else errores.push({ fila: i + 1, error: resultado.error });
+      }
+      return { totalProcesados: input.registros.length, creados, errores };
+    }),
+
+  contarActivas: adminProcedure.query(() => contarPreguntasActivasAutoevaluacion()),
+});
