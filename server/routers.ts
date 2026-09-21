@@ -7,7 +7,6 @@ import { capitalizarNombre } from "../shared/utils";
 import {
   getUserByEmail,
   getUserByCurp,
-  getUserById,
   createUser,
   crearTokenRestablecimiento,
   obtenerTokenRestablecimiento,
@@ -15,7 +14,7 @@ import {
   marcarTokenComoUsado,
 } from "./db";
 import { COOKIE_NAME } from "../shared/const";
-import { router, publicProcedure, protectedProcedure } from "./trpc";
+import { router, publicProcedure } from "./trpc";
 import { servidoresRouter } from "./routers/servidores";
 import { usuariosRouter } from "./routers/usuarios";
 import { importacionRouter } from "./routers/importacion";
@@ -136,7 +135,6 @@ const authRouter = router({
           nombre: user.nombre,
           email: user.email ?? null,
           role: user.role,
-          passwordTemporal: user.passwordTemporal,
         },
       };
     }),
@@ -147,38 +145,6 @@ const authRouter = router({
     ctx.res.clearCookie(COOKIE_NAME);
     return { success: true };
   }),
-
-  miEstadoPassword: protectedProcedure.query(async ({ ctx }) => {
-    const user = await getUserById(ctx.user.id);
-    return { passwordTemporal: user?.passwordTemporal ?? false };
-  }),
-
-  cambiarPasswordTemporal: protectedProcedure
-    .input(z.object({ nuevoPassword: z.string().min(8, "Mínimo 8 caracteres") }))
-    .mutation(async ({ ctx, input }) => {
-      // I5 (revision final de rama): antes esta mutation no chequeaba nada
-      // mas que "hay sesion" -- usable por CUALQUIER cuenta autenticada
-      // (incluyendo un admin, o una sesion secuestrada) como un cambio de
-      // password self-service sin verificar el password actual, mientras que
-      // su unico proposito real es cerrar el flujo forzado de password
-      // temporal (ver miEstadoPassword/CambiarPasswordTemporal.tsx). Se
-      // relee el usuario FRESCO de la DB (no de ctx.user, que viene del JWT
-      // y puede estar desactualizado si passwordTemporal cambio despues de
-      // que se emitio el token) y se rechaza si no esta en ese estado --
-      // mensaje generico, sin revelar el estado interno de la cuenta.
-      const user = await getUserById(ctx.user.id);
-      if (!user?.passwordTemporal) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes una acción de cambio de contraseña pendiente." });
-      }
-      const hash = await hashPassword(input.nuevoPassword);
-      await actualizarPasswordUsuario(ctx.user.id, hash);
-      const { getDb } = await import("./db");
-      const schema = await import("../drizzle/schema");
-      const { eq } = await import("drizzle-orm");
-      const d = await getDb();
-      await d.update(schema.users).set({ passwordTemporal: false }).where(eq(schema.users.id, ctx.user.id));
-      return { success: true };
-    }),
 
   solicitarRestablecimiento: publicProcedure
     .input(z.object({ email: z.string().email() }))

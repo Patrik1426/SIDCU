@@ -29,7 +29,7 @@ describe("asignarEvaluador", () => {
     expect(calls).not.toContain("insert");
   });
 
-  it("si NO tiene cuenta: crea usuario con password temporal y marca passwordTemporal=true", async () => {
+  it("si NO tiene cuenta: crea usuario con password temporal (única, no forzada a cambiar)", async () => {
     const { tx, calls } = makeTxRecorder([[{ userId: null, curp: "AAAA000101HDFXXX01", nombreCompleto: "Ana Lopez" }]], [{ insertId: 77 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");

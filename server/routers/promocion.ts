@@ -14,6 +14,10 @@ import {
   listarPoolPromocion,
   moverRolPoolPromocion,
   quitarDelPoolPromocion,
+  obtenerConfigModuloPromocion,
+  moduloPromocionHabilitado,
+  actualizarModuloPromocionManual,
+  programarVentanaModuloPromocion,
 } from "../db";
 
 type ErrorCodigoConfirmar = "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" | "CORREO_INVALIDO";
@@ -59,7 +63,45 @@ const evaluadorSeleccionSchema = z.object({
 
 const filaImportSchema = z.object({ registros: z.array(z.record(z.string(), z.any())) });
 
+// "Pausa total": mientras el modulo esta deshabilitado, ningun trabajador
+// nuevo puede confirmar inscripcion. Lectura (miElegibilidad, buscarEnPool)
+// sigue abierta y una inscripcion ya confirmada nunca se toca -- mismo
+// criterio que exigirModuloHabilitado en inconformidad.ts.
+async function exigirModuloHabilitado(): Promise<void> {
+  if (!(await moduloPromocionHabilitado())) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "El módulo Promoción no está disponible en este momento." });
+  }
+}
+
 export const promocionRouter = router({
+  moduloHabilitado: protectedProcedure.query(async () => {
+    return moduloPromocionHabilitado();
+  }),
+
+  moduloConfig: adminProcedure.query(async () => {
+    return obtenerConfigModuloPromocion();
+  }),
+
+  actualizarModulo: adminProcedure
+    .input(z.object({ habilitado: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await actualizarModuloPromocionManual(input.habilitado, ctx.user.id);
+      return { success: true };
+    }),
+
+  programarVentanaModulo: adminProcedure
+    .input(z.object({
+      fechaDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+      fechaHasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+    }).refine((v) => v.fechaHasta >= v.fechaDesde, {
+      message: '"Hasta" no puede ser antes que "Desde".',
+      path: ["fechaHasta"],
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await programarVentanaModuloPromocion(input.fechaDesde, input.fechaHasta, ctx.user.id);
+      return { success: true };
+    }),
+
   miElegibilidad: protectedProcedure.query(async ({ ctx }) => {
     const [elegibilidad, yaInscrito] = await Promise.all([
       elegibilidadPromocion(ctx.user.id),
@@ -88,6 +130,7 @@ export const promocionRouter = router({
       companero2: evaluadorSeleccionSchema,
     }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const resultado = await confirmarInscripcion(ctx.user.id, input);
       if (!resultado.ok) throw traducirErrorConfirmar(resultado.error);
       return { success: true };

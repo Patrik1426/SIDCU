@@ -91,9 +91,22 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     enabled: role === "user",
   });
   const tieneCasoEnviado = miInconformidad?.estado === "enviado";
+
+  // Mismo criterio que Inconformidad arriba: pausa nunca esconde trabajo ya
+  // hecho, solo evita mostrar un link a una seccion que ahora mismo va a
+  // rechazar la confirmacion.
+  const { data: promocionHabilitada } = trpc.promocion.moduloHabilitado.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const { data: miElegibilidadPromocion } = trpc.promocion.miElegibilidad.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const yaInscritoPromocion = miElegibilidadPromocion?.yaInscrito === true;
+
   const visibleItems = navItems.filter((item) => {
     if (!item.roles.includes(role)) return false;
     if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false || tieneCasoEnviado;
+    if (item.href === "/portal/promocion") return promocionHabilitada !== false || yaInscritoPromocion;
     return true;
   });
 

@@ -25,9 +25,9 @@ const seleccionValida = {
 };
 
 describe("confirmarInscripcion", () => {
-  it("no elegible: menos de 2 cursos aprobados con >=70", async () => {
+  it("no elegible: promedio de los 2 cursos completados por debajo de 70", async () => {
     vi.resetModules();
-    const { tx } = makeTxRecorder([[{ calificacion: 60 }, { calificacion: 85 }]], []);
+    const { tx } = makeTxRecorder([[{ calificacion: 50 }, { calificacion: 60 }]], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);

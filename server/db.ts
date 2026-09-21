@@ -1108,8 +1108,11 @@ export async function obtenerConfigModuloInconformidad() {
 
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
+// Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal
+// cual el modulo Promocion, que tiene su propia tabla de config con la misma
+// forma (ver promocionModuloConfig en drizzle/schema.ts).
 export function moduloEstaHabilitadoAhora(
-  config: Pick<schema.InconformidadModuloConfig, "habilitado" | "fechaDesde" | "fechaHasta">,
+  config: { habilitado: boolean; fechaDesde: string | null; fechaHasta: string | null },
   ahora: Date = new Date(),
 ): boolean {
   if (config.fechaDesde && config.fechaHasta) {
@@ -1167,6 +1170,69 @@ export async function programarVentanaModuloInconformidad(
       usuarioId: adminUserId,
       accion: "actualizar",
       descripcion: `Módulo Inconformidad: ventana programada del ${fechaDesde} al ${fechaHasta}`,
+    });
+  });
+}
+
+// ─── Config del modulo Promocion (Centro de Modulos) ──────────────────
+// Mismo patron que Inconformidad arriba: fila unica id=1, ventana manda
+// sobre el flag manual, tocar el switch a mano limpia la ventana.
+
+export async function obtenerConfigModuloPromocion() {
+  const d = await getDb();
+  const [row] = await d.select({
+    id: schema.promocionModuloConfig.id,
+    habilitado: schema.promocionModuloConfig.habilitado,
+    fechaDesde: schema.promocionModuloConfig.fechaDesde,
+    fechaHasta: schema.promocionModuloConfig.fechaHasta,
+    actualizadoPor: schema.promocionModuloConfig.actualizadoPor,
+    actualizadoPorNombre: schema.users.nombre,
+    updatedAt: schema.promocionModuloConfig.updatedAt,
+  })
+    .from(schema.promocionModuloConfig)
+    .leftJoin(schema.users, eq(schema.users.id, schema.promocionModuloConfig.actualizadoPor))
+    .where(eq(schema.promocionModuloConfig.id, 1));
+  if (row) return row;
+  return { id: 1, habilitado: true, fechaDesde: null, fechaHasta: null, actualizadoPor: null, actualizadoPorNombre: null, updatedAt: new Date() };
+}
+
+export async function moduloPromocionHabilitado(): Promise<boolean> {
+  const config = await obtenerConfigModuloPromocion();
+  return moduloEstaHabilitadoAhora(config);
+}
+
+export async function actualizarModuloPromocionManual(habilitado: boolean, adminUserId: number): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.promocionModuloConfig)
+      .set({ habilitado, fechaDesde: null, fechaHasta: null, actualizadoPor: adminUserId })
+      .where(eq(schema.promocionModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Promoción ${habilitado ? "activado" : "desactivado"} manualmente (cancela ventana programada si había una)`,
+    });
+  });
+}
+
+export async function programarVentanaModuloPromocion(
+  fechaDesde: string,
+  fechaHasta: string,
+  adminUserId: number,
+): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.promocionModuloConfig)
+      .set({ fechaDesde, fechaHasta, actualizadoPor: adminUserId })
+      .where(eq(schema.promocionModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Promoción: ventana programada del ${fechaDesde} al ${fechaHasta}`,
     });
   });
 }
@@ -1584,28 +1650,40 @@ export async function actualizarConfigFactorInconformidad(
 
 // Deliberadamente separada de contarAcreditacion/progresoAcreditacion --
 // esas 2 ya las usan el resumen de admin en Solicitudes y el progreso del
-// Portal. Si el cliente pide despues cambiar la regla de Promocion a un
-// promedio en vez de "cada curso individual >=70", tocar aqui no debe poder
-// romper esas 2 pantallas (decision tomada antes de escribir codigo, ver
-// docs/superpowers/specs/2026-09-13-promocion-design.md).
+// Portal. Regla (retroalimentacion cliente 2026-09-17): pondera PROMEDIO
+// de los 2 cursos, no cada uno individual -- ej. 100 y 50 promedia 75 y
+// SI es elegible aunque el 50 solo no aprobaria.
+//
+// calificacion1/calificacion2 se regresan SIEMPRE que haya 2 cursos
+// completados, sea o no elegible -- el trabajador necesita ver cuanto sacó
+// y por qué no le alcanzó (retroalimentacion cliente 2026-09-17: mostrar
+// las calificaciones y la razon de elegible/no elegible en Promocion.tsx).
+// Con menos de 2 cursos completados no hay nada que mostrar todavia.
 export function calcularElegibilidadPromocion(
   calificaciones: number[],
-): { elegible: true; calificacion1: number; calificacion2: number } | { elegible: false } {
-  const aprobadas = calificaciones.filter((c) => c >= CALIFICACION_APROBATORIA);
-  if (aprobadas.length < CURSOS_REQUERIDOS_ACREDITACION) return { elegible: false };
-  return { elegible: true, calificacion1: aprobadas[0], calificacion2: aprobadas[1] };
+): { elegible: true; calificacion1: number; calificacion2: number } | { elegible: false; calificacion1?: number; calificacion2?: number } {
+  if (calificaciones.length < CURSOS_REQUERIDOS_ACREDITACION) return { elegible: false };
+  const [calificacion1, calificacion2] = calificaciones;
+  const promedio = (calificacion1 + calificacion2) / 2;
+  if (promedio < CALIFICACION_APROBATORIA) return { elegible: false, calificacion1, calificacion2 };
+  return { elegible: true, calificacion1, calificacion2 };
 }
 
 export async function elegibilidadPromocion(userId: number) {
   const d = await getDb();
   const completadas = await d
-    .select({ calificacion: schema.solicitudesCurso.calificacion })
+    .select({ calificacion: schema.solicitudesCurso.calificacion, nombreCurso: schema.cursos.nombre })
     .from(schema.solicitudesCurso)
+    .innerJoin(schema.cursos, eq(schema.cursos.id, schema.solicitudesCurso.cursoId))
     .where(and(
       eq(schema.solicitudesCurso.userId, userId),
       eq(schema.solicitudesCurso.estado, "completada"),
     ));
-  return calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+  const resultado = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
+  // nombreCurso1/2 son solo para mostrarle al trabajador qué curso sacó qué
+  // calificación (retroalimentacion cliente 2026-09-17) -- no participan en
+  // el calculo de elegibilidad, que sigue viviendo en calcularElegibilidadPromocion.
+  return { ...resultado, nombreCurso1: completadas[0]?.nombreCurso, nombreCurso2: completadas[1]?.nombreCurso };
 }
 
 type PromocionTx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
@@ -1638,7 +1716,6 @@ export async function asignarEvaluador(
     email: correoCapturado,
     passwordHash,
     role: "user",
-    passwordTemporal: true,
   });
   const nuevoUserId = insertResult.insertId;
 
@@ -2184,11 +2261,10 @@ export async function procesarLotePendientesCorreo(limite = 50): Promise<{ proce
       .where(eq(schema.promociones.id, fila.promocionId));
 
     // La plantilla se elige por si ESTA fila trae password (creada junto con
-    // la cuenta nueva), no por el estado ACTUAL de users.passwordTemporal --
-    // ese flag se apaga en cuanto la persona cambia su password, pero el
-    // correo original con las credenciales ya se tuvo que mandar antes de
-    // que eso pasara. Ver Task 6/7 (asignarEvaluador guarda el password en
-    // claro en esta misma fila, nunca en una columna permanente).
+    // la cuenta nueva) -- asignarEvaluador guarda el password en claro en
+    // esta misma fila (nunca en una columna permanente de users; la
+    // contraseña emitida es única y no se cambia, no hace falta rastrear su
+    // estado en la cuenta).
     const plantilla = fila.passwordTemporalEnClaro ? "evaluador_nueva_cuenta" : "evaluador_cuenta_existente";
     const resultado = await enviarCorreoEvaluador(destinatario.email, plantilla, {
       nombre: destinatario.nombre,

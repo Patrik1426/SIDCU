@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Award } from "lucide-react";
+import { Award, CheckCircle2, AlertCircle } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 
@@ -63,6 +63,7 @@ export default function Promocion() {
   const [companero2, setCompanero2] = useState<Seleccion>(null);
 
   const { data, isLoading } = trpc.promocion.miElegibilidad.useQuery();
+  const { data: moduloHabilitado } = trpc.promocion.moduloHabilitado.useQuery();
 
   // El backend ya rechaza (SELECCION_INVALIDA) si 2 de los 3 slots terminan
   // con el mismo servidorId -- este check es solo para no dejar que el
@@ -106,6 +107,24 @@ export default function Promocion() {
     );
   }
 
+  // Una inscripcion YA confirmada (data.yaInscrito) siempre se puede seguir
+  // viendo -- esto solo bloquea a quien todavia no confirma la suya mientras
+  // el modulo esta en pausa (mismo criterio "pausa total" que Inconformidad).
+  if (moduloHabilitado === false && !data.yaInscrito) {
+    return (
+      <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+        <motion.div variants={fadeUp}>
+          <h1 className="text-2xl font-bold text-gray-900">Inscripción a Promoción</h1>
+        </motion.div>
+        <motion.div variants={fadeUp} className="rounded-2xl bg-white p-8 text-center shadow-card-rest border border-gray-100">
+          <Award className="mx-auto h-10 w-10 text-gray-300" />
+          <p className="mt-3 font-medium text-gray-700">Esta sección no está disponible por ahora</p>
+          <p className="mt-1 text-sm text-gray-500">Vuelve a intentarlo más tarde.</p>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
   const listoParaConfirmar = jefe?.correo && companero1?.correo && companero2?.correo;
 
   // I4: el modal mostraba un texto generico -- el spec (seccion 4) pide un
@@ -122,12 +141,50 @@ export default function Promocion() {
       </motion.div>
 
       <motion.div variants={fadeUp} className="rounded-2xl bg-white p-8 shadow-card-rest border border-gray-100">
-        <div className="text-center">
-          <Award className="mx-auto h-10 w-10 text-primary-300" />
-        </div>
+        {"calificacion1" in data && data.calificacion1 !== undefined && data.calificacion2 !== undefined ? (
+          <div className={`overflow-hidden rounded-xl border ${data.elegible ? "border-emerald-200" : "border-rose-200"}`}>
+            <div className={`flex items-center justify-between gap-3 border-b px-5 py-3 ${data.elegible ? "border-emerald-100 bg-emerald-50/70" : "border-rose-100 bg-rose-50/70"}`}>
+              <div className="flex items-center gap-2.5 text-sm font-semibold text-gray-900">
+                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${data.elegible ? "bg-emerald-100" : "bg-rose-100"}`}>
+                  <Award className={`h-3.5 w-3.5 ${data.elegible ? "text-emerald-600" : "text-rose-600"}`} aria-hidden="true" />
+                </div>
+                Resultado de cursos
+              </div>
+              <div className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${data.elegible ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                {data.elegible ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                {data.elegible ? "Cumple el requisito" : "No cumple el requisito"}
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100 bg-white px-5">
+              <div className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+                <span className="min-w-0 truncate text-gray-600">{data.nombreCurso1}</span>
+                <span className="shrink-0 tabular-nums font-medium text-gray-900">{data.calificacion1}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+                <span className="min-w-0 truncate text-gray-600">{data.nombreCurso2}</span>
+                <span className="shrink-0 tabular-nums font-medium text-gray-900">{data.calificacion2}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 py-3 text-sm">
+                <span className="font-semibold text-gray-900">Promedio</span>
+                <span className={`shrink-0 tabular-nums text-xl font-bold ${data.elegible ? "text-emerald-600" : "text-rose-600"}`}>
+                  {((data.calificacion1 + data.calificacion2) / 2).toFixed(1)}
+                </span>
+              </div>
+            </div>
+            <p className="px-5 pb-3 text-xs text-gray-500">
+              {data.elegible
+                ? "Superaste el promedio mínimo de 70 para inscribirte a Promoción."
+                : "Necesitas un promedio mínimo de 70 para inscribirte a Promoción."}
+            </p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <Award className="mx-auto h-10 w-10 text-primary-300" />
+          </div>
+        )}
 
         {data.yaInscrito ? (
-          <p className="mt-3 text-center font-medium text-gray-700">Tu inscripción fue registrada</p>
+          <p className="mt-4 text-center font-medium text-gray-700">Tu inscripción fue registrada</p>
         ) : data.elegible ? (
           <div className="mt-6 space-y-5">
             <CampoEvaluador etiqueta="Jefe Inmediato" rol="jefe" seleccion={jefe}
@@ -152,10 +209,10 @@ export default function Promocion() {
               Confirmar inscripción
             </button>
           </div>
-        ) : (
+        ) : "calificacion1" in data && data.calificacion1 !== undefined ? null : (
           <>
-            <p className="mt-3 text-center font-medium text-gray-700">Todavía no cumples el requisito</p>
-            <p className="mt-1 text-center text-sm text-gray-500">Necesitas aprobar 2 cursos con calificación mínima de 70.</p>
+            <p className="mt-4 text-center font-medium text-gray-700">Todavía no cumples el requisito</p>
+            <p className="mt-1 text-center text-sm text-gray-500">Necesitas completar 2 cursos cuyo promedio sea mínimo 70.</p>
           </>
         )}
       </motion.div>

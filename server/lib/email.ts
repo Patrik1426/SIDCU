@@ -3,7 +3,7 @@ import { Resend } from "resend";
 const PLANTILLAS: Record<"evaluador_nueva_cuenta" | "evaluador_cuenta_existente", (datos: Record<string, string>) => { subject: string; html: string }> = {
   evaluador_nueva_cuenta: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",
-    html: `<p>Hola ${datos.nombre},</p><p>Fuiste seleccionado como evaluador de ${datos.trabajador} en el proceso de Promoción.</p><p>Tu usuario es tu CURP (<strong>${datos.curp}</strong>) y tu contraseña temporal es <strong>${datos.passwordTemporal}</strong>. Debes cambiarla al entrar por primera vez.</p>`,
+    html: `<p>Hola ${datos.nombre},</p><p>Fuiste seleccionado como evaluador de ${datos.trabajador} en el proceso de Promoción.</p><p>Tu usuario es tu CURP (<strong>${datos.curp}</strong>) y tu contraseña es <strong>${datos.passwordTemporal}</strong>. Consérvala, es la que debes usar para entrar.</p>`,
   }),
   evaluador_cuenta_existente: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",

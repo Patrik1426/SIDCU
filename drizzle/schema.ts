@@ -8,7 +8,6 @@ export const users = mysqlTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "capturista", "consultor", "user"]).default("user").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
-  passwordTemporal: boolean("password_temporal").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -142,6 +141,19 @@ export const factoresInconformidadConfig = mysqlTable("factores_inconformidad_co
 // el switch a mano limpia la ventana programada (decision confirmada con el
 // cliente: el switch manual siempre puede forzar apagado/prendido).
 export const inconformidadModuloConfig = mysqlTable("inconformidad_modulo_config", {
+  id: int("id").autoincrement().primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+  fechaDesde: date("fecha_desde", { mode: "string" }),
+  fechaHasta: date("fecha_hasta", { mode: "string" }),
+  actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+// Mismo patron que inconformidadModuloConfig (fila unica id=1, sembrada por
+// scripts/seed-modulo-promocion-config.ts) -- controla si el modulo COMPLETO
+// esta disponible para inscripcion nueva, no afecta inscripciones ya
+// confirmadas ni el panel admin.
+export const promocionModuloConfig = mysqlTable("promocion_modulo_config", {
   id: int("id").autoincrement().primaryKey(),
   habilitado: boolean("habilitado").notNull().default(true),
   fechaDesde: date("fecha_desde", { mode: "string" }),
@@ -284,6 +296,16 @@ export const promocionEvaluadorPool = mysqlTable("promocion_evaluador_pool", {
 }, (table) => ({
   pk: primaryKey({ columns: [table.servidorId, table.rol] }),
   rolActivoIdx: index("promo_pool_rol_activo_idx").on(table.rol, table.activo),
+  // Bug conocido de drizzle-kit push (MySQL, ver drizzle-team/drizzle-orm#5125):
+  // en CADA push reintenta un DROP+ADD PRIMARY KEY idéntico (falso positivo de
+  // diff) sobre esta PK compuesta -- el DROP truena con ER_DROP_INDEX_FK
+  // porque el FK de servidorId necesita SIEMPRE algún índice cubriéndolo, y
+  // sin este índice separado el único candidato era la propia PK. Con este
+  // índice dedicado, el DROP de la PK ya no se queda sin cobertura -- el
+  // push (incluido el automático de Railway en cada deploy, ver railway.json)
+  // deja de tronar. El DROP+ADD sigue siendo ruido inofensivo en cada push
+  // hasta que se resuelva río arriba en drizzle-kit.
+  servidorIdIdx: index("promo_pool_servidor_id_idx").on(table.servidorId),
 }));
 
 // onDelete: "restrict" en las FKs de evaluadores (jefeAsignadoId/companeroXId)
@@ -350,3 +372,4 @@ export type InconformidadModuloConfig = typeof inconformidadModuloConfig.$inferS
 export type Promocion = typeof promociones.$inferSelect;
 export type PromocionEvaluadorPool = typeof promocionEvaluadorPool.$inferSelect;
 export type PromocionCorreoPendiente = typeof promocionCorreosPendientes.$inferSelect;
+export type PromocionModuloConfig = typeof promocionModuloConfig.$inferSelect;
