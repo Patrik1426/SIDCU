@@ -5,6 +5,7 @@ export const NIVELES = ["federal", "estatal", "municipal", "otro"] as const;
 export const CALIFICACION_APROBATORIA = 70;
 export const CURSOS_REQUERIDOS_ACREDITACION = 2;
 export const PREGUNTAS_AUTOEVALUACION = 28;
+export const PREGUNTAS_EVALUADOR = 14;
 
 export const TIPO_PROGRAMA_LABELS: Record<string, string> = {
   PAC: "PAC",

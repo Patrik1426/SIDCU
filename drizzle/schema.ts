@@ -8,6 +8,16 @@ export const users = mysqlTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "capturista", "consultor", "user"]).default("user").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  // Solo se llena si asignarEvaluador crea una cuenta NUEVA para un
+  // Jefe/Compañero que no tenía cuenta SIDCU todavía -- null significa
+  // cuenta normal (nunca restringida, nunca expira). 3 días hábiles desde
+  // la creación (ver calcularExpiracion3DiasHabiles en server/db.ts).
+  // Mientras no venza, el gate en App.tsx manda cualquier ruta que no sea
+  // /portal/evaluaciones directo ahí. Al vencer, el worker de expiración
+  // (server/lib/evaluadorExpiracionWorker.ts) pone isActive=false -- el
+  // login ya rechaza isActive=false (server/routers.ts), no hace falta
+  // limpiar esta columna aparte.
+  evaluadorCuentaExpiraEn: timestamp("evaluador_cuenta_expira_en"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -388,6 +398,65 @@ export const autoevaluacionRespuestas = mysqlTable("autoevaluacion_respuestas", 
   }).onDelete("restrict"),
 }));
 
+export const EVALUADOR_ROLES_BANCO = ["jefe", "companero"] as const;
+export const EVALUACION_ROLES = ["jefe", "companero1", "companero2"] as const;
+
+// Banco maestro de preguntas de Evaluadores -- 2 bancos separados
+// (Jefe/Compañero, contenido distinto, nunca comparten preguntas) en UNA
+// tabla con discriminador `rol`, mismo patrón que promocionEvaluadorPool.
+// El admin sube cada banco con su propio import CSV (ver
+// GestionEvaluadores.tsx) -- ambos caen aquí, etiquetados por `rol`.
+export const evaluadorPreguntas = mysqlTable("evaluador_preguntas", {
+  id: int("id").autoincrement().primaryKey(),
+  rol: mysqlEnum("rol", EVALUADOR_ROLES_BANCO).notNull(),
+  texto: varchar("texto", { length: 500 }).notNull(),
+  respuestaCorrecta: mysqlEnum("respuesta_correcta", LIKERT_OPCIONES).notNull(),
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  rolActivoIdx: index("eval_preg_rol_activo_idx").on(table.rol, table.activo),
+}));
+
+// 1 fila por slot de evaluador (Jefe/Compañero1/Compañero2) por
+// promoción -- se crea en confirmarInscripcion, en `estado=borrador` SIN
+// preguntas sorteadas todavía (el sorteo pasa al "iniciar", igual que
+// Autoevaluación, para no sortear preguntas de evaluaciones que tal vez
+// nunca se empiecen). `evaluadorUserId` se guarda directo (no se deriva
+// por join contra promociones) para que sobreviva una reasignación
+// posterior sin ambigüedad de a quién le tocó cada intento.
+// onDelete "restrict" en evaluadorUserId: borrar la cuenta de un
+// evaluador no debe borrar en cascada la evidencia de su evaluación.
+export const evaluaciones = mysqlTable("evaluaciones", {
+  id: int("id").autoincrement().primaryKey(),
+  promocionId: int("promocion_id").notNull().references(() => promociones.id, { onDelete: "cascade" }),
+  rol: mysqlEnum("rol", EVALUACION_ROLES).notNull(),
+  evaluadorUserId: int("evaluador_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  estado: mysqlEnum("estado", ["borrador", "enviado"]).notNull().default("borrador"),
+  // decimal, no int: Jefe da puntos enteros (1pt/acierto) pero Compañero da
+  // fracciones de 6/14 por acierto. Nombre físico "puntaje_final" literal
+  // (no hace falta el truco de nombre distinto al de TS que sí necesitó
+  // autoevaluaciones.puntaje -- esta tabla es nueva desde cero, sin
+  // columna "puntaje" vieja que migrar, cero riesgo de TRUNCATE).
+  puntajeFinal: decimal("puntaje_final", { precision: 4, scale: 1, mode: "number" }),
+  enviadoAt: timestamp("enviado_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  promocionRolIdx: unique("eval_promocion_rol_idx").on(table.promocionId, table.rol),
+  evaluadorUserIdx: index("eval_evaluador_user_idx").on(table.evaluadorUserId),
+}));
+
+// Las 14 filas creadas al "iniciar" SON el registro del sorteo -- mismo
+// principio que autoevaluacionRespuestas (no columna JSON, no re-sorteo
+// si el evaluador recarga a medias).
+export const evaluacionRespuestas = mysqlTable("evaluacion_respuestas", {
+  id: int("id").autoincrement().primaryKey(),
+  evaluacionId: int("evaluacion_id").notNull().references(() => evaluaciones.id, { onDelete: "cascade" }),
+  preguntaId: int("pregunta_id").notNull().references(() => evaluadorPreguntas.id, { onDelete: "restrict" }),
+  respuestaElegida: mysqlEnum("respuesta_elegida", LIKERT_OPCIONES),
+}, (table) => ({
+  respuestaUnicaIdx: unique("eval_resp_unica_idx").on(table.evaluacionId, table.preguntaId),
+}));
+
 export const promocionCorreosPendientes = mysqlTable("promocion_correos_pendientes", {
   id: int("id").autoincrement().primaryKey(),
   promocionId: int("promocion_id").notNull().references(() => promociones.id, { onDelete: "cascade" }),
@@ -439,3 +508,6 @@ export type PromocionModuloConfig = typeof promocionModuloConfig.$inferSelect;
 export type AutoevaluacionPregunta = typeof autoevaluacionPreguntas.$inferSelect;
 export type Autoevaluacion = typeof autoevaluaciones.$inferSelect;
 export type AutoevaluacionRespuesta = typeof autoevaluacionRespuestas.$inferSelect;
+export type EvaluadorPregunta = typeof evaluadorPreguntas.$inferSelect;
+export type Evaluacion = typeof evaluaciones.$inferSelect;
+export type EvaluacionRespuesta = typeof evaluacionRespuestas.$inferSelect;
