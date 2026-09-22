@@ -2305,6 +2305,32 @@ export async function enviarEvaluacion(
   });
 }
 
+export async function importarFilaPreguntaEvaluador(
+  rol: (typeof schema.EVALUADOR_ROLES_BANCO)[number],
+  texto: string,
+  respuestaCorrectaCsv: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const textoLimpio = texto.trim();
+  if (!textoLimpio) return { ok: false, error: "Falta el texto de la pregunta" };
+
+  const respuestaCorrecta = normalizarOpcionLikert(respuestaCorrectaCsv);
+  if (!respuestaCorrecta) {
+    return { ok: false, error: `respuesta_correcta inválida: "${respuestaCorrectaCsv}" (usa siempre/frecuente/algunas_veces/nunca)` };
+  }
+
+  const d = await getDb();
+  await d.insert(schema.evaluadorPreguntas).values({ rol, texto: textoLimpio, respuestaCorrecta });
+  return { ok: true };
+}
+
+export async function contarPreguntasActivasEvaluador(rol: (typeof schema.EVALUADOR_ROLES_BANCO)[number]): Promise<number> {
+  const d = await getDb();
+  const [fila] = await d.select({ count: sql<number>`count(*)` })
+    .from(schema.evaluadorPreguntas)
+    .where(and(eq(schema.evaluadorPreguntas.rol, rol), eq(schema.evaluadorPreguntas.activo, true)));
+  return fila?.count ?? 0;
+}
+
 // Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
 // NO exige que la persona ya tenga cuenta `users` -- solo que exista un
 // registro activo en servidores_publicos. Si el pool exigiera cuenta previa,
