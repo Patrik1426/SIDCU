@@ -128,6 +128,25 @@ describe("reasignarEvaluadorPromocion", () => {
     expect(calls).toContain("insert");
   });
 
+  it("reasignar borra la evaluacion en borrador del slot viejo y crea una nueva para el evaluador nuevo", async () => {
+    const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
+    const { tx, calls } = makeTxRecorder([
+      [{ servidorId: 5 }], // servidorEnPool: valido
+      [promoExistente],
+      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
+      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
+    ], []);
+    const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+
+    expect(resultado).toEqual({ ok: true });
+    expect(calls).toContain("delete");
+  });
+
   it("rechaza por conflicto SIN llamar asignarEvaluador si el servidor ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
     // Regresion del hallazgo de revision: antes, el chequeo de conflicto corria
     // DESPUES de asignarEvaluador, asi que un UPDATE users.email ya commiteado

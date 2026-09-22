@@ -2697,6 +2697,21 @@ export async function reasignarEvaluadorPromocion(
 
     const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
 
+    // La fila `evaluaciones` del slot reasignado solo puede estar en
+    // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie
+    // reasigna un evaluador que ya contestó, el caso real de uso es
+    // expiración de cuenta ANTES de contestar). Se borra la fila vieja (si
+    // existe -- puede que ni siquiera se hubiera "iniciado" todavía, en
+    // cuyo caso no hay filas de evaluacionRespuestas que limpiar, el
+    // onDelete cascade se encarga si sí las había) y se crea una nueva
+    // para el evaluador nuevo, mismo patrón borrador que confirmarInscripcion.
+    await tx.delete(schema.evaluaciones).where(and(
+      eq(schema.evaluaciones.promocionId, promocionId),
+      eq(schema.evaluaciones.rol, rol),
+      eq(schema.evaluaciones.estado, "borrador"),
+    ));
+    await tx.insert(schema.evaluaciones).values({ promocionId, rol, evaluadorUserId: nuevoUserId });
+
     let valorAnterior: number;
     let update: Partial<typeof schema.promociones.$inferInsert>;
     if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
