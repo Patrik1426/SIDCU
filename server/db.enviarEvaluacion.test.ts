@@ -97,18 +97,23 @@ describe("enviarEvaluacion", () => {
       { preguntaId: 1, respuestaCorrecta: "siempre" },
       { preguntaId: 2, respuestaCorrecta: "nunca" },
     ];
-    const { tx, calls } = makeTxRecorder([[fila], asignadas], []);
+    const { tx, calls, setCalls } = makeTxRecorder([[fila], asignadas], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { enviarEvaluacion } = await import("./db");
+    const { enviarEvaluacion, calcularPuntajeEvaluadorJefe } = await import("./db");
     const resultado = await enviarEvaluacion(1, 5, respuestasValidas(2));
 
     expect(resultado).toEqual({ ok: true });
     expect(fakeDb.transaction).toHaveBeenCalledTimes(1);
     // select evaluacion, select asignadas, 2x update respuesta, update evaluacion, insert auditoria
     expect(calls).toEqual(["select", "select", "update", "update", "update", "insert"]);
+    // setCalls: 2x .set() de las respuestas + 1x .set() del update final sobre
+    // schema.evaluaciones (el ultimo) -- ese ultimo es el que trae puntajeFinal.
+    const setEvaluacion = setCalls[setCalls.length - 1];
+    expect(setEvaluacion.puntajeFinal).toBe(calcularPuntajeEvaluadorJefe(2));
+    expect(setEvaluacion.puntajeFinal).toBe(2);
   });
 
   it("rol companero2 usa la misma formula que companero1 (calcularPuntajeEvaluadorCompaniero)", async () => {
@@ -117,13 +122,21 @@ describe("enviarEvaluacion", () => {
       { preguntaId: 1, respuestaCorrecta: "siempre" },
       { preguntaId: 2, respuestaCorrecta: "nunca" },
     ];
-    const { tx } = makeTxRecorder([[fila], asignadas], []);
+    const { tx, setCalls } = makeTxRecorder([[fila], asignadas], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
-    const { enviarEvaluacion } = await import("./db");
+    const { enviarEvaluacion, calcularPuntajeEvaluadorCompaniero, calcularPuntajeEvaluadorJefe } = await import("./db");
     const resultado = await enviarEvaluacion(1, 5, respuestasValidas(2));
     expect(resultado).toEqual({ ok: true });
+
+    const setEvaluacion = setCalls[setCalls.length - 1];
+    expect(setEvaluacion.puntajeFinal).toBeCloseTo(calcularPuntajeEvaluadorCompaniero(2), 5);
+    expect(setEvaluacion.puntajeFinal).toBeCloseTo(2 * (6 / 14), 5);
+    // prueba que el dispatch por rol realmente cambia de formula: si alguien
+    // por error usara calcularPuntajeEvaluadorJefe para companero2, este
+    // valor seria 2 (distinto de ~0.857) y la asercion de arriba fallaria.
+    expect(setEvaluacion.puntajeFinal).not.toBe(calcularPuntajeEvaluadorJefe(2));
   });
 });
