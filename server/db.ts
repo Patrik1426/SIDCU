@@ -7,7 +7,7 @@ import { randomInt } from "crypto";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
-import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION, PREGUNTAS_AUTOEVALUACION } from "../shared/const";
+import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION, PREGUNTAS_AUTOEVALUACION, PREGUNTAS_EVALUADOR } from "../shared/const";
 import { validarCorreoEvaluador } from "./lib/validarCorreo";
 import { generarPasswordTemporal, hashPassword } from "./auth";
 import { enviarCorreoEvaluador } from "./lib/email";
@@ -2114,6 +2114,118 @@ export async function confirmarInscripcion(
     });
   } catch (err: any) {
     if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "YA_INSCRITO" };
+    throw err;
+  }
+}
+
+type EvaluacionPendiente = {
+  evaluacionId: number;
+  rol: (typeof schema.EVALUACION_ROLES)[number];
+  nombreEvaluado: string;
+  fechaLimite: Date | null;
+};
+
+// Lista solo lo que este evaluador todavia debe contestar -- estado=enviado
+// se excluye, ya no es "pendiente". fechaLimite viene de la cuenta DEL
+// EVALUADOR (users.evaluadorCuentaExpiraEn de quien pregunta) -- null si
+// su cuenta no es on-the-fly, o si ya tenia cuenta antes de ser asignado.
+export async function listarMisEvaluacionesPendientes(userId: number): Promise<EvaluacionPendiente[]> {
+  const d = await getDb();
+  return d.select({
+    evaluacionId: schema.evaluaciones.id,
+    rol: schema.evaluaciones.rol,
+    nombreEvaluado: schema.servidoresPublicos.nombreCompleto,
+    fechaLimite: schema.users.evaluadorCuentaExpiraEn,
+  })
+    .from(schema.evaluaciones)
+    .innerJoin(schema.promociones, eq(schema.promociones.id, schema.evaluaciones.promocionId))
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.promociones.userId))
+    .innerJoin(schema.users, eq(schema.users.id, schema.evaluaciones.evaluadorUserId))
+    .where(and(
+      eq(schema.evaluaciones.evaluadorUserId, userId),
+      eq(schema.evaluaciones.estado, "borrador"),
+    ));
+}
+
+type EstadoEvaluacion =
+  | { estado: "no_encontrada" }
+  | { estado: "ajena" }
+  | { estado: "borrador"; nombreEvaluado: string; preguntas: { preguntaId: number; texto: string; respuestaElegida: (typeof schema.LIKERT_OPCIONES)[number] | null }[] }
+  | { estado: "enviado" };
+
+// Lectura de UNA evaluación específica (para el wizard). "enviado" no
+// regresa preguntas ni puntaje -- el evaluador nunca ve ninguno de los dos
+// (regla confirmada por el cliente 2026-09-22, aplica también al
+// evaluador sobre su propia evaluación, no solo al evaluado).
+export async function miEvaluacion(userId: number, evaluacionId: number): Promise<EstadoEvaluacion> {
+  const d = await getDb();
+  const [fila] = await d.select({
+    id: schema.evaluaciones.id,
+    evaluadorUserId: schema.evaluaciones.evaluadorUserId,
+    estado: schema.evaluaciones.estado,
+    nombreEvaluado: schema.servidoresPublicos.nombreCompleto,
+  })
+    .from(schema.evaluaciones)
+    .innerJoin(schema.promociones, eq(schema.promociones.id, schema.evaluaciones.promocionId))
+    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.userId, schema.promociones.userId))
+    .where(eq(schema.evaluaciones.id, evaluacionId));
+
+  if (!fila) return { estado: "no_encontrada" };
+  if (fila.evaluadorUserId !== userId) return { estado: "ajena" };
+  if (fila.estado === "enviado") return { estado: "enviado" };
+
+  const preguntas = await d.select({
+    preguntaId: schema.evaluacionRespuestas.preguntaId,
+    texto: schema.evaluadorPreguntas.texto,
+    respuestaElegida: schema.evaluacionRespuestas.respuestaElegida,
+  })
+    .from(schema.evaluacionRespuestas)
+    .innerJoin(schema.evaluadorPreguntas, eq(schema.evaluadorPreguntas.id, schema.evaluacionRespuestas.preguntaId))
+    .where(eq(schema.evaluacionRespuestas.evaluacionId, fila.id));
+
+  return { estado: "borrador", nombreEvaluado: fila.nombreEvaluado, preguntas };
+}
+
+export async function iniciarEvaluacion(
+  userId: number,
+  evaluacionId: number,
+): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADA" | "AJENA" | "YA_INICIADA" | "BANCO_INSUFICIENTE" }> {
+  const d = await getDb();
+  try {
+    return await d.transaction(async (tx) => {
+      const [fila] = await tx.select({
+        id: schema.evaluaciones.id,
+        evaluadorUserId: schema.evaluaciones.evaluadorUserId,
+        rol: schema.evaluaciones.rol,
+      })
+        .from(schema.evaluaciones)
+        .where(eq(schema.evaluaciones.id, evaluacionId));
+      if (!fila) return { ok: false as const, error: "NO_ENCONTRADA" as const };
+      if (fila.evaluadorUserId !== userId) return { ok: false as const, error: "AJENA" as const };
+
+      // rol de evaluaciones es jefe/companero1/companero2 -- el banco de
+      // preguntas usa jefe/companero (companero1 y companero2 comparten el
+      // MISMO banco de Compañero, son personas distintas evaluando, no
+      // bancos distintos).
+      const rolBanco = fila.rol === "jefe" ? "jefe" : "companero";
+      const banco = await tx.select({ id: schema.evaluadorPreguntas.id })
+        .from(schema.evaluadorPreguntas)
+        .where(and(eq(schema.evaluadorPreguntas.rol, rolBanco), eq(schema.evaluadorPreguntas.activo, true)));
+
+      if (banco.length < PREGUNTAS_EVALUADOR) {
+        return { ok: false as const, error: "BANCO_INSUFICIENTE" as const };
+      }
+
+      const sorteadas = sortearPreguntasAutoevaluacion(banco.map((p) => p.id), PREGUNTAS_EVALUADOR);
+
+      await tx.insert(schema.evaluacionRespuestas).values(
+        sorteadas.map((preguntaId) => ({ evaluacionId: fila.id, preguntaId })),
+      );
+
+      return { ok: true as const };
+    });
+  } catch (err: any) {
+    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "YA_INICIADA" };
     throw err;
   }
 }
