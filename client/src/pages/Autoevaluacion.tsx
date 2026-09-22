@@ -22,6 +22,10 @@ export default function Autoevaluacion() {
   const { data, isLoading } = trpc.autoevaluacion.miEstado.useQuery();
   const [respuestas, setRespuestas] = useState<Record<number, string>>({});
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
+  // 1 pregunta a la vez -- ver todas juntas invita a contestar por patron
+  // sin leer (decision 2026-09-21). Barra de progreso deliberadamente sin
+  // numero "X/28": no dejar calcular cuanto falta para "aventar" las ultimas.
+  const [indiceActual, setIndiceActual] = useState(0);
 
   const iniciarMut = trpc.autoevaluacion.iniciar.useMutation({
     onSuccess: () => { utils.autoevaluacion.miEstado.invalidate(); },
@@ -65,6 +69,23 @@ export default function Autoevaluacion() {
     });
   };
 
+  const preguntaActual = data.estado === "borrador" ? data.preguntas[indiceActual] : undefined;
+  const totalPreguntas = data.estado === "borrador" ? data.preguntas.length : 0;
+  const esUltima = indiceActual === totalPreguntas - 1;
+  const respuestaActual = preguntaActual ? respuestas[preguntaActual.preguntaId] ?? preguntaActual.respuestaElegida : undefined;
+  const progreso = totalPreguntas > 0 ? ((indiceActual + 1) / totalPreguntas) * 100 : 0;
+
+  const handleSiguiente = () => {
+    if (!respuestaActual) return;
+    if (esUltima) {
+      handleEnviar();
+    } else {
+      setIndiceActual((i) => i + 1);
+    }
+  };
+
+  const handleAtras = () => setIndiceActual((i) => Math.max(0, i - 1));
+
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={fadeUp}>
@@ -96,40 +117,63 @@ export default function Autoevaluacion() {
           </div>
         )}
 
-        {data.estado === "borrador" && (
-          <div className="space-y-5">
-            {data.preguntas.map((p, i) => (
-              <div key={p.preguntaId} className="rounded-xl border border-gray-100 p-4">
-                <p className="text-sm font-medium text-gray-800">{i + 1}. {p.texto}</p>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {LIKERT_OPCIONES.map((opcion) => {
-                    const elegida = respuestas[p.preguntaId] ?? p.respuestaElegida;
-                    return (
-                      <button
-                        key={opcion}
-                        type="button"
-                        onClick={() => setRespuestas((prev) => ({ ...prev, [p.preguntaId]: opcion }))}
-                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                          elegida === opcion
-                            ? "border-primary-500 bg-primary-50 text-primary-700"
-                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
-                      >
-                        {LIKERT_LABELS[opcion]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={handleEnviar}
-              disabled={enviarMut.isPending}
-              className="w-full rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors disabled:opacity-50"
+        {data.estado === "borrador" && preguntaActual && (
+          <div className="space-y-6">
+            <div className="h-[3px] w-full overflow-hidden rounded-full bg-gray-100">
+              <motion.div
+                className="h-full rounded-full bg-primary-500"
+                initial={false}
+                animate={{ width: `${progreso}%` }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              />
+            </div>
+
+            <motion.div
+              key={preguntaActual.preguntaId}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              {enviarMut.isPending ? "Enviando..." : "Enviar autoevaluación"}
-            </button>
+              <p className="font-serif text-xl text-gray-900">{preguntaActual.texto}</p>
+              <div className="mt-6 space-y-2">
+                {LIKERT_OPCIONES.map((opcion) => {
+                  const elegida = respuestaActual === opcion;
+                  return (
+                    <button
+                      key={opcion}
+                      type="button"
+                      onClick={() => setRespuestas((prev) => ({ ...prev, [preguntaActual.preguntaId]: opcion }))}
+                      className={`flex w-full items-center rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                        elegida
+                          ? "border-accent-500 bg-primary-50 text-primary-700"
+                          : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {LIKERT_LABELS[opcion]}
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={handleAtras}
+                disabled={indiceActual === 0}
+                className="text-sm font-semibold text-gray-500 hover:text-gray-700 disabled:opacity-0"
+              >
+                Atrás
+              </button>
+              <button
+                type="button"
+                onClick={handleSiguiente}
+                disabled={!respuestaActual || enviarMut.isPending}
+                className="rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors disabled:opacity-50"
+              >
+                {esUltima ? (enviarMut.isPending ? "Enviando..." : "Enviar") : "Siguiente"}
+              </button>
+            </div>
           </div>
         )}
 
