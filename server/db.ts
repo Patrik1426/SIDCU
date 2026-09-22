@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne, isNull } from "drizzle-orm";
+import { eq, and, like, or, sql, desc, inArray, getTableColumns, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { randomInt } from "crypto";
 import * as schema from "../drizzle/schema";
@@ -2811,6 +2811,29 @@ export async function procesarLotePendientesCorreo(limite = 50): Promise<{ proce
   }
 
   return { procesados: pendientes.length, enviados, fallidos };
+}
+
+// Corre en un setInterval (ver server/lib/evaluadorExpiracionWorker.ts).
+// isActive=false ya es suficiente para bloquear el login (server/routers.ts
+// ya lo rechaza) -- no hace falta limpiar evaluadorCuentaExpiraEn aparte,
+// esa columna se queda como registro de que la cuenta SÍ llegó a expirar.
+export async function desactivarEvaluadoresExpirados(): Promise<number> {
+  const d = await getDb();
+  const vencidas = await d.select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(
+      isNotNull(schema.users.evaluadorCuentaExpiraEn),
+      lt(schema.users.evaluadorCuentaExpiraEn, new Date()),
+      eq(schema.users.isActive, true),
+    ));
+
+  if (vencidas.length === 0) return 0;
+
+  await d.update(schema.users)
+    .set({ isActive: false })
+    .where(inArray(schema.users.id, vencidas.map((v) => v.id)));
+
+  return vencidas.length;
 }
 
 export type CorreoFallidoPromocion = {
