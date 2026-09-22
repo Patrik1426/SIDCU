@@ -41,4 +41,19 @@ describe("asignarEvaluador", () => {
     expect(calls).toContain("insert"); // users
     expect(calls).toContain("update"); // servidoresPublicos.userId
   });
+
+  it("si crea cuenta nueva, no truena y regresa userId + password -- la expiracion real se verifica contra MySQL real en el Task 10", async () => {
+    const servidor = { userId: null, curp: "TEST900101HDFRRR01", nombreCompleto: "Prueba Uno" };
+    const { tx, calls } = makeTxRecorder([[servidor]], [{ insertId: 55 }]);
+    const fakeDb = { select: tx.select, insert: tx.insert, update: tx.update };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { asignarEvaluador } = await import("./db");
+    const resultado = await asignarEvaluador(tx as any, 10, "nuevo@ejemplo.com");
+
+    expect(resultado.userId).toBe(55);
+    expect(resultado.passwordTemporalEnClaro).not.toBeNull();
+    expect(calls).toEqual(["select", "insert", "update"]);
+  });
 });

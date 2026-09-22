@@ -1952,12 +1952,17 @@ export async function asignarEvaluador(
 
   const passwordTemporalEnClaro = generarPasswordTemporal();
   const passwordHash = await hashPassword(passwordTemporalEnClaro);
+  // Cuenta nueva -- restringida a solo la pantalla de evaluación hasta 3
+  // días hábiles desde ahora (ver calcularExpiracion3DiasHabiles). Si ya
+  // tenía cuenta (rama de arriba), esta columna nunca se toca -- una
+  // cuenta real nunca queda restringida.
   const [insertResult] = await tx.insert(schema.users).values({
     nombre: servidor.nombreCompleto,
     curp: servidor.curp,
     email: correoCapturado,
     passwordHash,
     role: "user",
+    evaluadorCuentaExpiraEn: calcularExpiracion3DiasHabiles(new Date()),
   });
   const nuevoUserId = insertResult.insertId;
 
