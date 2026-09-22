@@ -106,4 +106,29 @@ describe("iniciarAutoevaluacion", () => {
     const resultado = await iniciarAutoevaluacion(1);
     expect(resultado).toEqual({ ok: false, error: "YA_INICIADA" });
   });
+
+  it("regresa BANCO_INSUFICIENTE sin insertar nada si el banco activo tiene menos de 28 preguntas", async () => {
+    const idsBanco = Array.from({ length: 10 }, (_, i) => ({ id: i + 1 }));
+    const { tx, calls } = makeTxRecorder([[{ id: 100 }], idsBanco], []);
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { iniciarAutoevaluacion } = await import("./db");
+    const resultado = await iniciarAutoevaluacion(1);
+    expect(resultado).toEqual({ ok: false, error: "BANCO_INSUFICIENTE" });
+    expect(calls).not.toContain("insert");
+  });
+
+  it("regresa BANCO_INSUFICIENTE sin insertar nada si el banco activo esta vacio", async () => {
+    const { tx, calls } = makeTxRecorder([[{ id: 100 }], []], []);
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { iniciarAutoevaluacion } = await import("./db");
+    const resultado = await iniciarAutoevaluacion(1);
+    expect(resultado).toEqual({ ok: false, error: "BANCO_INSUFICIENTE" });
+    expect(calls).not.toContain("insert");
+  });
 });

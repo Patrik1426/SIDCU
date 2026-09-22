@@ -7,7 +7,7 @@ import { randomInt } from "crypto";
 import * as schema from "../drizzle/schema";
 import type { InsertServidorPublico, InsertAuditoria } from "../drizzle/schema";
 import { dbCircuitBreaker } from "./middleware/circuitBreaker";
-import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../shared/const";
+import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION, PREGUNTAS_AUTOEVALUACION } from "../shared/const";
 import { validarCorreoEvaluador } from "./lib/validarCorreo";
 import { generarPasswordTemporal, hashPassword } from "./auth";
 import { enviarCorreoEvaluador } from "./lib/email";
@@ -1174,7 +1174,7 @@ export async function miAutoevaluacion(userId: number): Promise<EstadoAutoevalua
   return { estado: "borrador", preguntas };
 }
 
-export async function iniciarAutoevaluacion(userId: number): Promise<{ ok: true } | { ok: false; error: "SIN_PROMOCION" | "YA_INICIADA" }> {
+export async function iniciarAutoevaluacion(userId: number): Promise<{ ok: true } | { ok: false; error: "SIN_PROMOCION" | "YA_INICIADA" | "BANCO_INSUFICIENTE" }> {
   const d = await getDb();
   try {
     return await d.transaction(async (tx) => {
@@ -1187,7 +1187,21 @@ export async function iniciarAutoevaluacion(userId: number): Promise<{ ok: true 
         .from(schema.autoevaluacionPreguntas)
         .where(eq(schema.autoevaluacionPreguntas.activo, true));
 
-      const sorteadas = sortearPreguntasAutoevaluacion(banco.map((p) => p.id), 28);
+      // Guard ANTES de sortear/insertar nada: sortearPreguntasAutoevaluacion
+      // silenciosamente regresa menos de `cantidad` si el banco es corto
+      // (comportamiento correcto y ya probado para esa funcion aislada), pero
+      // dejar que iniciarAutoevaluacion siga de largo con eso comite una fila
+      // con menos de 28 respuestas -- el router.enviar exige exactamente 28
+      // (.length(PREGUNTAS_AUTOEVALUACION)), autoevaluaciones.promocionId es
+      // unico (no hay reintento posible), asi que el trabajador queda
+      // permanentemente bloqueado sin ninguna via de recuperacion. Cubre
+      // tambien el caso banco vacio (banco.length === 0), donde ademas
+      // tx.insert(...).values([]) tronaria con el error crudo de Drizzle.
+      if (banco.length < PREGUNTAS_AUTOEVALUACION) {
+        return { ok: false as const, error: "BANCO_INSUFICIENTE" as const };
+      }
+
+      const sorteadas = sortearPreguntasAutoevaluacion(banco.map((p) => p.id), PREGUNTAS_AUTOEVALUACION);
 
       const [insertAutoevaluacion] = await tx.insert(schema.autoevaluaciones).values({
         promocionId: promocion.id,

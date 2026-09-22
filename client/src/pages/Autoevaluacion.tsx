@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { ListChecks, CheckCircle2 } from "lucide-react";
+import ConfirmModal from "@/components/ConfirmModal";
+import { PREGUNTAS_AUTOEVALUACION } from "@shared/const";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
@@ -19,6 +21,7 @@ export default function Autoevaluacion() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.autoevaluacion.miEstado.useQuery();
   const [respuestas, setRespuestas] = useState<Record<number, string>>({});
+  const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
 
   const iniciarMut = trpc.autoevaluacion.iniciar.useMutation({
     onSuccess: () => { utils.autoevaluacion.miEstado.invalidate(); },
@@ -29,6 +32,7 @@ export default function Autoevaluacion() {
     onSuccess: () => {
       utils.autoevaluacion.miEstado.invalidate();
       toast.success("Tu autoevaluación fue enviada");
+      setConfirmandoEnvio(false);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -48,6 +52,11 @@ export default function Autoevaluacion() {
       toast.error(`Faltan ${faltantes.length} preguntas por contestar`);
       return;
     }
+    setConfirmandoEnvio(true);
+  };
+
+  const handleConfirmarEnvio = () => {
+    if (data.estado !== "borrador") return;
     enviarMut.mutate({
       respuestas: data.preguntas.map((p) => ({
         preguntaId: p.preguntaId,
@@ -75,7 +84,7 @@ export default function Autoevaluacion() {
           <div className="text-center">
             <ListChecks className="mx-auto h-10 w-10 text-primary-300" />
             <p className="mt-3 font-medium text-gray-700">Tu autoevaluación está lista para empezar</p>
-            <p className="mt-1 text-sm text-gray-500">Son 28 preguntas, una sola vez.</p>
+            <p className="mt-1 text-sm text-gray-500">Son {PREGUNTAS_AUTOEVALUACION} preguntas, una sola vez.</p>
             <button
               type="button"
               onClick={() => iniciarMut.mutate()}
@@ -128,10 +137,21 @@ export default function Autoevaluacion() {
           <div className="text-center">
             <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
             <p className="mt-3 font-medium text-gray-700">Tu autoevaluación fue enviada</p>
-            <p className="mt-1 text-sm text-gray-500">Puntaje: {data.puntaje}/28</p>
+            <p className="mt-1 text-sm text-gray-500">Puntaje: {data.puntaje}/{PREGUNTAS_AUTOEVALUACION}</p>
           </div>
         )}
       </motion.div>
+
+      <ConfirmModal
+        open={confirmandoEnvio}
+        title="¿Enviar tu autoevaluación?"
+        message="No podrás editar tus respuestas después de enviarlas. ¿Confirmas?"
+        confirmLabel="Sí, enviar"
+        variant="warning"
+        loading={enviarMut.isPending}
+        onConfirm={handleConfirmarEnvio}
+        onCancel={() => setConfirmandoEnvio(false)}
+      />
     </motion.div>
   );
 }

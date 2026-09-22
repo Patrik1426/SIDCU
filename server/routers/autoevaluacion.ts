@@ -9,8 +9,9 @@ import {
   contarPreguntasActivasAutoevaluacion,
 } from "../db";
 import { LIKERT_OPCIONES } from "../../drizzle/schema";
+import { PREGUNTAS_AUTOEVALUACION } from "../../shared/const";
 
-type ErrorCodigoIniciar = "SIN_PROMOCION" | "YA_INICIADA";
+type ErrorCodigoIniciar = "SIN_PROMOCION" | "YA_INICIADA" | "BANCO_INSUFICIENTE";
 type ErrorCodigoEnviar = "NO_INICIADA" | "YA_ENVIADA" | "RESPUESTAS_INVALIDAS";
 
 function traducirErrorIniciar(error: ErrorCodigoIniciar): TRPCError {
@@ -19,6 +20,12 @@ function traducirErrorIniciar(error: ErrorCodigoIniciar): TRPCError {
       return new TRPCError({ code: "FORBIDDEN", message: "Necesitas tener una inscripción a Promoción confirmada para hacer tu autoevaluación." });
     case "YA_INICIADA":
       return new TRPCError({ code: "CONFLICT", message: "Ya iniciaste tu autoevaluación." });
+    case "BANCO_INSUFICIENTE":
+      // tRPC 11 no tiene un codigo "FAILED_PRECONDITION" (el que menciona el
+      // finding original) -- el codigo real en @trpc/server es
+      // "PRECONDITION_FAILED" (ver codes-DagpWZLc.mjs), que es el equivalente
+      // correcto para "el banco de preguntas no esta listo todavia".
+      return new TRPCError({ code: "PRECONDITION_FAILED", message: "El banco de preguntas todavía no está listo. Contacta al administrador e intenta más tarde." });
     default: {
       const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
@@ -57,7 +64,7 @@ export const autoevaluacionRouter = router({
       respuestas: z.array(z.object({
         preguntaId: z.number().int().positive(),
         respuestaElegida: z.enum(LIKERT_OPCIONES),
-      })).length(28, "Debes contestar las 28 preguntas"),
+      })).length(PREGUNTAS_AUTOEVALUACION, `Debes contestar las ${PREGUNTAS_AUTOEVALUACION} preguntas`),
     }))
     .mutation(async ({ ctx, input }) => {
       const resultado = await enviarAutoevaluacion(ctx.user.id, input.respuestas);
