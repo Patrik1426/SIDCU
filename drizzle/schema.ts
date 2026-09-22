@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, index, foreignKey, primaryKey, unique } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, datetime, date, varchar, boolean, bigint, decimal, index, foreignKey, primaryKey, unique } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -346,7 +346,20 @@ export const autoevaluaciones = mysqlTable("autoevaluaciones", {
   id: int("id").autoincrement().primaryKey(),
   promocionId: int("promocion_id").notNull().unique().references(() => promociones.id, { onDelete: "cascade" }),
   estado: mysqlEnum("estado", ["borrador", "enviado"]).notNull().default("borrador"),
-  puntaje: int("puntaje"),
+  // decimal, no int: la formula confirmada por el cliente (2026-09-22) vale
+  // 0.5 puntos por acierto -- un int truncaria/redondearia el puntaje real.
+  // Columna fisica "puntaje_final" (no "puntaje") a proposito: cambiar el
+  // TIPO de una columna existente hace que drizzle-kit push proponga un
+  // TRUNCATE TABLE antes del ALTER -- y ese TRUNCATE truena en cualquier DB
+  // real (ER_TRUNCATE_ILLEGAL_FK, autoevaluacion_respuestas tiene FK a esta
+  // tabla), rompiendo el build automatico de Railway. Agregar una columna
+  // NUEVA es 100% aditivo, nunca dispara ese camino. La vieja columna
+  // "puntaje" (int, sin usar desde este commit) NO necesita limpieza manual:
+  // al ya no estar en este schema, el siguiente `drizzle-kit push --force`
+  // (el que corre solo railway.json en cada deploy) propone un DROP COLUMN
+  // normal para ella -- sin TRUNCATE, sin FK que lo bloquee (verificado
+  // 2026-09-22) -- y --force lo aplica solo, sin intervencion manual.
+  puntaje: decimal("puntaje_final", { precision: 4, scale: 1, mode: "number" }),
   enviadoAt: timestamp("enviado_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

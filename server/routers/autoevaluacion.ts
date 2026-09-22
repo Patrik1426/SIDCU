@@ -51,7 +51,17 @@ function traducirErrorEnviar(error: ErrorCodigoEnviar): TRPCError {
 const filaImportSchema = z.object({ registros: z.array(z.record(z.string(), z.any())) });
 
 export const autoevaluacionRouter = router({
-  miEstado: protectedProcedure.query(({ ctx }) => miAutoevaluacion(ctx.user.id)),
+  // El participante nunca ve su puntaje (confirmado por el cliente
+  // 2026-09-22 -- "en ningun momento el participante ve los puntajes", solo
+  // existe un reporte para admin/RH). miAutoevaluacion (db.ts) SI trae el
+  // puntaje -- es un lector general, pensado para cuando exista un panel de
+  // reportes -- el corte de "el trabajador no lo ve" vive aqui, en el
+  // procedure que expone datos a su propia sesion.
+  miEstado: protectedProcedure.query(async ({ ctx }) => {
+    const estado = await miAutoevaluacion(ctx.user.id);
+    if (estado.estado === "enviado") return { estado: "enviado" as const, enviadoAt: estado.enviadoAt };
+    return estado;
+  }),
 
   iniciar: protectedProcedure.mutation(async ({ ctx }) => {
     const resultado = await iniciarAutoevaluacion(ctx.user.id);
@@ -69,7 +79,8 @@ export const autoevaluacionRouter = router({
     .mutation(async ({ ctx, input }) => {
       const resultado = await enviarAutoevaluacion(ctx.user.id, input.respuestas);
       if (!resultado.ok) throw traducirErrorEnviar(resultado.error);
-      return { success: true, puntaje: resultado.puntaje };
+      // No regresar resultado.puntaje -- el participante nunca lo ve.
+      return { success: true };
     }),
 
   importarPreguntas: adminProcedure

@@ -181,7 +181,7 @@ export default function Autoevaluacion() {
           <div className="text-center">
             <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
             <p className="mt-3 font-medium text-gray-700">Tu autoevaluación fue enviada</p>
-            <p className="mt-1 text-sm text-gray-500">Puntaje: {data.puntaje}/{PREGUNTAS_AUTOEVALUACION}</p>
+            <p className="mt-1 text-sm text-gray-500">Gracias por completarla.</p>
           </div>
         )}
       </motion.div>

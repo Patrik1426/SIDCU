@@ -100,9 +100,10 @@ describe("enviarAutoevaluacion", () => {
 
     const { enviarAutoevaluacion } = await import("./db");
     // 2 aciertos: pregunta 1 responde "siempre" (correcta), pregunta 2 responde "nunca" (correcta)
+    // Formula confirmada 2026-09-22: cada acierto vale 0.5 puntos.
     const resultado = await enviarAutoevaluacion(1, respuestasValidas(2));
 
-    expect(resultado).toEqual({ ok: true, puntaje: 2 });
+    expect(resultado).toEqual({ ok: true, puntaje: 1 });
     expect(fakeDb.transaction).toHaveBeenCalledTimes(1);
     // select autoevaluacion, select asignadas, 2x update respuesta, update autoevaluacion, insert auditoria
     expect(calls).toEqual(["select", "select", "update", "update", "update", "insert"]);

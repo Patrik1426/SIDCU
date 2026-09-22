@@ -1124,13 +1124,14 @@ export function sortearPreguntasAutoevaluacion(idsDisponibles: number[], cantida
   return copia.slice(0, cantidad);
 }
 
-// Aislada a propósito: la fórmula real (aciertos -> puntaje final) sigue
-// sin confirmar con el cliente (mismo problema documentado para Evaluadores,
-// ver docs/preguntas-cliente-modulos-desempeno.md puntos 7 y 9). Hoy
-// regresa el conteo crudo -- cuando se calibre la fórmula real, el cambio
-// es solo esta función, no un rediseño del módulo.
+// Fórmula confirmada por el cliente 2026-09-22: 28 preguntas, si todas son
+// correctas el puntaje es 14 -- cada acierto vale medio punto. Se deja
+// aislada en su propia función de todas formas (no inline en
+// enviarAutoevaluacion) porque el mismo patrón de "acierto -> puntaje" se
+// repite para Evaluadores con otros pesos (Jefe: 1pt/acierto máx 14;
+// Compañero: 6/14 pt/acierto máx 6).
 export function calcularPuntajeAutoevaluacion(aciertos: number): number {
-  return aciertos;
+  return aciertos * 0.5;
 }
 
 type EstadoAutoevaluacion =

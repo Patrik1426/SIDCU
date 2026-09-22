@@ -36,10 +36,15 @@ describe("sortearPreguntasAutoevaluacion (funcion pura, sin DB)", () => {
 });
 
 describe("calcularPuntajeAutoevaluacion (funcion pura, sin DB)", () => {
-  it("hoy regresa el conteo crudo de aciertos -- formula real pendiente de confirmar con el cliente", async () => {
+  // Formula confirmada por el cliente 2026-09-22: 28 preguntas, si todas
+  // correctas = 14 puntos -- cada acierto vale medio punto (no 1 como se
+  // asumia antes de esta confirmacion).
+  it("cada acierto vale 0.5 puntos, maximo 14 con las 28 correctas", async () => {
     const { calcularPuntajeAutoevaluacion } = await import("./db");
     expect(calcularPuntajeAutoevaluacion(0)).toBe(0);
-    expect(calcularPuntajeAutoevaluacion(14)).toBe(14);
-    expect(calcularPuntajeAutoevaluacion(28)).toBe(28);
+    expect(calcularPuntajeAutoevaluacion(1)).toBe(0.5);
+    expect(calcularPuntajeAutoevaluacion(14)).toBe(7);
+    expect(calcularPuntajeAutoevaluacion(27)).toBe(13.5);
+    expect(calcularPuntajeAutoevaluacion(28)).toBe(14);
   });
 });
