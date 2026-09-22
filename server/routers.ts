@@ -140,7 +140,12 @@ const authRouter = router({
       };
     }),
 
-  me: publicProcedure.query(({ ctx }) => ctx.user ?? null),
+  me: publicProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) return null;
+    const { estadoRestriccionEvaluador } = await import("./db");
+    const restriccion = await estadoRestriccionEvaluador(ctx.user.id);
+    return { ...ctx.user, restriccionEvaluador: restriccion };
+  }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
     ctx.res.clearCookie(COOKIE_NAME);

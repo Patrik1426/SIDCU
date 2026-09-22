@@ -2147,6 +2147,21 @@ export async function listarMisEvaluacionesPendientes(userId: number): Promise<E
     ));
 }
 
+// Alimenta el gate de App.tsx -- llamado desde authRouter.me en CADA carga
+// de auth.me (staleTime de 5 min en el cliente, ver useAuthState), no
+// desde el JWT (que vive hasta 7 dias y no reflejaria una expiracion
+// reciente). Costo: 1 query indexada por userId, aceptable a esta escala
+// (100-999 servidores).
+export async function estadoRestriccionEvaluador(userId: number): Promise<{ restringido: boolean }> {
+  const d = await getDb();
+  const [usuario] = await d.select({ evaluadorCuentaExpiraEn: schema.users.evaluadorCuentaExpiraEn })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId));
+
+  const restringido = !!usuario?.evaluadorCuentaExpiraEn && usuario.evaluadorCuentaExpiraEn.getTime() > Date.now();
+  return { restringido };
+}
+
 type EstadoEvaluacion =
   | { estado: "no_encontrada" }
   | { estado: "ajena" }
