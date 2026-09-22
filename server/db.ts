@@ -1134,6 +1134,40 @@ export function calcularPuntajeAutoevaluacion(aciertos: number): number {
   return aciertos * 0.5;
 }
 
+// Fórmulas confirmadas por el cliente 2026-09-22 (transcript real). Jefe:
+// banco propio de 60, sorteo de 14, 1pt/acierto, máx 14. Compañero: banco
+// propio DISTINTO de 60, sorteo de 14, 6/14 pt/acierto, máx 6 (hay 2
+// Compañeros por promoción, cada uno evalúa por separado: 6+6=12). Total
+// del proceso de desempeño = 40 (14 autoevaluación + 14 jefe + 6 + 6).
+export function calcularPuntajeEvaluadorJefe(aciertos: number): number {
+  return aciertos * 1;
+}
+
+export function calcularPuntajeEvaluadorCompaniero(aciertos: number): number {
+  return aciertos * (6 / 14);
+}
+
+// Cuenta días hábiles (lunes-viernes) desde `desde`, sin contar el propio
+// día de salida como el primero. "Hábiles" excluye solo sábado/domingo
+// hasta que el cliente diga lo contrario (mismo criterio ya usado para el
+// límite de medianoche de Inconformidad en America/Mexico_City -- ver
+// CLAUDE.md). Usa getUTCDay() a propósito (no getDay()) para que el
+// resultado no dependa de la zona horaria del proceso que lo corre
+// (Railway puede correr en UTC) -- el conteo de días hábiles es el mismo
+// sin importar timezone, solo importa qué día de la semana es.
+export function calcularExpiracion3DiasHabiles(desde: Date): Date {
+  const resultado = new Date(desde);
+  let diasHabilesAgregados = 0;
+  while (diasHabilesAgregados < 3) {
+    resultado.setUTCDate(resultado.getUTCDate() + 1);
+    const diaSemana = resultado.getUTCDay(); // 0=domingo, 6=sabado
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasHabilesAgregados++;
+    }
+  }
+  return resultado;
+}
+
 type EstadoAutoevaluacion =
   | { estado: "sin_promocion" }
   | { estado: "no_iniciada" }
