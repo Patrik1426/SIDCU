@@ -2230,6 +2230,81 @@ export async function iniciarEvaluacion(
   }
 }
 
+export async function enviarEvaluacion(
+  userId: number,
+  evaluacionId: number,
+  respuestas: { preguntaId: number; respuestaElegida: (typeof schema.LIKERT_OPCIONES)[number] }[],
+): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADA" | "AJENA" | "NO_INICIADA" | "YA_ENVIADA" | "RESPUESTAS_INVALIDAS" }> {
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [fila] = await tx.select({
+      id: schema.evaluaciones.id,
+      evaluadorUserId: schema.evaluaciones.evaluadorUserId,
+      rol: schema.evaluaciones.rol,
+      estado: schema.evaluaciones.estado,
+    })
+      .from(schema.evaluaciones)
+      .where(eq(schema.evaluaciones.id, evaluacionId));
+    if (!fila) return { ok: false, error: "NO_ENCONTRADA" };
+    if (fila.evaluadorUserId !== userId) return { ok: false, error: "AJENA" };
+    if (fila.estado !== "borrador") return { ok: false, error: "YA_ENVIADA" };
+
+    const asignadas = await tx.select({
+      preguntaId: schema.evaluacionRespuestas.preguntaId,
+      respuestaCorrecta: schema.evaluadorPreguntas.respuestaCorrecta,
+    })
+      .from(schema.evaluacionRespuestas)
+      .innerJoin(schema.evaluadorPreguntas, eq(schema.evaluadorPreguntas.id, schema.evaluacionRespuestas.preguntaId))
+      .where(eq(schema.evaluacionRespuestas.evaluacionId, fila.id));
+
+    // Chequeo de LARGO antes del chequeo por Set -- un Set deduplica, asi
+    // que un arreglo con preguntaId repetidos (padding attack) podia pasar
+    // la comparacion de sets aunque length no coincidiera con lo asignado
+    // (mismo hallazgo real que se cerro en enviarAutoevaluacion).
+    if (respuestas.length !== asignadas.length) return { ok: false, error: "RESPUESTAS_INVALIDAS" };
+
+    const idsAsignados = new Set(asignadas.map((a) => a.preguntaId));
+    const idsRecibidos = new Set(respuestas.map((r) => r.preguntaId));
+    const mismoSet = idsAsignados.size === idsRecibidos.size && [...idsAsignados].every((id) => idsRecibidos.has(id));
+    if (!mismoSet) return { ok: false, error: "RESPUESTAS_INVALIDAS" };
+
+    const mapaCorrectas = new Map(asignadas.map((a) => [a.preguntaId, a.respuestaCorrecta]));
+    let aciertos = 0;
+    for (const r of respuestas) {
+      const correcta = mapaCorrectas.get(r.preguntaId);
+      if (correcta === r.respuestaElegida) aciertos++;
+      await tx.update(schema.evaluacionRespuestas)
+        .set({ respuestaElegida: r.respuestaElegida })
+        .where(and(
+          eq(schema.evaluacionRespuestas.evaluacionId, fila.id),
+          eq(schema.evaluacionRespuestas.preguntaId, r.preguntaId),
+        ));
+    }
+
+    // Jefe usa 1pt/acierto (max 14), companero1 y companero2 usan
+    // 6/14 pt/acierto (max 6) -- misma formula para ambos compañeros, solo
+    // cambia QUIEN evalua, no el peso de su evaluacion.
+    const puntajeFinal = fila.rol === "jefe"
+      ? calcularPuntajeEvaluadorJefe(aciertos)
+      : calcularPuntajeEvaluadorCompaniero(aciertos);
+
+    await tx.update(schema.evaluaciones)
+      .set({ estado: "enviado", puntajeFinal, enviadoAt: new Date() })
+      .where(eq(schema.evaluaciones.id, fila.id));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: userId,
+      accion: "actualizar",
+      descripcion: `Envió una evaluación de Evaluadores (rol ${fila.rol}, ${aciertos}/${respuestas.length} aciertos)`,
+    });
+
+    // No regresa puntajeFinal -- ni al router, ni por lo tanto al cliente.
+    // El evaluador nunca ve su propio puntaje (regla confirmada 2026-09-22).
+    return { ok: true };
+  });
+}
+
 // Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
 // NO exige que la persona ya tenga cuenta `users` -- solo que exista un
 // registro activo en servidores_publicos. Si el pool exigiera cuenta previa,
