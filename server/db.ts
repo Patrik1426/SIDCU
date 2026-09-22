@@ -2087,6 +2087,17 @@ export async function confirmarInscripcion(
         { promocionId, destinatarioUserId: companero2.userId, rol: "companero2", passwordTemporalEnClaro: companero2.passwordTemporalEnClaro },
       ]);
 
+      // Crea el slot de evaluación de cada rol en `borrador`, SIN sortear
+      // preguntas todavía -- el sorteo pasa al "iniciar" (Task 5), para no
+      // gastar preguntas del banco en evaluaciones que tal vez nunca se
+      // empiecen. unique(promocionId, rol) en el schema garantiza que esto
+      // nunca duplique un slot para la misma promoción.
+      await tx.insert(schema.evaluaciones).values([
+        { promocionId, rol: "jefe", evaluadorUserId: jefe.userId },
+        { promocionId, rol: "companero1", evaluadorUserId: companero1.userId },
+        { promocionId, rol: "companero2", evaluadorUserId: companero2.userId },
+      ]);
+
       await tx.insert(schema.auditoria).values({
         servidorId: servidorPropio?.id ?? null,
         usuarioId: userId,

@@ -52,7 +52,7 @@ describe("confirmarInscripcion", () => {
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
   });
 
-  it("confirma: crea promocion + 3 correos pendientes + auditoria en una transaccion", async () => {
+  it("confirma: crea promocion + 3 correos pendientes + evaluaciones + auditoria en una transaccion", async () => {
     vi.resetModules();
     const { tx, calls } = makeTxRecorder([
       [{ calificacion: 75 }, { calificacion: 90 }], // cursos
@@ -72,14 +72,16 @@ describe("confirmarInscripcion", () => {
     const resultado = await confirmarInscripcion(1, seleccionValida);
     expect(resultado).toEqual({ ok: true });
     // insert: promociones + promocionCorreosPendientes (batch de 3 filas en
-    // un solo insert) + auditoria = 3 llamadas reales a tx.insert(). El
-    // brief original asumia 3 inserts separados (uno por correo) = 5, pero
+    // un solo insert) + evaluaciones (batch de 3 filas en un solo insert,
+    // Task 4) + auditoria = 4 llamadas reales a tx.insert(). El brief
+    // original de este test asumia 3 inserts separados por correo = 5, pero
     // el codigo real hace un solo insert().values([fila1, fila2, fila3]) --
     // una sola query, mismo resultado, menos round-trips. Se ajusta el
     // conteo aqui para reflejar la ejecucion real en vez de forzar al
     // codigo de produccion a partir el insert en 3 solo para inflar el
-    // conteo.
-    expect(calls.filter((c) => c === "insert")).toHaveLength(3);
+    // conteo. Conteo subio de 3 a 4 al agregar el insert de evaluaciones
+    // (Task 4, confirmarInscripcion extendido).
+    expect(calls.filter((c) => c === "insert")).toHaveLength(4);
   });
 
   // C1 (revision final de rama): antes, asignarEvaluador se llamaba para los
@@ -152,6 +154,55 @@ describe("confirmarInscripcion", () => {
     const resultado = await confirmarInscripcion(1, seleccionValida);
     expect(resultado).toEqual({ ok: false, error: "CORREO_INVALIDO" });
     expect(fakeDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("crea las 3 filas de evaluaciones (jefe, companero1, companero2) junto con la inscripcion", async () => {
+    vi.resetModules();
+    const completadas = [{ calificacion: 80 }, { calificacion: 90 }];
+    const servidorPropio = { id: 1 };
+    // Mismo fixture base que el test "confirma" de este archivo (elegibilidad
+    // ok, pool ok, sin auto-seleccion), pero aqui ninguno de los 3
+    // evaluadores tiene cuenta todavia -- asignarEvaluador entra a la rama de
+    // "cuenta nueva" para los 3, que hace su propio select (servidor por id,
+    // sin userId) antes de insertar. Por eso hacen falta 8 selectResults
+    // (completadas, 3x pool, servidorPropio, 3x select-de-asignarEvaluador),
+    // no solo los 5 del brief original -- el orden real de awaits dentro de
+    // confirmarInscripcion/asignarEvaluador exige esa forma exacta.
+    const { tx, calls } = makeTxRecorder(
+      [
+        completadas,
+        [{ activo: true }], // pool jefe
+        [{ activo: true }], // pool companero1
+        [{ activo: true }], // pool companero2
+        [servidorPropio], // servidorPropio (id 1, distinto de 10/11/12 -> sin auto-seleccion)
+        [{ userId: null, curp: "AAAA000101HDFRRN01", nombreCompleto: "Jefe De Prueba" }], // asignarEvaluador jefe: sin cuenta
+        [{ userId: null, curp: "BBBB000101HDFRRN02", nombreCompleto: "Companero Uno" }], // asignarEvaluador companero1: sin cuenta
+        [{ userId: null, curp: "CCCC000101HDFRRN03", nombreCompleto: "Companero Dos" }], // asignarEvaluador companero2: sin cuenta
+      ],
+      [{ insertId: 200 }],
+    );
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { confirmarInscripcion } = await import("./db");
+    const resultado = await confirmarInscripcion(1, {
+      jefe: { servidorId: 10, correo: "jefe@ejemplo.com" },
+      companero1: { servidorId: 11, correo: "c1@ejemplo.com" },
+      companero2: { servidorId: 12, correo: "c2@ejemplo.com" },
+    });
+
+    expect(resultado).toEqual({ ok: true });
+    // 3x insert de asignarEvaluador (cuenta nueva cada uno, fixture arriba) +
+    // insert promociones + insert promocionCorreosPendientes + insert
+    // evaluaciones + insert auditoria = 7 inserts exactos con este fixture.
+    // A proposito NO se usa >=4 (como sugeria el brief original): con los 3
+    // evaluadores sin cuenta ya hay 6 inserts SIN el insert de evaluaciones
+    // (3 users + promociones + correos + auditoria), asi que un umbral >=4
+    // pasaria igual aunque el codigo nuevo no exista -- no seria una
+    // asercion load-bearing. El conteo exacto de 7 si lo es: verificado en
+    // RED (6, sin el cambio) antes de implementar.
+    expect(calls.filter((c) => c === "insert")).toHaveLength(7);
   });
 
   it("doble inscripcion: ER_DUP_ENTRY se traduce a YA_INSCRITO", async () => {
