@@ -478,3 +478,87 @@ export function exportarInconformidadesPDF(items: InconformidadExport[], filenam
 
   doc.save(`${filename}_${fechaLocalISO()}.pdf`);
 }
+
+interface ResultadoPromocionExport {
+  trabajadorNombre: string;
+  trabajadorCurp: string;
+  autoevaluacion: number | "pendiente";
+  jefe: number | "pendiente";
+  companero1: number | "pendiente";
+  companero2: number | "pendiente";
+  total: number;
+  completo: boolean;
+}
+
+function prepararDatosResultadosPromocion(items: ResultadoPromocionExport[]) {
+  const fmt = (v: number | "pendiente") => (v === "pendiente" ? "Pendiente" : v.toFixed(3));
+  return items.map((r) => ({
+    "Nombre Completo": sanitizeCell(r.trabajadorNombre),
+    CURP: sanitizeCell(r.trabajadorCurp),
+    "Autoevaluación (14)": fmt(r.autoevaluacion),
+    "Jefe (14)": fmt(r.jefe),
+    "Compañero 1 (6)": fmt(r.companero1),
+    "Compañero 2 (6)": fmt(r.companero2),
+    "Total (40)": r.total.toFixed(3),
+    Estado: r.completo ? "Completo" : "Pendiente",
+  }));
+}
+
+export function exportarResultadosPromocionExcel(items: ResultadoPromocionExport[], filename = "resultados_promocion") {
+  const datos = prepararDatosResultadosPromocion(items);
+  const ws = XLSX.utils.json_to_sheet(datos);
+  ws["!cols"] = [
+    { wch: 30 }, // Nombre
+    { wch: 20 }, // CURP
+    { wch: 18 }, // Autoevaluación
+    { wch: 12 }, // Jefe
+    { wch: 15 }, // Compañero 1
+    { wch: 15 }, // Compañero 2
+    { wch: 12 }, // Total
+    { wch: 12 }, // Estado
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Resultados Promoción");
+  XLSX.writeFile(wb, `${filename}_${fechaLocalISO()}.xlsx`);
+}
+
+export function exportarResultadosPromocionPDF(items: ResultadoPromocionExport[], filename = "resultados_promocion") {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+
+  doc.setFontSize(16);
+  doc.setTextColor(97, 18, 50);
+  doc.text("Secretaría de Cultura", 14, 15);
+
+  doc.setFontSize(11);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Resultados de Promoción", 14, 22);
+
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Generado: ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })} · ${items.length} registros`,
+    14, 28,
+  );
+
+  const fmt = (v: number | "pendiente") => (v === "pendiente" ? "Pendiente" : v.toFixed(3));
+  const headers = ["Nombre", "CURP", "Autoeval. (14)", "Jefe (14)", "Comp. 1 (6)", "Comp. 2 (6)", "Total (40)", "Estado"];
+  const rows = items.map((r) => [
+    r.trabajadorNombre,
+    r.trabajadorCurp,
+    fmt(r.autoevaluacion),
+    fmt(r.jefe),
+    fmt(r.companero1),
+    fmt(r.companero2),
+    r.total.toFixed(3),
+    r.completo ? "Completo" : "Pendiente",
+  ]);
+
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: 33,
+    styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.1 },
+  });
+
+  doc.save(`${filename}_${fechaLocalISO()}.pdf`);
+}
