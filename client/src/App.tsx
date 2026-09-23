@@ -28,6 +28,7 @@ import EvaluacionesPendientes from "@/pages/EvaluacionesPendientes";
 import Evaluacion from "@/pages/Evaluacion";
 import GestionInconformidades from "@/pages/GestionInconformidades";
 import GestionPromocion from "@/pages/GestionPromocion";
+import PromocionResultados from "@/pages/PromocionResultados";
 import GestionAutoevaluacion from "@/pages/GestionAutoevaluacion";
 import GestionEvaluadores from "@/pages/GestionEvaluadores";
 import CentroModulos from "@/pages/CentroModulos";
@@ -230,6 +231,12 @@ export default function App() {
         <ProtectedRoute
           path="/promociones"
           component={GestionPromocion}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/promocion-resultados"
+          component={PromocionResultados}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />

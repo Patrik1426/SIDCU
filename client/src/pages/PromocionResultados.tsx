@@ -1,0 +1,175 @@
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { trpc } from "@/lib/trpc";
+import { Search, ChevronRight, Download, FileSpreadsheet } from "lucide-react";
+import { exportarResultadosPromocionExcel, exportarResultadosPromocionPDF } from "@/lib/exportar";
+
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
+const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
+
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
+function Badge({ label, valor }: { label: string; valor: number | null }) {
+  const pendiente = valor === null;
+  return (
+    <div className={`rounded-xl border p-2.5 ${pendiente ? "border-gray-100 bg-gray-50" : "border-emerald-100 bg-emerald-50"}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className={`mt-0.5 text-sm font-bold tabular-nums ${pendiente ? "text-gray-400" : "text-emerald-700"}`}>
+        {pendiente ? "Pendiente" : valor.toFixed(3)}
+      </p>
+    </div>
+  );
+}
+
+export default function PromocionResultados() {
+  const [search, setSearch] = useState("");
+  const [estado, setEstado] = useState<"" | "completo" | "pendiente">("");
+  const [ordenTotal, setOrdenTotal] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading } = trpc.promocion.listarResultados.useQuery({
+    search: search || undefined,
+    estado: estado || undefined,
+    ordenTotal,
+    page,
+    limit: 20,
+  });
+
+  const utils = trpc.useUtils();
+  const inputClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20";
+
+  function mapExport(items: NonNullable<typeof data>["items"]) {
+    return items.map((r) => ({
+      trabajadorNombre: r.trabajadorNombre,
+      trabajadorCurp: r.trabajadorCurp,
+      autoevaluacion: (r.autoevaluacion?.estado === "enviado" ? r.autoevaluacion.puntaje ?? 0 : "pendiente") as number | "pendiente",
+      jefe: (r.jefe?.estado === "enviado" ? r.jefe.puntaje ?? 0 : "pendiente") as number | "pendiente",
+      companero1: (r.companero1?.estado === "enviado" ? r.companero1.puntaje ?? 0 : "pendiente") as number | "pendiente",
+      companero2: (r.companero2?.estado === "enviado" ? r.companero2.puntaje ?? 0 : "pendiente") as number | "pendiente",
+      total: r.total,
+      completo: r.completo,
+    }));
+  }
+
+  // Export sin paginar en la UI -- pero `listarResultados` es adminProcedure
+  // con `limit` topado en 100 (server/routers/promocion.ts), a diferencia de
+  // exportarTodos en otras paginas del sistema que no tiene tope de input.
+  // Pedir limit:10000 de un solo golpe truena la validacion Zod, asi que
+  // aqui se junta el export recorriendo paginas de 100 en 100 hasta cubrir
+  // totalPages -- mismo resultado (export completo, no solo la pagina 1 de
+  // 20 visible), sin tocar el router.
+  async function handleExport(tipo: "excel" | "pdf") {
+    const limitePorPagina = 100;
+    const primera = await utils.promocion.listarResultados.fetch({
+      search: search || undefined,
+      estado: estado || undefined,
+      ordenTotal,
+      page: 1,
+      limit: limitePorPagina,
+    });
+    let todos = primera.items;
+    for (let p = 2; p <= primera.totalPages; p++) {
+      const siguiente = await utils.promocion.listarResultados.fetch({
+        search: search || undefined,
+        estado: estado || undefined,
+        ordenTotal,
+        page: p,
+        limit: limitePorPagina,
+      });
+      todos = todos.concat(siguiente.items);
+    }
+    const datos = mapExport(todos);
+    if (tipo === "excel") exportarResultadosPromocionExcel(datos);
+    else exportarResultadosPromocionPDF(datos);
+  }
+
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      <motion.div variants={fadeUp} className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Resultados de Promoción</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Puntaje agregado (40 pts) por trabajador — solo lectura.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => handleExport("excel")} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <FileSpreadsheet size={14} /> Excel
+          </button>
+          <button onClick={() => handleExport("pdf")} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <Download size={14} /> PDF
+          </button>
+        </div>
+      </motion.div>
+
+      <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o CURP..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className={`${inputClass} pl-9 w-full`}
+          />
+        </div>
+        <select value={estado} onChange={(e) => { setEstado(e.target.value as any); setPage(1); }} className={inputClass}>
+          <option value="">Todos los estados</option>
+          <option value="completo">Completos</option>
+          <option value="pendiente">Pendientes</option>
+        </select>
+        <select value={ordenTotal} onChange={(e) => { setOrdenTotal(e.target.value as any); setPage(1); }} className={inputClass}>
+          <option value="desc">Total: mayor a menor</option>
+          <option value="asc">Total: menor a mayor</option>
+        </select>
+      </motion.div>
+
+      <motion.div variants={fadeUp} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card-rest">
+        {isLoading ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-400">Cargando...</div>
+        ) : data?.items.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-400">Sin resultados</div>
+        ) : (
+          data?.items.map((item) => (
+            <div key={item.promocionId} className="border-t border-gray-100 p-4 first:border-t-0">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary-500 to-accent-500 text-[11px] font-bold text-white">
+                  {iniciales(item.trabajadorNombre)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-semibold text-gray-800">{item.trabajadorNombre}</p>
+                  <p className="text-[11.5px] text-gray-400 tabular-nums">{item.trabajadorCurp}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-extrabold tabular-nums text-gray-900">{item.total.toFixed(3)}</p>
+                  <p className="text-[10px] text-gray-400">de 40</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Badge label="Autoevaluación (14)" valor={item.autoevaluacion?.estado === "enviado" ? item.autoevaluacion.puntaje : null} />
+                <Badge label="Jefe (14)" valor={item.jefe?.estado === "enviado" ? item.jefe.puntaje : null} />
+                <Badge label="Compañero 1 (6)" valor={item.companero1?.estado === "enviado" ? item.companero1.puntaje : null} />
+                <Badge label="Compañero 2 (6)" valor={item.companero2?.estado === "enviado" ? item.companero2.puntaje : null} />
+              </div>
+            </div>
+          ))
+        )}
+
+        {data && data.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-gray-600">
+            <span>Mostrando página {data.page} de {data.totalPages} ({data.total} resultados)</span>
+            <div className="flex gap-1">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronRight size={16} className="rotate-180" />
+              </button>
+              <button onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))} disabled={page >= data.totalPages} className="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
