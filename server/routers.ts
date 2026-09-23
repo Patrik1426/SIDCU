@@ -25,6 +25,7 @@ import { solicitudesRouter } from "./routers/solicitudes";
 import { inconformidadRouter } from "./routers/inconformidad";
 import { promocionRouter } from "./routers/promocion";
 import { autoevaluacionRouter } from "./routers/autoevaluacion";
+import { evaluadoresRouter } from "./routers/evaluadores";
 
 export { router, publicProcedure };
 
@@ -196,6 +197,7 @@ export const appRouter = router({
   inconformidad: inconformidadRouter,
   promocion: promocionRouter,
   autoevaluacion: autoevaluacionRouter,
+  evaluadores: evaluadoresRouter,
 });
 
 export type AppRouter = typeof appRouter;
