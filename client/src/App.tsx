@@ -117,10 +117,14 @@ function AuthRoute({ isAuthenticated, isLoading }: { isAuthenticated: boolean; i
 }
 
 export default function App() {
-  const { isAuthenticated, isLoading } = useAuthState();
+  const { isAuthenticated, isLoading, user } = useAuthState();
+  const [location] = useLocation();
+  const restriccion = user?.restriccionEvaluador;
+  const debeIrAEvaluaciones = restriccion?.restringido === true && location !== "/portal/evaluaciones";
 
   return (
     <ThemeProvider>
+      {debeIrAEvaluaciones && <Redirect to="/portal/evaluaciones" />}
       <Switch>
         <Route path="/">
           <AuthRoute isAuthenticated={isAuthenticated} isLoading={isLoading} />
