@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trpc";
 import {
   elegibilidadPromocion,
   yaInscritoPromocion,
@@ -77,7 +77,7 @@ async function exigirModuloHabilitado(): Promise<void> {
 }
 
 export const promocionRouter = router({
-  moduloHabilitado: protectedProcedure.query(async () => {
+  moduloHabilitado: protectedProcedureSinRestriccion.query(async () => {
     return moduloPromocionHabilitado();
   }),
 
@@ -105,7 +105,7 @@ export const promocionRouter = router({
       return { success: true };
     }),
 
-  miElegibilidad: protectedProcedure.query(async ({ ctx }) => {
+  miElegibilidad: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     const [elegibilidad, yaInscrito] = await Promise.all([
       elegibilidadPromocion(ctx.user.id),
       yaInscritoPromocion(ctx.user.id),
@@ -122,15 +122,15 @@ export const promocionRouter = router({
   // solo filtra resultados de busqueda; reasignarEvaluadorPromocion vuelve a
   // validar todo server-side de cualquier forma), por eso protectedProcedure
   // basta -- no hace falta restringir el override a adminProcedure.
-  buscarEnPool: protectedProcedure
+  buscarEnPool: protectedProcedureSinRestriccion
     .input(z.object({ q: z.string().min(2), rol: z.enum(["jefe", "companero"]), excluirUserId: z.number().int().positive().optional() }))
     .query(async ({ ctx, input }) => buscarEnPoolPromocion(input.q, input.rol, input.excluirUserId ?? ctx.user.id)),
 
-  poolTieneRegistros: protectedProcedure
+  poolTieneRegistros: protectedProcedureSinRestriccion
     .input(z.object({ rol: z.enum(["jefe", "companero"]) }))
     .query(async ({ input }) => poolPromocionTieneRegistros(input.rol)),
 
-  confirmarInscripcion: protectedProcedure
+  confirmarInscripcion: protectedProcedureSinRestriccion
     .input(z.object({
       jefe: evaluadorSeleccionSchema,
       companero1: evaluadorSeleccionSchema,

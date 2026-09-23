@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { obtenerPerfil, crearPerfil, actualizarPerfil, listarSolicitudesBaja, toggleActivoUsuario } from "../db";
 import { eq } from "drizzle-orm";
@@ -18,11 +18,11 @@ const perfilInput = z.object({
 });
 
 export const perfilRouter = router({
-  obtener: protectedProcedure.query(async ({ ctx }) => {
+  obtener: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     return obtenerPerfil(ctx.user.id);
   }),
 
-  crear: protectedProcedure
+  crear: protectedProcedureSinRestriccion
     .input(perfilInput.extend({ email: z.string().nullable().optional() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await obtenerPerfil(ctx.user.id);
@@ -107,7 +107,7 @@ export const perfilRouter = router({
       return { success: true, id };
     }),
 
-  solicitarBaja: protectedProcedure
+  solicitarBaja: protectedProcedureSinRestriccion
     .input(z.object({ motivo: z.string().min(5, "Describe el motivo de tu solicitud") }))
     .mutation(async ({ ctx, input }) => {
       const perfil = await obtenerPerfil(ctx.user.id);
@@ -121,7 +121,7 @@ export const perfilRouter = router({
       return { success: true };
     }),
 
-  cancelarBaja: protectedProcedure
+  cancelarBaja: protectedProcedureSinRestriccion
     .mutation(async ({ ctx }) => {
       await actualizarPerfil(ctx.user.id, {
         solicitudBaja: false,

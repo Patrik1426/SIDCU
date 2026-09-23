@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trpc";
 import {
   miAutoevaluacion,
   iniciarAutoevaluacion,
@@ -57,19 +57,19 @@ export const autoevaluacionRouter = router({
   // puntaje -- es un lector general, pensado para cuando exista un panel de
   // reportes -- el corte de "el trabajador no lo ve" vive aqui, en el
   // procedure que expone datos a su propia sesion.
-  miEstado: protectedProcedure.query(async ({ ctx }) => {
+  miEstado: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     const estado = await miAutoevaluacion(ctx.user.id);
     if (estado.estado === "enviado") return { estado: "enviado" as const, enviadoAt: estado.enviadoAt };
     return estado;
   }),
 
-  iniciar: protectedProcedure.mutation(async ({ ctx }) => {
+  iniciar: protectedProcedureSinRestriccion.mutation(async ({ ctx }) => {
     const resultado = await iniciarAutoevaluacion(ctx.user.id);
     if (!resultado.ok) throw traducirErrorIniciar(resultado.error);
     return { success: true };
   }),
 
-  enviar: protectedProcedure
+  enviar: protectedProcedureSinRestriccion
     .input(z.object({
       respuestas: z.array(z.object({
         preguntaId: z.number().int().positive(),

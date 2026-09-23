@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import {
   crearSolicitudConAsignacion,
@@ -20,7 +20,7 @@ import * as schema from "../../drizzle/schema";
 import { CALIFICACION_APROBATORIA, CURSOS_REQUERIDOS_ACREDITACION } from "../../shared/const";
 
 export const solicitudesRouter = router({
-  crear: protectedProcedure
+  crear: protectedProcedureSinRestriccion
     .input(z.object({ cursoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "user") {
@@ -71,7 +71,7 @@ export const solicitudesRouter = router({
       return { success: true, id: resultado.id };
     }),
 
-  misSolicitudes: protectedProcedure.query(async ({ ctx }) => {
+  misSolicitudes: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     return listarSolicitudesUsuario(ctx.user.id);
   }),
 
@@ -92,8 +92,8 @@ export const solicitudesRouter = router({
     }),
 
   // Reportes.tsx tambien la usa (consultor tiene acceso de solo lectura ahi),
-  // por eso protectedProcedure + check manual en vez de adminProcedure.
-  porCurso: protectedProcedure.query(async ({ ctx }) => {
+  // por eso protectedProcedureSinRestriccion + check manual en vez de adminProcedure.
+  porCurso: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     if (ctx.user.role !== "admin" && ctx.user.role !== "consultor") {
       throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permisos para esta acción" });
     }
@@ -184,7 +184,7 @@ export const solicitudesRouter = router({
     }),
 
   // Progreso de acreditación del usuario: cuántos cursos completó y cuántos aprobó
-  progresoAcreditacion: protectedProcedure.query(async ({ ctx }) => {
+  progresoAcreditacion: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     const d = await getDb();
     const completadas = await d.select({
       calificacion: schema.solicitudesCurso.calificacion,

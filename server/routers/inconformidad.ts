@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import {
@@ -80,7 +80,7 @@ async function exigirModuloHabilitado(): Promise<void> {
 }
 
 export const inconformidadRouter = router({
-  moduloHabilitado: protectedProcedure.query(async () => {
+  moduloHabilitado: protectedProcedureSinRestriccion.query(async () => {
     return moduloInconformidadHabilitado();
   }),
 
@@ -108,15 +108,15 @@ export const inconformidadRouter = router({
       return { success: true };
     }),
 
-  factoresDisponibles: protectedProcedure.query(async () => {
+  factoresDisponibles: protectedProcedureSinRestriccion.query(async () => {
     return obtenerFactoresConfig();
   }),
 
-  miInconformidad: protectedProcedure.query(async ({ ctx }) => {
+  miInconformidad: protectedProcedureSinRestriccion.query(async ({ ctx }) => {
     return obtenerInconformidad(ctx.user.id);
   }),
 
-  guardarFactor: protectedProcedure
+  guardarFactor: protectedProcedureSinRestriccion
     .input(z.object({
       factor: z.enum(FACTORES_INCONFORMIDAD),
       mensaje: z.string().min(10, "Escribe al menos 10 caracteres").max(500),
@@ -128,7 +128,7 @@ export const inconformidadRouter = router({
       return { success: true, id: resultado.id };
     }),
 
-  quitarFactor: protectedProcedure
+  quitarFactor: protectedProcedureSinRestriccion
     .input(z.object({ factorId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await exigirModuloHabilitado();
@@ -138,7 +138,7 @@ export const inconformidadRouter = router({
       return { success: true };
     }),
 
-  presignarSubida: protectedProcedure
+  presignarSubida: protectedProcedureSinRestriccion
     .input(z.object({
       factorId: z.number(),
       nombreOriginal: z.string().min(1).max(255),
@@ -163,7 +163,7 @@ export const inconformidadRouter = router({
       }
     }),
 
-  confirmarSubida: protectedProcedure
+  confirmarSubida: protectedProcedureSinRestriccion
     .input(z.object({ factorId: z.number(), archivoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       await exigirModuloHabilitado();
@@ -223,7 +223,7 @@ export const inconformidadRouter = router({
       return { success: true };
     }),
 
-  presignarDescarga: protectedProcedure
+  presignarDescarga: protectedProcedureSinRestriccion
     .input(z.object({ archivoId: z.number() }))
     .query(async ({ ctx, input }) => {
       const archivo = await obtenerArchivoParaDescarga(input.archivoId);
@@ -264,7 +264,7 @@ export const inconformidadRouter = router({
       return { url };
     }),
 
-  enviar: protectedProcedure.mutation(async ({ ctx }) => {
+  enviar: protectedProcedureSinRestriccion.mutation(async ({ ctx }) => {
     await exigirModuloHabilitado();
     const resultado = await enviarInconformidad(ctx.user.id);
     if (!resultado.ok) throw traducirError(resultado.error);
