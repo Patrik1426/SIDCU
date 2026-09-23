@@ -40,7 +40,7 @@ function traducirErrorConfirmar(error: ErrorCodigoConfirmar): TRPCError {
   }
 }
 
-type ErrorCodigoReasignar = "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA";
+type ErrorCodigoReasignar = "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA" | "REASIGNACION_CONCURRENTE";
 
 function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
   switch (error) {
@@ -52,6 +52,8 @@ function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
       return new TRPCError({ code: "BAD_REQUEST", message: "El correo capturado no es válido o su dominio no existe." });
     case "EVALUACION_YA_ENVIADA":
       return new TRPCError({ code: "CONFLICT", message: "Ese evaluador ya envió su evaluación; no se puede reasignar." });
+    case "REASIGNACION_CONCURRENTE":
+      return new TRPCError({ code: "CONFLICT", message: "Otra reasignación se procesó al mismo tiempo para este puesto. Intenta de nuevo." });
     default: {
       const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });

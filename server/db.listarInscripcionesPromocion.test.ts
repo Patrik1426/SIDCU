@@ -158,6 +158,7 @@ describe("reasignarEvaluadorPromocion", () => {
       [promoExistente],
       [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
       [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
+      [{ estado: "enviado" }], // Minor (revision final 2): post-catch, distingue la causa real del ER_DUP_ENTRY -- aqui SI ya estaba enviado
     ], []);
     tx.insert = vi.fn(() => {
       throw Object.assign(new Error("Duplicate entry"), { code: "ER_DUP_ENTRY" });
@@ -169,6 +170,34 @@ describe("reasignarEvaluadorPromocion", () => {
     const { reasignarEvaluadorPromocion } = await import("./db");
     const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "EVALUACION_YA_ENVIADA" });
+  });
+
+  it("regresa REASIGNACION_CONCURRENTE si el ER_DUP_ENTRY NO fue por una evaluacion ya enviada (2 reasignaciones al mismo slot casi al mismo tiempo)", async () => {
+    // Minor parqueado en la revision final: el catch original mapeaba TODO
+    // ER_DUP_ENTRY a "ya envio su evaluacion", pero ese mismo error de MySQL
+    // tambien puede salir si otra reasignacion concurrente ya inserto una
+    // fila borrador nueva para el mismo (promocionId, rol) -- caso de carrera
+    // real, no "ya evaluo". El post-catch relee el estado real de la fila:
+    // si sigue en 'borrador' (o no la encuentra), es la colision concurrente,
+    // no una evaluacion enviada.
+    const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
+    const { tx } = makeTxRecorder([
+      [{ servidorId: 5 }],
+      [promoExistente],
+      [{ userId: 55 }],
+      [{ userId: 55 }],
+      [{ estado: "borrador" }], // la fila que gano la carrera ya existe, pero sigue sin contestar
+    ], []);
+    tx.insert = vi.fn(() => {
+      throw Object.assign(new Error("Duplicate entry"), { code: "ER_DUP_ENTRY" });
+    });
+    const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    expect(resultado).toEqual({ ok: false, error: "REASIGNACION_CONCURRENTE" });
   });
 
   it("rechaza por conflicto SIN llamar asignarEvaluador si el servidor ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {

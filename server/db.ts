@@ -2739,7 +2739,7 @@ export async function reasignarEvaluadorPromocion(
   nuevoServidorId: number,
   correoCapturado: string,
   adminUserId: number,
-): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA" }> {
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA" | "REASIGNACION_CONCURRENTE" }> {
   // I3: formato+MX del correo capturado por el admin, antes de abrir la
   // transaccion (mismo motivo que confirmarInscripcion: no tener I/O de DNS
   // colgado adentro de un tx de MySQL).
@@ -2830,7 +2830,20 @@ export async function reasignarEvaluadorPromocion(
     // eval_promocion_rol_idx (unique promocionId+rol). Antes esto se
     // propagaba como un 500 crudo; ahora se traduce a un error tipado que
     // el router convierte en un mensaje claro (hallazgo revision final).
-    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "EVALUACION_YA_ENVIADA" };
+    //
+    // Minor parqueado en esa misma revision: el mismo ER_DUP_ENTRY tambien
+    // puede salir por una colision rarisima de 2 reasignaciones al mismo
+    // (promocionId, rol) casi al mismo tiempo -- ahi la fila que "gano" la
+    // carrera sigue en 'borrador', no es que alguien ya evaluo. Se relee el
+    // estado real (fuera de la transaccion que ya se revirtio) para
+    // distinguir los 2 casos en vez de asumir siempre "ya envio".
+    if (codigoMysql(err) === "ER_DUP_ENTRY") {
+      const [filaActual] = await d.select({ estado: schema.evaluaciones.estado })
+        .from(schema.evaluaciones)
+        .where(and(eq(schema.evaluaciones.promocionId, promocionId), eq(schema.evaluaciones.rol, rol)));
+      if (filaActual?.estado === "enviado") return { ok: false, error: "EVALUACION_YA_ENVIADA" };
+      return { ok: false, error: "REASIGNACION_CONCURRENTE" };
+    }
     throw err;
   }
 }
