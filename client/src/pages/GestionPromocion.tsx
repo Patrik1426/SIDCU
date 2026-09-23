@@ -280,10 +280,10 @@ export default function GestionPromocion() {
           <div className="px-4 py-10 text-center text-sm text-gray-400">Sin inscripciones</div>
         ) : (
           data?.items.map((item) => {
-            const evaluadores: { rol: Rol; label: string; nombre: string | null; icon: typeof Briefcase }[] = [
-              { rol: "jefe", label: "Jefe inmediato", nombre: item.jefeNombre, icon: Briefcase },
-              { rol: "companero1", label: "Compañero 1", nombre: item.companero1Nombre, icon: Users },
-              { rol: "companero2", label: "Compañero 2", nombre: item.companero2Nombre, icon: Users },
+            const evaluadores: { rol: Rol; label: string; nombre: string | null; icon: typeof Briefcase; evaluacionEnviada: boolean }[] = [
+              { rol: "jefe", label: "Jefe inmediato", nombre: item.jefeNombre, icon: Briefcase, evaluacionEnviada: item.jefeEvaluacionEstado === "enviado" },
+              { rol: "companero1", label: "Compañero 1", nombre: item.companero1Nombre, icon: Users, evaluacionEnviada: item.companero1EvaluacionEstado === "enviado" },
+              { rol: "companero2", label: "Compañero 2", nombre: item.companero2Nombre, icon: Users, evaluacionEnviada: item.companero2EvaluacionEstado === "enviado" },
             ];
             const completos = evaluadores.filter((e) => e.nombre).length;
             const abierto = expandido === item.id;
@@ -343,14 +343,24 @@ export default function GestionPromocion() {
                                 <span className={`mt-0.5 block truncate text-[12.5px] font-semibold ${roto ? "text-amber-700" : "text-gray-800"}`}>
                                   {e.nombre ?? "— cuenta no encontrada"}
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoServidorId: 0, nuevoNombre: "" })}
-                                  className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
-                                >
-                                  <RefreshCw size={11} />
-                                  Reasignar
-                                </button>
+                                {e.evaluacionEnviada ? (
+                                  <span
+                                    className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-400"
+                                    title="Ese evaluador ya envió su evaluación; no se puede reasignar."
+                                  >
+                                    <RefreshCw size={11} />
+                                    Ya evaluó — no se puede reasignar
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoServidorId: 0, nuevoNombre: "" })}
+                                    className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
+                                  >
+                                    <RefreshCw size={11} />
+                                    Reasignar
+                                  </button>
+                                )}
                               </span>
                             </div>
                           );
