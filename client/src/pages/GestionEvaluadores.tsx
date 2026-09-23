@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { ListChecks, Upload, Briefcase, Users } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
+import { PREGUNTAS_EVALUADOR } from "@shared/const";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
@@ -56,7 +57,7 @@ export default function GestionEvaluadores() {
               <p className="font-semibold text-gray-800">
                 {isLoading ? "Cargando..." : `${activas ?? 0} preguntas activas en el banco de ${ROLES.find((r) => r.rol === tab)?.label}`}
               </p>
-              <p className="text-sm text-gray-500">Se sortean 14 por evaluación.</p>
+              <p className="text-sm text-gray-500">Se sortean {PREGUNTAS_EVALUADOR} por evaluación.</p>
             </div>
           </div>
           <button
@@ -68,6 +69,11 @@ export default function GestionEvaluadores() {
             Importar CSV
           </button>
         </div>
+        {!isLoading && (activas ?? 0) < PREGUNTAS_EVALUADOR && (
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700">
+            ⚠️ Menos de {PREGUNTAS_EVALUADOR} preguntas activas en el banco de {ROLES.find((r) => r.rol === tab)?.label} — nadie puede completar su evaluación de este rol hasta que se corrija
+          </p>
+        )}
       </motion.div>
 
       {importando && (
