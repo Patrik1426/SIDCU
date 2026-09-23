@@ -123,7 +123,11 @@ export default function App() {
   const { isAuthenticated, isLoading, user } = useAuthState();
   const [location] = useLocation();
   const restriccion = user?.restriccionEvaluador;
-  const debeIrAEvaluaciones = restriccion?.restringido === true && location !== "/portal/evaluaciones";
+  // startsWith, no ===: la ruta del wizard es /portal/evaluaciones/:id -- un
+  // match exacto contra "/portal/evaluaciones" rebotaba al evaluador de
+  // vuelta a la lista en cuanto entraba a SU PROPIA evaluacion, dejandolo
+  // sin poder completarla nunca (hallazgo real del Task 16, verificacion e2e).
+  const debeIrAEvaluaciones = restriccion?.restringido === true && !location.startsWith("/portal/evaluaciones");
 
   return (
     <ThemeProvider>
