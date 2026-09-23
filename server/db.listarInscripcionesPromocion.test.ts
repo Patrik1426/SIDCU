@@ -147,6 +147,30 @@ describe("reasignarEvaluadorPromocion", () => {
     expect(calls).toContain("delete");
   });
 
+  it("regresa EVALUACION_YA_ENVIADA si el slot reasignado ya tenia una evaluacion enviada (DELETE no la toca, INSERT choca con el unique promocionId+rol)", async () => {
+    // Hallazgo revision final: el DELETE solo borra estado='borrador', asi
+    // que si el evaluador viejo ya contesto, no hay nada que borrar y el
+    // INSERT de la fila nueva viola eval_promocion_rol_idx (ER_DUP_ENTRY) --
+    // antes esto se propagaba como 500 crudo (INTERNAL_SERVER_ERROR).
+    const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
+    const { tx } = makeTxRecorder([
+      [{ servidorId: 5 }], // servidorEnPool: valido
+      [promoExistente],
+      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
+      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
+    ], []);
+    tx.insert = vi.fn(() => {
+      throw Object.assign(new Error("Duplicate entry"), { code: "ER_DUP_ENTRY" });
+    });
+    const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { reasignarEvaluadorPromocion } = await import("./db");
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    expect(resultado).toEqual({ ok: false, error: "EVALUACION_YA_ENVIADA" });
+  });
+
   it("rechaza por conflicto SIN llamar asignarEvaluador si el servidor ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
     // Regresion del hallazgo de revision: antes, el chequeo de conflicto corria
     // DESPUES de asignarEvaluador, asi que un UPDATE users.email ya commiteado

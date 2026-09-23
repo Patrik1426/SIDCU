@@ -1941,12 +1941,35 @@ export async function asignarEvaluador(
   correoCapturado: string,
 ): Promise<{ userId: number; passwordTemporalEnClaro: string | null }> {
   const [servidor] = await tx
-    .select({ userId: schema.servidoresPublicos.userId, curp: schema.servidoresPublicos.curp, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
+    .select({
+      userId: schema.servidoresPublicos.userId,
+      curp: schema.servidoresPublicos.curp,
+      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
+      // Necesario para distinguir, en la rama de "ya tiene cuenta" de abajo,
+      // una cuenta real (siempre null aqui) de una cuenta on-the-fly que tal
+      // vez ya expiro (no null) -- fix hallazgo revision final: antes esta
+      // rama solo actualizaba el email, asi que si Worker A eligio a un Jefe
+      // on-the-fly cuya cuenta ya vencio (isActive=false por el worker de
+      // expiracion), Worker B eligiendo al MISMO Jefe despues nunca la
+      // reactivaba ni le refrescaba el vencimiento -- la evaluacion quedaba
+      // varada para siempre.
+      evaluadorCuentaExpiraEn: schema.users.evaluadorCuentaExpiraEn,
+    })
     .from(schema.servidoresPublicos)
+    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
     .where(eq(schema.servidoresPublicos.id, servidorId));
 
   if (servidor.userId) {
-    await tx.update(schema.users).set({ email: correoCapturado }).where(eq(schema.users.id, servidor.userId));
+    // null = cuenta real, nunca tuvo restriccion/expiracion -- nunca se le
+    // toca esta columna. No-null = cuenta on-the-fly (vencida o no): refresca
+    // la ventana de 3 dias habiles Y reactiva, en el mismo update que el
+    // email, para que una reseleccion posterior (mismo Jefe/Companero elegido
+    // por otro trabajador) nunca deje la cuenta varada desactivada.
+    const esOnTheFly = servidor.evaluadorCuentaExpiraEn !== null;
+    await tx.update(schema.users).set({
+      email: correoCapturado,
+      ...(esOnTheFly ? { evaluadorCuentaExpiraEn: calcularExpiracion3DiasHabiles(new Date()), isActive: true } : {}),
+    }).where(eq(schema.users.id, servidor.userId));
     return { userId: servidor.userId, passwordTemporalEnClaro: null };
   }
 
@@ -2196,7 +2219,12 @@ export async function miEvaluacion(userId: number, evaluacionId: number): Promis
   })
     .from(schema.evaluacionRespuestas)
     .innerJoin(schema.evaluadorPreguntas, eq(schema.evaluadorPreguntas.id, schema.evaluacionRespuestas.preguntaId))
-    .where(eq(schema.evaluacionRespuestas.evaluacionId, fila.id));
+    .where(eq(schema.evaluacionRespuestas.evaluacionId, fila.id))
+    // Fix 7 (revision final): sin esto el orden dependia de PK/insertion
+    // order de MySQL, no un contrato real -- el wizard indexa por posicion
+    // (indiceActual) y el arreglo se re-obtiene tras "iniciar" invalidar la
+    // query, asi que el orden debe estar garantizado, no ser incidental.
+    .orderBy(schema.evaluacionRespuestas.id);
 
   return { estado: "borrador", nombreEvaluado: fila.nombreEvaluado, preguntas };
 }
@@ -2516,6 +2544,17 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
   const jefe = alias(schema.servidoresPublicos, "jefe");
   const companero1 = alias(schema.servidoresPublicos, "companero1");
   const companero2 = alias(schema.servidoresPublicos, "companero2");
+  // Fix 2 (revision final): GestionPromocion.tsx necesita saber si el slot
+  // ya tiene una evaluacion 'enviado' para deshabilitar el boton "Reasignar"
+  // -- reasignar un evaluador que ya contesto choca con el unique
+  // (promocionId, rol) de `evaluaciones` (ver reasignarEvaluadorPromocion).
+  // leftJoin porque el slot puede no existir todavia (evaluaciones se crea
+  // en confirmarInscripcion, pero inscripciones viejas pre-backfill pueden
+  // no tenerlo -- ver scripts/backfill-evaluaciones-existentes.ts) o estar
+  // en 'borrador'.
+  const evalJefe = alias(schema.evaluaciones, "eval_jefe");
+  const evalCompanero1 = alias(schema.evaluaciones, "eval_companero1");
+  const evalCompanero2 = alias(schema.evaluaciones, "eval_companero2");
 
   const limit = filtros?.limit ?? 20;
   const page = filtros?.page ?? 1;
@@ -2542,12 +2581,18 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
         jefeNombre: jefe.nombreCompleto,
         companero1Nombre: companero1.nombreCompleto,
         companero2Nombre: companero2.nombreCompleto,
+        jefeEvaluacionEstado: evalJefe.estado,
+        companero1EvaluacionEstado: evalCompanero1.estado,
+        companero2EvaluacionEstado: evalCompanero2.estado,
       })
       .from(schema.promociones)
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
       .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
       .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
       .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .leftJoin(evalJefe, and(eq(evalJefe.promocionId, schema.promociones.id), eq(evalJefe.rol, "jefe")))
+      .leftJoin(evalCompanero1, and(eq(evalCompanero1.promocionId, schema.promociones.id), eq(evalCompanero1.rol, "companero1")))
+      .leftJoin(evalCompanero2, and(eq(evalCompanero2.promocionId, schema.promociones.id), eq(evalCompanero2.rol, "companero2")))
       .where(where)
       .limit(limit)
       .offset(offset),
@@ -2669,7 +2714,7 @@ export async function reasignarEvaluadorPromocion(
   nuevoServidorId: number,
   correoCapturado: string,
   adminUserId: number,
-): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" }> {
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA" }> {
   // I3: formato+MX del correo capturado por el admin, antes de abrir la
   // transaccion (mismo motivo que confirmarInscripcion: no tener I/O de DNS
   // colgado adentro de un tx de MySQL).
@@ -2679,73 +2724,90 @@ export async function reasignarEvaluadorPromocion(
   const d = await getDb();
   const rolPool = rol === "jefe" ? "jefe" : "companero";
 
-  return d.transaction(async (tx) => {
-    const enPool = await servidorEnPool(tx, nuevoServidorId, rolPool);
-    if (!enPool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+  try {
+    return await d.transaction(async (tx) => {
+      const enPool = await servidorEnPool(tx, nuevoServidorId, rolPool);
+      if (!enPool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
-    const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
-    if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
+      const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
+      if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
 
-    // Chequeo de conflicto ANTES de asignarEvaluador: si el servidor destino
-    // ya tiene cuenta vinculada, usamos ESE userId para detectar auto-conflicto
-    // sin llamar todavia a asignarEvaluador (que haria un UPDATE users.email
-    // que quedaria commiteado aunque rechacemos despues -- Drizzle solo hace
-    // rollback ante un throw, no ante un return de fallo logico). Si el
-    // servidor aun no tiene cuenta (userId null), no hay nada que pueda
-    // coincidir todavia, asi que se sigue derecho a asignarEvaluador.
-    const [servidorVinculado] = await tx
-      .select({ userId: schema.servidoresPublicos.userId })
-      .from(schema.servidoresPublicos)
-      .where(eq(schema.servidoresPublicos.id, nuevoServidorId));
+      // Chequeo de conflicto ANTES de asignarEvaluador: si el servidor destino
+      // ya tiene cuenta vinculada, usamos ESE userId para detectar auto-conflicto
+      // sin llamar todavia a asignarEvaluador (que haria un UPDATE users.email
+      // que quedaria commiteado aunque rechacemos despues -- Drizzle solo hace
+      // rollback ante un throw, no ante un return de fallo logico). Si el
+      // servidor aun no tiene cuenta (userId null), no hay nada que pueda
+      // coincidir todavia, asi que se sigue derecho a asignarEvaluador.
+      const [servidorVinculado] = await tx
+        .select({ userId: schema.servidoresPublicos.userId })
+        .from(schema.servidoresPublicos)
+        .where(eq(schema.servidoresPublicos.id, nuevoServidorId));
 
-    if (
-      servidorVinculado?.userId != null &&
-      (
-        servidorVinculado.userId === promo.userId ||
-        (rol !== "jefe" && servidorVinculado.userId === promo.jefeAsignadoId) ||
-        (rol !== "companero1" && servidorVinculado.userId === promo.companero1Id) ||
-        (rol !== "companero2" && servidorVinculado.userId === promo.companero2Id)
-      )
-    ) {
-      return { ok: false as const, error: "SELECCION_INVALIDA" as const };
-    }
+      if (
+        servidorVinculado?.userId != null &&
+        (
+          servidorVinculado.userId === promo.userId ||
+          (rol !== "jefe" && servidorVinculado.userId === promo.jefeAsignadoId) ||
+          (rol !== "companero1" && servidorVinculado.userId === promo.companero1Id) ||
+          (rol !== "companero2" && servidorVinculado.userId === promo.companero2Id)
+        )
+      ) {
+        return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+      }
 
-    const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
+      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
 
-    // La fila `evaluaciones` del slot reasignado solo puede estar en
-    // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie
-    // reasigna un evaluador que ya contestó, el caso real de uso es
-    // expiración de cuenta ANTES de contestar). Se borra la fila vieja (si
-    // existe -- puede que ni siquiera se hubiera "iniciado" todavía, en
-    // cuyo caso no hay filas de evaluacionRespuestas que limpiar, el
-    // onDelete cascade se encarga si sí las había) y se crea una nueva
-    // para el evaluador nuevo, mismo patrón borrador que confirmarInscripcion.
-    await tx.delete(schema.evaluaciones).where(and(
-      eq(schema.evaluaciones.promocionId, promocionId),
-      eq(schema.evaluaciones.rol, rol),
-      eq(schema.evaluaciones.estado, "borrador"),
-    ));
-    await tx.insert(schema.evaluaciones).values({ promocionId, rol, evaluadorUserId: nuevoUserId });
+      // La fila `evaluaciones` del slot reasignado solo puede estar en
+      // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie
+      // reasigna un evaluador que ya contestó, el caso real de uso es
+      // expiración de cuenta ANTES de contestar). Se borra la fila vieja (si
+      // existe -- puede que ni siquiera se hubiera "iniciado" todavía, en
+      // cuyo caso no hay filas de evaluacionRespuestas que limpiar, el
+      // onDelete cascade se encarga si sí las había) y se crea una nueva
+      // para el evaluador nuevo, mismo patrón borrador que confirmarInscripcion.
+      // Si el slot viejo ya estaba 'enviado' (evaluador ya contesto), este
+      // DELETE no encuentra nada que borrar (solo filtra estado='borrador')
+      // y el INSERT de abajo choca con el unique (promocionId, rol) --
+      // capturado como EVALUACION_YA_ENVIADA en el catch de este try (Fix 2,
+      // revision final).
+      await tx.delete(schema.evaluaciones).where(and(
+        eq(schema.evaluaciones.promocionId, promocionId),
+        eq(schema.evaluaciones.rol, rol),
+        eq(schema.evaluaciones.estado, "borrador"),
+      ));
+      await tx.insert(schema.evaluaciones).values({ promocionId, rol, evaluadorUserId: nuevoUserId });
 
-    let valorAnterior: number;
-    let update: Partial<typeof schema.promociones.$inferInsert>;
-    if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
-    else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
-    else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
+      let valorAnterior: number;
+      let update: Partial<typeof schema.promociones.$inferInsert>;
+      if (rol === "jefe") { valorAnterior = promo.jefeAsignadoId; update = { jefeAsignadoId: nuevoUserId }; }
+      else if (rol === "companero1") { valorAnterior = promo.companero1Id; update = { companero1Id: nuevoUserId }; }
+      else { valorAnterior = promo.companero2Id; update = { companero2Id: nuevoUserId }; }
 
-    await tx.update(schema.promociones).set(update).where(eq(schema.promociones.id, promocionId));
-    await tx.insert(schema.promocionCorreosPendientes).values({ promocionId, destinatarioUserId: nuevoUserId, rol, passwordTemporalEnClaro });
-    await tx.insert(schema.auditoria).values({
-      servidorId: null,
-      usuarioId: adminUserId,
-      accion: "actualizar",
-      descripcion: `Promoción #${promocionId}: reasignó ${rol}`,
-      cambiosAnteriores: JSON.stringify({ [rol]: valorAnterior }),
-      cambiosPosterior: JSON.stringify({ [rol]: nuevoUserId }),
+      await tx.update(schema.promociones).set(update).where(eq(schema.promociones.id, promocionId));
+      await tx.insert(schema.promocionCorreosPendientes).values({ promocionId, destinatarioUserId: nuevoUserId, rol, passwordTemporalEnClaro });
+      await tx.insert(schema.auditoria).values({
+        servidorId: null,
+        usuarioId: adminUserId,
+        accion: "actualizar",
+        descripcion: `Promoción #${promocionId}: reasignó ${rol}`,
+        cambiosAnteriores: JSON.stringify({ [rol]: valorAnterior }),
+        cambiosPosterior: JSON.stringify({ [rol]: nuevoUserId }),
+      });
+
+      return { ok: true as const };
     });
-
-    return { ok: true as const };
-  });
+  } catch (err: any) {
+    // El slot reasignado puede tener una evaluacion ya 'enviado' (el
+    // evaluador viejo ya contesto antes de que el admin decidiera
+    // reasignar) -- el DELETE de arriba solo borra estado='borrador', asi
+    // que no encuentra nada, y el INSERT siguiente choca con
+    // eval_promocion_rol_idx (unique promocionId+rol). Antes esto se
+    // propagaba como un 500 crudo; ahora se traduce a un error tipado que
+    // el router convierte en un mensaje claro (hallazgo revision final).
+    if (codigoMysql(err) === "ER_DUP_ENTRY") return { ok: false, error: "EVALUACION_YA_ENVIADA" };
+    throw err;
+  }
 }
 
 const TOPE_INTENTOS_CORREO = 5;

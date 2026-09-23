@@ -16,8 +16,8 @@ beforeEach(() => {
 });
 
 describe("asignarEvaluador", () => {
-  it("si ya tiene cuenta: solo actualiza el correo, no genera password", async () => {
-    const { tx, calls } = makeTxRecorder([[{ userId: 12 }]], [{ insertId: 0 }]);
+  it("si ya tiene cuenta REAL (evaluadorCuentaExpiraEn null): solo actualiza el correo, nunca toca expiracion/isActive", async () => {
+    const { tx, calls, setCalls } = makeTxRecorder([[{ userId: 12, evaluadorCuentaExpiraEn: null }]], [{ insertId: 0 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
@@ -27,6 +27,31 @@ describe("asignarEvaluador", () => {
     expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
     expect(calls).toContain("update");
     expect(calls).not.toContain("insert");
+    // Aserción estricta: el payload del update debe ser EXACTAMENTE
+    // {email}, sin evaluadorCuentaExpiraEn ni isActive -- una cuenta real
+    // jamas debe adquirir esta columna.
+    expect(setCalls[0]).toEqual({ email: "persona@example.com" });
+  });
+
+  it("si ya tiene cuenta ON-THE-FLY (evaluadorCuentaExpiraEn no null, ej. ya vencida): refresca expiracion 3 dias habiles y reactiva, en el mismo update", async () => {
+    const expiroHaceRato = new Date("2020-01-01T00:00:00.000Z");
+    const { tx, calls, setCalls } = makeTxRecorder([[{ userId: 12, evaluadorCuentaExpiraEn: expiroHaceRato }]], [{ insertId: 0 }]);
+    const fakeDb = {};
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { asignarEvaluador } = await import("./db");
+    const antes = Date.now();
+    const resultado = await asignarEvaluador(tx, 5, "persona@example.com");
+    expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
+    expect(calls).toContain("update");
+    expect(calls).not.toContain("insert");
+    expect(setCalls[0].email).toBe("persona@example.com");
+    expect(setCalls[0].isActive).toBe(true);
+    expect(setCalls[0].evaluadorCuentaExpiraEn).toBeInstanceOf(Date);
+    // La nueva expiracion es una ventana fresca desde ahora, no la vieja
+    // fecha ya vencida de 2020.
+    expect(setCalls[0].evaluadorCuentaExpiraEn.getTime()).toBeGreaterThan(antes);
   });
 
   it("si NO tiene cuenta: crea usuario con password temporal (única, no forzada a cambiar)", async () => {

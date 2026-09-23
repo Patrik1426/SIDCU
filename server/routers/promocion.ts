@@ -40,7 +40,7 @@ function traducirErrorConfirmar(error: ErrorCodigoConfirmar): TRPCError {
   }
 }
 
-type ErrorCodigoReasignar = "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO";
+type ErrorCodigoReasignar = "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA";
 
 function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
   switch (error) {
@@ -50,6 +50,8 @@ function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
       return new TRPCError({ code: "BAD_REQUEST", message: "Ese servidor no es válido para este puesto (no está en el pool del rol, o ya ocupa otro lugar en esta inscripción)." });
     case "CORREO_INVALIDO":
       return new TRPCError({ code: "BAD_REQUEST", message: "El correo capturado no es válido o su dominio no existe." });
+    case "EVALUACION_YA_ENVIADA":
+      return new TRPCError({ code: "CONFLICT", message: "Ese evaluador ya envió su evaluación; no se puede reasignar." });
     default: {
       const _exhaustivo: never = error;
       return new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error inesperado." });
