@@ -2660,6 +2660,88 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
   };
 }
 
+export type ResultadoPromocionItem = {
+  promocionId: number;
+  trabajadorNombre: string;
+  trabajadorCurp: string;
+  autoevaluacion: ComponentePuntaje | null;
+  jefe: ComponentePuntaje | null;
+  companero1: ComponentePuntaje | null;
+  companero2: ComponentePuntaje | null;
+  total: number;
+  completo: boolean;
+};
+
+// Filtro/orden por total y estado se resuelven en JS DESPUES del query, no
+// en SQL -- total/completo son derivados de 4 estados+puntajes, no
+// columnas reales. El volumen esperado (mismo orden que inscripciones a
+// Promocion, cientos de filas) no justifica llevar la suma a SQL (ver
+// spec, seccion Backend).
+export async function listarResultadosPromocion(filtros: {
+  search?: string;
+  estado?: "completo" | "pendiente";
+  ordenTotal?: "asc" | "desc";
+  page: number;
+  limit: number;
+}): Promise<{ items: ResultadoPromocionItem[]; total: number; page: number; limit: number; totalPages: number }> {
+  const d = await getDb();
+  const trabajador = alias(schema.servidoresPublicos, "trabajador");
+  const evalJefe = alias(schema.evaluaciones, "eval_jefe");
+  const evalCompanero1 = alias(schema.evaluaciones, "eval_companero1");
+  const evalCompanero2 = alias(schema.evaluaciones, "eval_companero2");
+
+  const where = filtros.search
+    ? or(
+        like(trabajador.nombreCompleto, `%${escaparComodinesLike(filtros.search)}%`),
+        like(trabajador.curp, `%${escaparComodinesLike(filtros.search)}%`),
+      )
+    : undefined;
+
+  const filas = await d
+    .select({
+      promocionId: schema.promociones.id,
+      trabajadorNombre: trabajador.nombreCompleto,
+      trabajadorCurp: trabajador.curp,
+      autoEstado: schema.autoevaluaciones.estado,
+      autoPuntaje: schema.autoevaluaciones.puntaje,
+      jefeEstado: evalJefe.estado,
+      jefePuntaje: evalJefe.puntajeFinal,
+      c1Estado: evalCompanero1.estado,
+      c1Puntaje: evalCompanero1.puntajeFinal,
+      c2Estado: evalCompanero2.estado,
+      c2Puntaje: evalCompanero2.puntajeFinal,
+    })
+    .from(schema.promociones)
+    .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
+    .leftJoin(schema.autoevaluaciones, eq(schema.autoevaluaciones.promocionId, schema.promociones.id))
+    .leftJoin(evalJefe, and(eq(evalJefe.promocionId, schema.promociones.id), eq(evalJefe.rol, "jefe")))
+    .leftJoin(evalCompanero1, and(eq(evalCompanero1.promocionId, schema.promociones.id), eq(evalCompanero1.rol, "companero1")))
+    .leftJoin(evalCompanero2, and(eq(evalCompanero2.promocionId, schema.promociones.id), eq(evalCompanero2.rol, "companero2")))
+    .where(where);
+
+  let items: ResultadoPromocionItem[] = filas.map((f) => {
+    const autoevaluacion = f.autoEstado ? { estado: f.autoEstado, puntaje: f.autoPuntaje } : null;
+    const jefe = f.jefeEstado ? { estado: f.jefeEstado, puntaje: f.jefePuntaje } : null;
+    const companero1 = f.c1Estado ? { estado: f.c1Estado, puntaje: f.c1Puntaje } : null;
+    const companero2 = f.c2Estado ? { estado: f.c2Estado, puntaje: f.c2Puntaje } : null;
+    const { total, completo } = calcularResultadoPromocion({ autoevaluacion, jefe, companero1, companero2 });
+    return { promocionId: f.promocionId, trabajadorNombre: f.trabajadorNombre, trabajadorCurp: f.trabajadorCurp, autoevaluacion, jefe, companero1, companero2, total, completo };
+  });
+
+  if (filtros.estado === "completo") items = items.filter((i) => i.completo);
+  if (filtros.estado === "pendiente") items = items.filter((i) => !i.completo);
+
+  if (filtros.ordenTotal) {
+    items = [...items].sort((a, b) => (filtros.ordenTotal === "asc" ? a.total - b.total : b.total - a.total));
+  }
+
+  const total = items.length;
+  const offset = (filtros.page - 1) * filtros.limit;
+  const pageItems = items.slice(offset, offset + filtros.limit);
+
+  return { items: pageItems, total, page: filtros.page, limit: filtros.limit, totalPages: Math.ceil(total / filtros.limit) };
+}
+
 // M8: escapa % y _ (los 2 wildcards de LIKE) del termino de busqueda antes
 // de envolverlo en %...% -- sin esto, alguien podia mandar "%" y traer TODO
 // el pool activo de un rol en una sola pagina, o "_" para matchear un
