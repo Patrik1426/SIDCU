@@ -2005,10 +2005,21 @@ export async function yaInscritoPromocion(userId: number): Promise<boolean> {
 // I1 (revision final): antes solo chequeaba promocionEvaluadorPool.rol+activo --
 // una persona dada de baja (servidoresPublicos.estatus != "activo") o con
 // cuenta desactivada (users.isActive = false) seguia siendo aceptada si se
-// referenciaba directo, aunque buscarEnPoolPromocion (la busqueda que usa la
-// UI) ya la escondiera -- regresion del fix c55d401 del diseño anterior.
+// referenciaba directo -- regresion del fix c55d401 del diseño anterior.
 // leftJoin a users porque un servidor sin cuenta todavia (userId null) no
 // tiene isActive que chequear -- eso es valido, no se rechaza por esa razon.
+//
+// Hallazgo real 2026-09-23 (verificacion en vivo tras el modulo Evaluadores):
+// el chequeo original `isActive=true` bloqueaba TAMBIEN a una cuenta on-the-fly
+// de evaluador que expiro por el worker de 3 dias habiles (Evaluadores) --
+// nunca se podia volver a seleccionar a ese evaluador ni desde
+// confirmarInscripcion ni desde reasignarEvaluadorPromocion, asi que la
+// reactivacion que hace asignarEvaluador (ver ese archivo) nunca se alcanzaba
+// -- codigo muerto. Distinguir: `evaluadorCuentaExpiraEn IS NOT NULL` marca
+// que la cuenta es on-the-fly y su isActive=false es recuperable (se
+// reactiva sola al reseleccionarla) -- esas SI deben poder seleccionarse de
+// nuevo. Una cuenta real desactivada por otra razon (evaluadorCuentaExpiraEn
+// null, isActive=false) sigue bloqueada, que es la intencion original de I1.
 async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" | "companero"): Promise<boolean> {
   const [fila] = await tx
     .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
@@ -2020,7 +2031,11 @@ async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" |
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
       eq(schema.servidoresPublicos.estatus, "activo"),
-      or(isNull(schema.servidoresPublicos.userId), eq(schema.users.isActive, true)),
+      or(
+        isNull(schema.servidoresPublicos.userId),
+        eq(schema.users.isActive, true),
+        isNotNull(schema.users.evaluadorCuentaExpiraEn),
+      ),
     ));
   return !!fila;
 }
@@ -2676,6 +2691,16 @@ export async function buscarEnPoolPromocion(
       eq(schema.servidoresPublicos.estatus, "activo"),
       or(isNull(schema.servidoresPublicos.userId), ne(schema.servidoresPublicos.userId, excluirUserId)),
       or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
+      // Mismo criterio que servidorEnPool (ver comentario ahi, hallazgo real
+      // 2026-09-23): no mostrar en la busqueda a alguien que de todos modos
+      // seria rechazado al confirmar -- pero una cuenta on-the-fly de
+      // Evaluadores expirada (evaluadorCuentaExpiraEn no null) SI debe seguir
+      // apareciendo, porque reseleccionarla la reactiva.
+      or(
+        isNull(schema.servidoresPublicos.userId),
+        eq(schema.users.isActive, true),
+        isNotNull(schema.users.evaluadorCuentaExpiraEn),
+      ),
     ))
     .limit(15);
 

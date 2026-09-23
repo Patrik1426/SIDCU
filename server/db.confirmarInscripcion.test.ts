@@ -137,6 +137,39 @@ describe("confirmarInscripcion", () => {
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
   });
 
+  // Hallazgo real 2026-09-23 (verificacion en vivo, modulo Evaluadores):
+  // servidorEnPool bloqueaba TAMBIEN a una cuenta on-the-fly de evaluador
+  // que expiro por el worker de 3 dias habiles -- nunca se podia volver a
+  // seleccionar a ese evaluador, asi que la reactivacion de asignarEvaluador
+  // (fix wave de la revision final) era codigo muerto. Fix: servidorEnPool
+  // ahora acepta la fila si evaluadorCuentaExpiraEn no es null (cuenta
+  // on-the-fly, isActive=false es recuperable), aunque isActive sea false.
+  // Mismo limite del mock que el test de arriba: no evalua el WHERE real,
+  // asi que esta prueba fija el CONTRATO -- si MySQL SI regresa la fila
+  // (porque cumple el nuevo OR), confirmarInscripcion debe seguir su camino
+  // normal, no rechazar.
+  it("servidor con cuenta on-the-fly expirada: pool SI regresa fila (recuperable) y no rechaza por eso", async () => {
+    vi.resetModules();
+    const { tx, calls } = makeTxRecorder([
+      [{ calificacion: 75 }, { calificacion: 90 }], // cursos completados
+      [{ servidorId: 10 }], // pool jefe: SI regresa fila pese a isActive=false
+      [{ servidorId: 20 }], // pool companero1
+      [{ servidorId: 30 }], // pool companero2
+      [{ id: 1 }], // servidorPropio (auto-seleccion check)
+      [{ userId: null, curp: "X", nombreCompleto: "Jefe Ejemplo" }], // asignarEvaluador: select servidor (jefe)
+      [{ userId: null, curp: "Y", nombreCompleto: "Comp1 Ejemplo" }], // asignarEvaluador: select servidor (companero1)
+      [{ userId: null, curp: "Z", nombreCompleto: "Comp2 Ejemplo" }], // asignarEvaluador: select servidor (companero2)
+    ], [{ insertId: 900 }]);
+    const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { confirmarInscripcion } = await import("./db");
+    const resultado = await confirmarInscripcion(1, seleccionValida);
+    expect(resultado).toEqual({ ok: true });
+    expect(calls).not.toEqual([]);
+  });
+
   // I3 (revision final de rama): validarCorreoEvaluador (formato+MX) antes
   // solo se llamaba desde importarFilaEvaluador -- las 3 selecciones del
   // trabajador solo pasaban por z.string().email() en el router (formato,
