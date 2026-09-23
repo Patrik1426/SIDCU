@@ -24,6 +24,8 @@ import GestionSolicitudes from "@/pages/GestionSolicitudes";
 import Inconformidad from "@/pages/Inconformidad";
 import Promocion from "@/pages/Promocion";
 import Autoevaluacion from "@/pages/Autoevaluacion";
+import EvaluacionesPendientes from "@/pages/EvaluacionesPendientes";
+import Evaluacion from "@/pages/Evaluacion";
 import GestionInconformidades from "@/pages/GestionInconformidades";
 import GestionPromocion from "@/pages/GestionPromocion";
 import GestionAutoevaluacion from "@/pages/GestionAutoevaluacion";
@@ -246,6 +248,18 @@ export default function App() {
         <ProtectedRoute
           path="/portal/autoevaluacion"
           component={Autoevaluacion}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/evaluaciones"
+          component={EvaluacionesPendientes}
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+        />
+        <ProtectedRoute
+          path="/portal/evaluaciones/:id"
+          component={Evaluacion}
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
         />
