@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, type ReactNode, useEffect } from "react";
 import { Route, Switch, Redirect, useLocation } from "wouter";
 import { Toaster } from "sonner";
 import { useAuthState } from "@/hooks/useAuth";
@@ -121,7 +121,7 @@ function AuthRoute({ isAuthenticated, isLoading }: { isAuthenticated: boolean; i
 
 export default function App() {
   const { isAuthenticated, isLoading, user } = useAuthState();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const restriccion = user?.restriccionEvaluador;
   // startsWith, no ===: la ruta del wizard es /portal/evaluaciones/:id -- un
   // match exacto contra "/portal/evaluaciones" rebotaba al evaluador de
@@ -129,9 +129,28 @@ export default function App() {
   // sin poder completarla nunca (hallazgo real del Task 16, verificacion e2e).
   const debeIrAEvaluaciones = restriccion?.restringido === true && !location.startsWith("/portal/evaluaciones");
 
+  // useEffect con `navigate` imperativo, NO <Redirect> declarativo -- varias
+  // paginas (Dashboard, CatalogoCursos, Inconformidad, MisSolicitudes,
+  // Portal) tienen su PROPIO redirect a /onboarding cuando el perfil no
+  // existe, sin saber nada de la restriccion de evaluador. Una cuenta
+  // on-the-fly nunca tiene perfilesServidor, asi que ese redirect a
+  // /onboarding SIEMPRE dispara para ella. Con <Redirect> (efecto que solo
+  // corre una vez por valor de `to`, sin re-evaluar cuando `location` vuelve
+  // a cambiar por otro componente) esa segunda navegacion le ganaba la
+  // carrera a este gate y lo dejaba varado en /onboarding para siempre, sin
+  // loop infinito pero sin poder volver jamas a /portal/evaluaciones
+  // (hallazgo real del Task 16, verificacion e2e -- distinto del bug de
+  // startsWith de arriba). Este efecto tiene `location` en deps, asi que se
+  // re-evalua en CADA cambio de ruta sin importar quien lo haya disparado, y
+  // se autocorrige aunque alguien mas gane la carrera una vez.
+  useEffect(() => {
+    if (debeIrAEvaluaciones) {
+      navigate("/portal/evaluaciones", { replace: true });
+    }
+  }, [debeIrAEvaluaciones, location, navigate]);
+
   return (
     <ThemeProvider>
-      {debeIrAEvaluaciones && <Redirect to="/portal/evaluaciones" />}
       <Switch>
         <Route path="/">
           <AuthRoute isAuthenticated={isAuthenticated} isLoading={isLoading} />

@@ -75,9 +75,18 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const [showIdleWarn, setShowIdleWarn] = useState(false);
 
   const role = user?.role ?? "user";
+  // Cuenta on-the-fly de evaluador restringido: nunca tiene (ni necesita)
+  // perfilesServidor -- asignarEvaluador en server/db.ts solo crea
+  // users+servidoresPublicos, no un perfil de onboarding. Sin este corte, el
+  // useEffect de onboarding de abajo la mandaba a /onboarding en cuanto
+  // montaba, mientras el gate de App.tsx la mandaba de vuelta a
+  // /portal/evaluaciones por estar restringida -- las dos redirecciones se
+  // pisaban en cada render y React tronaba con "Maximum update depth
+  // exceeded" (bug real encontrado en la verificación e2e del Task 16).
+  const esEvaluadorRestringido = user?.restriccionEvaluador?.restringido === true;
 
   const { data: perfil, isLoading: perfilLoading } = trpc.perfil.obtener.useQuery(undefined, {
-    enabled: role === "user",
+    enabled: role === "user" && !esEvaluadorRestringido,
   });
 
   // No es el candado real (eso ya lo hacen los procedures server-side, ver
@@ -85,7 +94,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   // una seccion que ahora mismo va a rechazar todo. `!== false` para no
   // esconder/mostrar el link con un parpadeo mientras la query carga.
   const { data: inconformidadHabilitada } = trpc.inconformidad.moduloHabilitado.useQuery(undefined, {
-    enabled: role === "user",
+    enabled: role === "user" && !esEvaluadorRestringido,
   });
   // Excepcion: un caso YA enviado se sigue viendo aunque el modulo este en
   // pausa (Inconformidad.tsx tiene el mismo carve-out -- "pausa nunca
@@ -93,7 +102,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   // sidebar a su propio acuse aunque la pagina, si entra directo, se lo
   // siga mostrando completo -- inconsistencia real entre nav y contenido.
   const { data: miInconformidad } = trpc.inconformidad.miInconformidad.useQuery(undefined, {
-    enabled: role === "user",
+    enabled: role === "user" && !esEvaluadorRestringido,
   });
   const tieneCasoEnviado = miInconformidad?.estado === "enviado";
 
@@ -101,26 +110,33 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   // hecho, solo evita mostrar un link a una seccion que ahora mismo va a
   // rechazar la confirmacion.
   const { data: promocionHabilitada } = trpc.promocion.moduloHabilitado.useQuery(undefined, {
-    enabled: role === "user",
+    enabled: role === "user" && !esEvaluadorRestringido,
   });
   const { data: miElegibilidadPromocion } = trpc.promocion.miElegibilidad.useQuery(undefined, {
-    enabled: role === "user",
+    enabled: role === "user" && !esEvaluadorRestringido,
   });
   const yaInscritoPromocion = miElegibilidadPromocion?.yaInscrito === true;
 
+  // Cuenta on-the-fly restringida: el gate de App.tsx ya bloquea cualquier
+  // ruta que no sea /portal/evaluaciones, pero sin este filtro el sidebar
+  // seguía ofreciendo el nav completo de rol `user` (Portal, Catálogo
+  // Cursos, Promoción, etc.) -- enlaces que, al hacer click, solo rebotaban
+  // de vuelta. Nav visible debe reflejar exactamente lo que la cuenta puede
+  // usar (hallazgo real del Task 16, verificación e2e).
   const visibleItems = navItems.filter((item) => {
     if (!item.roles.includes(role)) return false;
+    if (esEvaluadorRestringido) return item.href === "/portal/evaluaciones";
     if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false || tieneCasoEnviado;
     if (item.href === "/portal/promocion") return promocionHabilitada !== false || yaInscritoPromocion;
     return true;
   });
 
   useEffect(() => {
-    if (role !== "user" || perfilLoading) return;
+    if (role !== "user" || perfilLoading || esEvaluadorRestringido) return;
     if (!perfil?.completado && location !== "/onboarding") {
       navigate("/onboarding");
     }
-  }, [role, perfil, perfilLoading, location]);
+  }, [role, perfil, perfilLoading, location, esEvaluadorRestringido]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -139,7 +155,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     () => setShowIdleWarn(false),
   );
 
-  if (role === "user" && !perfilLoading && !perfil?.completado && location !== "/onboarding") {
+  if (role === "user" && !esEvaluadorRestringido && !perfilLoading && !perfil?.completado && location !== "/onboarding") {
     return null;
   }
 
