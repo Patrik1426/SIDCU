@@ -437,7 +437,17 @@ export const evaluaciones = mysqlTable("evaluaciones", {
   // (no hace falta el truco de nombre distinto al de TS que sí necesitó
   // autoevaluaciones.puntaje -- esta tabla es nueva desde cero, sin
   // columna "puntaje" vieja que migrar, cero riesgo de TRUNCATE).
-  puntajeFinal: decimal("puntaje_final", { precision: 4, scale: 1, mode: "number" }),
+  // precision 5, scale 3 (no 4,1 como autoevaluaciones.puntaje): el
+  // puntaje de Compañero es aciertos * (6/14), una fraccion NO terminante
+  // para la mayoria de los valores enteros de aciertos (ej. 13 aciertos =
+  // 5.571..., 2 aciertos = 0.857...) -- scale 1 la redondeaba en silencio
+  // (5.571 -> 5.6) sin que el cliente confirmara ese redondeo (hallazgo
+  // revision final 2026-09-22). Este ensanchamiento es seguro sin la danza
+  // de ADD-COLUMN de autoevaluaciones.puntaje: esta tabla es nueva en esta
+  // rama, nunca desplegada a ningun ambiente real, sin datos ni riesgo de
+  // TRUNCATE por FK dependiente (ese riesgo solo aplica a una tabla que YA
+  // existe en produccion con datos).
+  puntajeFinal: decimal("puntaje_final", { precision: 5, scale: 3, mode: "number" }),
   enviadoAt: timestamp("enviado_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
