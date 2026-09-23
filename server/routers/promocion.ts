@@ -9,6 +9,7 @@ import {
   poolPromocionTieneRegistros,
   importarFilaEvaluador,
   listarInscripcionesPromocion,
+  listarResultadosPromocion,
   reasignarEvaluadorPromocion,
   listarCorreosFallidosPromocion,
   reintentarCorreoPromocion,
@@ -178,6 +179,16 @@ export const promocionRouter = router({
       limit: z.number().int().positive().max(100).default(20),
     }))
     .query(async ({ input }) => listarInscripcionesPromocion(input)),
+
+  listarResultados: adminProcedure
+    .input(z.object({
+      search: z.string().optional(),
+      estado: z.enum(["completo", "pendiente"]).optional(),
+      ordenTotal: z.enum(["asc", "desc"]).optional(),
+      page: z.number().int().positive().default(1),
+      limit: z.number().int().positive().max(100).default(20),
+    }))
+    .query(async ({ input }) => listarResultadosPromocion(input)),
 
   reasignarEvaluador: adminProcedure
     .input(z.object({
