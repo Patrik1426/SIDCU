@@ -1147,6 +1147,24 @@ export function calcularPuntajeEvaluadorCompaniero(aciertos: number): number {
   return aciertos * (6 / 14);
 }
 
+export type ComponentePuntaje = { estado: "borrador" | "enviado"; puntaje: number | null };
+
+// Suma solo los componentes en estado "enviado" -- un componente en
+// "borrador" o inexistente (null) cuenta como 0 en el total pero NO marca
+// completo, para distinguir "sacó 0 real" de "todavía no contesta" en la UI
+// (ver Review Focus del plan).
+export function calcularResultadoPromocion(componentes: {
+  autoevaluacion: ComponentePuntaje | null;
+  jefe: ComponentePuntaje | null;
+  companero1: ComponentePuntaje | null;
+  companero2: ComponentePuntaje | null;
+}): { total: number; completo: boolean } {
+  const lista = [componentes.autoevaluacion, componentes.jefe, componentes.companero1, componentes.companero2];
+  const total = lista.reduce((acc, c) => acc + (c?.estado === "enviado" ? (c.puntaje ?? 0) : 0), 0);
+  const completo = lista.every((c) => c?.estado === "enviado");
+  return { total, completo };
+}
+
 // Cuenta días hábiles (lunes-viernes) desde `desde`, sin contar el propio
 // día de salida como el primero. "Hábiles" excluye solo sábado/domingo
 // hasta que el cliente diga lo contrario (mismo criterio ya usado para el
