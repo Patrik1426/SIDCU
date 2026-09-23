@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
@@ -42,6 +42,20 @@ export default function Evaluacion() {
     onError: (err) => toast.error(err.message),
   });
 
+  // Fix 6 (revision final): antes esto llamaba navigate() directo durante el
+  // render (rama sin useEffect) -- unico lugar de la rama que lo hacia
+  // (Autoevaluacion.tsx/Promocion.tsx ya usan useEffect). React advierte al
+  // actualizar estado durante el render de otro componente, y dado el
+  // historial de bugs de carrera de rutas de este modulo (Task 16 e2e), se
+  // mueve a un efecto para consistencia. El hook va ANTES del early-return de
+  // isLoading (reglas de hooks: nunca condicional), por eso usa data?.estado.
+  const estado = data?.estado;
+  useEffect(() => {
+    if (estado === "no_encontrada" || estado === "ajena") {
+      navigate("/portal/evaluaciones", { replace: true });
+    }
+  }, [estado, navigate]);
+
   if (isLoading || !data) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -51,7 +65,6 @@ export default function Evaluacion() {
   }
 
   if (data.estado === "no_encontrada" || data.estado === "ajena") {
-    navigate("/portal/evaluaciones");
     return null;
   }
 
