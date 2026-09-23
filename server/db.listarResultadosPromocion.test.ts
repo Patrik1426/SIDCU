@@ -20,7 +20,8 @@ function encadenable(resultado: any) {
   q.from = vi.fn(() => q);
   q.innerJoin = vi.fn(() => q);
   q.leftJoin = vi.fn(() => q);
-  q.where = vi.fn(() => Promise.resolve(resultado));
+  q.where = vi.fn(() => q);
+  q.orderBy = vi.fn(() => Promise.resolve(resultado));
   return q;
 }
 
@@ -77,5 +78,29 @@ describe("listarResultadosPromocion", () => {
 
     expect(resultado.items).toHaveLength(1);
     expect(resultado.items[0].trabajadorNombre).toBe("Ana");
+  });
+
+  it("con totales empatados, ordena por promocionId de forma estable sin importar el orden en que la DB regreso las filas", async () => {
+    // Ninguno de los 2 tiene ningun componente enviado -- total 0 para
+    // ambos, empate real. Las filas crudas llegan en orden DESCENDENTE de
+    // promocionId (5 antes que 3) a proposito, simulando que MySQL no
+    // garantiza orden sin ORDER BY -- el comparador debe desempatar por
+    // promocionId ascendente pase lo que pase con el orden de entrada.
+    const filasCrudas = [
+      { promocionId: 5, trabajadorNombre: "Carla", trabajadorCurp: "X5", autoEstado: null, autoPuntaje: null, jefeEstado: null, jefePuntaje: null, c1Estado: null, c1Puntaje: null, c2Estado: null, c2Puntaje: null },
+      { promocionId: 3, trabajadorNombre: "Beto", trabajadorCurp: "X3", autoEstado: null, autoPuntaje: null, jefeEstado: null, jefePuntaje: null, c1Estado: null, c1Puntaje: null, c2Estado: null, c2Puntaje: null },
+    ];
+    const dbFake = {
+      select: vi.fn()
+        .mockReturnValueOnce(encadenable(filasCrudas))
+        .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ count: 2 }])) })) }),
+    };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(dbFake as any);
+
+    const { listarResultadosPromocion } = await import("./db");
+    const resultado = await listarResultadosPromocion({ page: 1, limit: 20, ordenTotal: "desc" });
+
+    expect(resultado.items.map((i) => i.promocionId)).toEqual([3, 5]);
   });
 });

@@ -2717,7 +2717,8 @@ export async function listarResultadosPromocion(filtros: {
     .leftJoin(evalJefe, and(eq(evalJefe.promocionId, schema.promociones.id), eq(evalJefe.rol, "jefe")))
     .leftJoin(evalCompanero1, and(eq(evalCompanero1.promocionId, schema.promociones.id), eq(evalCompanero1.rol, "companero1")))
     .leftJoin(evalCompanero2, and(eq(evalCompanero2.promocionId, schema.promociones.id), eq(evalCompanero2.rol, "companero2")))
-    .where(where);
+    .where(where)
+    .orderBy(schema.promociones.id);
 
   let items: ResultadoPromocionItem[] = filas.map((f) => {
     const autoevaluacion = f.autoEstado ? { estado: f.autoEstado, puntaje: f.autoPuntaje } : null;
@@ -2732,7 +2733,10 @@ export async function listarResultadosPromocion(filtros: {
   if (filtros.estado === "pendiente") items = items.filter((i) => !i.completo);
 
   if (filtros.ordenTotal) {
-    items = [...items].sort((a, b) => (filtros.ordenTotal === "asc" ? a.total - b.total : b.total - a.total));
+    items = [...items].sort((a, b) => {
+      const diff = filtros.ordenTotal === "asc" ? a.total - b.total : b.total - a.total;
+      return diff !== 0 ? diff : a.promocionId - b.promocionId;
+    });
   }
 
   const total = items.length;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import { Search, ChevronRight, Download, FileSpreadsheet } from "lucide-react";
 import { exportarResultadosPromocionExcel, exportarResultadosPromocionPDF } from "@/lib/exportar";
 
@@ -29,6 +30,7 @@ export default function PromocionResultados() {
   const [estado, setEstado] = useState<"" | "completo" | "pendiente">("");
   const [ordenTotal, setOrdenTotal] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarResultados.useQuery({
     search: search || undefined,
@@ -62,28 +64,35 @@ export default function PromocionResultados() {
   // totalPages -- mismo resultado (export completo, no solo la pagina 1 de
   // 20 visible), sin tocar el router.
   async function handleExport(tipo: "excel" | "pdf") {
-    const limitePorPagina = 100;
-    const primera = await utils.promocion.listarResultados.fetch({
-      search: search || undefined,
-      estado: estado || undefined,
-      ordenTotal,
-      page: 1,
-      limit: limitePorPagina,
-    });
-    let todos = primera.items;
-    for (let p = 2; p <= primera.totalPages; p++) {
-      const siguiente = await utils.promocion.listarResultados.fetch({
+    setExportando(tipo);
+    try {
+      const limitePorPagina = 100;
+      const primera = await utils.promocion.listarResultados.fetch({
         search: search || undefined,
         estado: estado || undefined,
         ordenTotal,
-        page: p,
+        page: 1,
         limit: limitePorPagina,
       });
-      todos = todos.concat(siguiente.items);
+      let todos = primera.items;
+      for (let p = 2; p <= primera.totalPages; p++) {
+        const siguiente = await utils.promocion.listarResultados.fetch({
+          search: search || undefined,
+          estado: estado || undefined,
+          ordenTotal,
+          page: p,
+          limit: limitePorPagina,
+        });
+        todos = todos.concat(siguiente.items);
+      }
+      const datos = mapExport(todos);
+      if (tipo === "excel") exportarResultadosPromocionExcel(datos);
+      else exportarResultadosPromocionPDF(datos);
+    } catch (err: any) {
+      toast.error("No se pudo exportar", { description: err.message ?? "Intenta de nuevo." });
+    } finally {
+      setExportando(null);
     }
-    const datos = mapExport(todos);
-    if (tipo === "excel") exportarResultadosPromocionExcel(datos);
-    else exportarResultadosPromocionPDF(datos);
   }
 
   return (
@@ -94,11 +103,19 @@ export default function PromocionResultados() {
           <p className="mt-0.5 text-sm text-gray-500">Puntaje agregado (40 pts) por trabajador — solo lectura.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => handleExport("excel")} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <FileSpreadsheet size={14} /> Excel
+          <button
+            onClick={() => handleExport("excel")}
+            disabled={exportando !== null || !data || data.total === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <FileSpreadsheet size={14} /> {exportando === "excel" ? "Exportando..." : "Excel"}
           </button>
-          <button onClick={() => handleExport("pdf")} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            <Download size={14} /> PDF
+          <button
+            onClick={() => handleExport("pdf")}
+            disabled={exportando !== null || !data || data.total === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Download size={14} /> {exportando === "pdf" ? "Exportando..." : "PDF"}
           </button>
         </div>
       </motion.div>
