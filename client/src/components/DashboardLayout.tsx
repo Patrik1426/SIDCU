@@ -53,6 +53,7 @@ const navItems: NavItem[] = [
   { label: "Inconformidades", href: "/inconformidades", icon: FileWarning, roles: ["admin"] },
   { label: "Promociones", href: "/promociones", icon: Award, roles: ["admin"] },
   { label: "Autoevaluaciones", href: "/autoevaluaciones", icon: ListChecks, roles: ["admin"] },
+  { label: "Evaluadores", href: "/evaluadores", icon: ClipboardList, roles: ["admin"] },
   { label: "Usuarios", href: "/usuarios", icon: UserCog, roles: ["admin"] },
   { label: "Auditoría", href: "/auditoria", icon: ClipboardList, roles: ["admin"] },
   { label: "Reportes", href: "/reportes", icon: FileText, roles: ["admin", "consultor"] },
