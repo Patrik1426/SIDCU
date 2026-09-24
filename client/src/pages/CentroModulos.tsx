@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { stagger, fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Flag, Award, ClipboardCheck, Users, ArrowRight, Calendar, type LucideIcon } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
-
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
-const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
 
 function formatFecha(fecha: string): string {
   // fecha ya es "YYYY-MM-DD" (columna DATE en modo string) -- parsear a

@@ -1,13 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, LogOut, Check } from "lucide-react";
+import { fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import ConfirmModal from "@/components/ConfirmModal";
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
-};
 
 function formatFecha(date: string | Date | null) {
   if (!date) return "Nunca";

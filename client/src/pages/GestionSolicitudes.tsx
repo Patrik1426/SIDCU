@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { stagger, fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import {
   ClipboardCheck,
@@ -20,15 +21,6 @@ import {
   exportarCursosPorInscritosExcel,
   exportarCursosPorInscritosPDF,
 } from "@/lib/exportar";
-
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08 } },
-};
-const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
-};
 
 // "pendiente"/"rechazada" ya no ocurren en la practica -- la inscripcion
 // es directa (crearSolicitudConAsignacion siempre inserta "aprobada"), y

@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { motion } from "framer-motion";
+import { stagger, fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { ListChecks, CheckCircle2 } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
-
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
-const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
 
 const LIKERT_LABELS: Record<string, string> = {
   siempre: "Siempre",
