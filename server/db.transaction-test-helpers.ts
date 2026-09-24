@@ -35,7 +35,14 @@ export function makeTxRecorder(selectResults: any[][] = [], insertResults: any[]
     });
   }
 
-  const tx: any = new Proxy(function () {}, {
+  // Target es un objeto plano, no `function(){}` -- `tx` nunca se invoca
+  // como funcion, solo se le leen metodos (tx.select, tx.insert, ...). Un
+  // target funcion trae props propias (name/length/prototype) que
+  // `hasOwnProperty` de abajo detectaba como "override explicito" y
+  // devolvia el valor real de Function.prototype en vez del closure de
+  // tracking -- inofensivo mientras ningun metodo real de Drizzle se
+  // llame asi, pero un objeto plano cierra la fuga de raiz.
+  const tx: any = new Proxy({}, {
     get(target, prop: string) {
       // Si el test reasigno explicitamente tx.<metodo> = vi.fn(...) (via el
       // Proxy's default `set` behavior, que escribe en `target`), respetar

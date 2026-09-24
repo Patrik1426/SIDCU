@@ -1222,7 +1222,13 @@ export async function miAutoevaluacion(userId: number): Promise<EstadoAutoevalua
   })
     .from(schema.autoevaluacionRespuestas)
     .innerJoin(schema.autoevaluacionPreguntas, eq(schema.autoevaluacionPreguntas.id, schema.autoevaluacionRespuestas.preguntaId))
-    .where(eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id));
+    .where(eq(schema.autoevaluacionRespuestas.autoevaluacionId, autoevaluacion.id))
+    // Mismo fix que miEvaluacion (Evaluadores, revision final 2026-09-22):
+    // sin esto el orden dependia de PK/insertion order de MySQL, no un
+    // contrato real -- el wizard indexa por posicion y el arreglo se
+    // re-obtiene tras "iniciar" invalidar la query, asi que el orden debe
+    // estar garantizado, no ser incidental.
+    .orderBy(schema.autoevaluacionRespuestas.id);
 
   return { estado: "borrador", preguntas };
 }
