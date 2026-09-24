@@ -155,14 +155,14 @@ export default function GestionEvaluadores() {
       </motion.div>
 
       <motion.div variants={fadeUp} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card-rest">
-        <div className="max-h-[520px] overflow-y-auto">
+        <div>
           {cargandoPreguntas ? (
             <div className="px-4 py-10 text-center text-sm text-gray-400">Cargando...</div>
           ) : preguntas?.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-gray-400">Banco de {labelRol} vacío — importa un CSV o crea una pregunta para empezar.</div>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-4 py-2.5 w-14">No</th>
                   <th className="px-4 py-2.5">Afirmación</th>
