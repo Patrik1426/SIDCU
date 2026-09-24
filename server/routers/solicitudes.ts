@@ -78,17 +78,18 @@ export const solicitudesRouter = router({
   listar: adminProcedure
     .input(z.object({
       estado: z.string().optional(),
+      search: z.string().optional(),
       page: z.number().int().positive().default(1),
       limit: z.number().int().positive().max(100).default(20),
     }).optional())
     .query(async ({ input }) => {
-      return listarTodasSolicitudes({ estado: input?.estado, page: input?.page, limit: input?.limit });
+      return listarTodasSolicitudes({ estado: input?.estado, search: input?.search, page: input?.page, limit: input?.limit });
     }),
 
   exportarTodas: adminProcedure
-    .input(z.object({ estado: z.string().optional() }).optional())
+    .input(z.object({ estado: z.string().optional(), search: z.string().optional() }).optional())
     .query(async ({ input }) => {
-      return exportarTodasSolicitudes({ estado: input?.estado });
+      return exportarTodasSolicitudes({ estado: input?.estado, search: input?.search });
     }),
 
   // Reportes.tsx tambien la usa (consultor tiene acceso de solo lectura ahi),

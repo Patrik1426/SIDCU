@@ -868,11 +868,15 @@ export async function listarSolicitudesUsuario(userId: number) {
     .orderBy(desc(schema.solicitudesCurso.createdAt));
 }
 
-export async function listarTodasSolicitudes(filtros?: { estado?: string; page?: number; limit?: number }) {
+export async function listarTodasSolicitudes(filtros?: { estado?: string; search?: string; page?: number; limit?: number }) {
   const d = await getDb();
   const conditions = [];
   if (filtros?.estado) {
     conditions.push(eq(schema.solicitudesCurso.estado, filtros.estado as any));
+  }
+  if (filtros?.search) {
+    const termino = `%${escaparComodinesLike(filtros.search)}%`;
+    conditions.push(or(like(schema.users.nombre, termino), like(schema.users.curp, termino)));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const limit = filtros?.limit ?? 20;
@@ -901,7 +905,11 @@ export async function listarTodasSolicitudes(filtros?: { estado?: string; page?:
       .orderBy(desc(schema.solicitudesCurso.createdAt))
       .limit(limit)
       .offset(offset),
-    d.select({ count: sql<number>`count(*)` }).from(schema.solicitudesCurso).where(where),
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.solicitudesCurso)
+      .innerJoin(schema.users, eq(schema.solicitudesCurso.userId, schema.users.id))
+      .where(where),
   ]);
 
   return {
@@ -913,11 +921,15 @@ export async function listarTodasSolicitudes(filtros?: { estado?: string; page?:
   };
 }
 
-export async function exportarTodasSolicitudes(filtros?: { estado?: string }) {
+export async function exportarTodasSolicitudes(filtros?: { estado?: string; search?: string }) {
   const d = await getDb();
   const conditions = [];
   if (filtros?.estado) {
     conditions.push(eq(schema.solicitudesCurso.estado, filtros.estado as any));
+  }
+  if (filtros?.search) {
+    const termino = `%${escaparComodinesLike(filtros.search)}%`;
+    conditions.push(or(like(schema.users.nombre, termino), like(schema.users.curp, termino)));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const limite = 10000;
@@ -943,7 +955,11 @@ export async function exportarTodasSolicitudes(filtros?: { estado?: string }) {
       .where(where)
       .orderBy(desc(schema.solicitudesCurso.createdAt))
       .limit(limite),
-    d.select({ count: sql<number>`count(*)` }).from(schema.solicitudesCurso).where(where),
+    d
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.solicitudesCurso)
+      .innerJoin(schema.users, eq(schema.solicitudesCurso.userId, schema.users.id))
+      .where(where),
   ]);
 
   return { items, total: countResult[0]?.count ?? 0, truncado: (countResult[0]?.count ?? 0) > limite };
