@@ -102,3 +102,31 @@ describe("actualizarPreguntaAutoevaluacion", () => {
     expect(setCalls).toEqual([{ texto: "¿Llegas puntual?", respuestaCorrecta: "siempre", activo: false }]);
   });
 });
+
+describe("eliminarPreguntaAutoevaluacion", () => {
+  it("elimina la pregunta si nadie la ha usado", async () => {
+    const { tx, calls } = makeTxRecorder([], []);
+    const fakeDb = { delete: tx.delete };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { eliminarPreguntaAutoevaluacion } = await import("./db");
+    const resultado = await eliminarPreguntaAutoevaluacion(1);
+    expect(resultado).toEqual({ ok: true });
+    expect(calls).toEqual(["delete"]);
+  });
+
+  it("regresa EN_USO si la pregunta ya fue sorteada (FK restrict bloquea el DELETE)", async () => {
+    const fakeDb = {
+      delete: () => {
+        throw Object.assign(new Error("Cannot delete or update a parent row"), { code: "ER_ROW_IS_REFERENCED_2" });
+      },
+    };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { eliminarPreguntaAutoevaluacion } = await import("./db");
+    const resultado = await eliminarPreguntaAutoevaluacion(1);
+    expect(resultado).toEqual({ ok: false, error: "EN_USO" });
+  });
+});

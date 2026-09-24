@@ -1414,6 +1414,25 @@ export async function actualizarPreguntaAutoevaluacion(
   return { ok: true };
 }
 
+// FK onDelete:"restrict" en autoevaluacion_respuestas.preguntaId rechaza el
+// DELETE si la pregunta ya fue sorteada en alguna autoevaluacion (borrador
+// o enviada) -- ER_ROW_IS_REFERENCED_2 se traduce a EN_USO en vez de dejar
+// pasar el error crudo de MySQL. `activo=false` es el mecanismo correcto
+// para retirarla del sorteo sin romper el historial de quien ya la
+// contesto.
+export async function eliminarPreguntaAutoevaluacion(
+  id: number,
+): Promise<{ ok: true } | { ok: false; error: "EN_USO" }> {
+  const d = await getDb();
+  try {
+    await d.delete(schema.autoevaluacionPreguntas).where(eq(schema.autoevaluacionPreguntas.id, id));
+    return { ok: true };
+  } catch (err) {
+    if (codigoMysql(err) === "ER_ROW_IS_REFERENCED_2") return { ok: false, error: "EN_USO" };
+    throw err;
+  }
+}
+
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
 // Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal

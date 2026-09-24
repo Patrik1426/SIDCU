@@ -9,6 +9,7 @@ import {
   contarPreguntasActivasAutoevaluacion,
   listarPreguntasAutoevaluacion,
   actualizarPreguntaAutoevaluacion,
+  eliminarPreguntaAutoevaluacion,
 } from "../db";
 import { LIKERT_OPCIONES } from "../../drizzle/schema";
 import { PREGUNTAS_AUTOEVALUACION } from "../../shared/const";
@@ -115,6 +116,27 @@ export const autoevaluacionRouter = router({
     .mutation(async ({ input }) => {
       const resultado = await actualizarPreguntaAutoevaluacion(input.id, input.texto, input.respuestaCorrecta, input.activo);
       if (!resultado.ok) throw new TRPCError({ code: "BAD_REQUEST", message: resultado.error });
+      return { success: true };
+    }),
+
+  // Reusa importarFilaPreguntaAutoevaluacion -- misma validacion
+  // (texto no vacio, respuesta_correcta Likert valida) que ya usa el CSV,
+  // solo que para una fila capturada a mano en vez de un import masivo.
+  crearPregunta: adminProcedure
+    .input(z.object({ texto: z.string().min(1).max(500), respuestaCorrecta: z.enum(LIKERT_OPCIONES) }))
+    .mutation(async ({ input }) => {
+      const resultado = await importarFilaPreguntaAutoevaluacion(input.texto, input.respuestaCorrecta);
+      if (!resultado.ok) throw new TRPCError({ code: "BAD_REQUEST", message: resultado.error });
+      return { success: true };
+    }),
+
+  eliminarPregunta: adminProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const resultado = await eliminarPreguntaAutoevaluacion(input.id);
+      if (!resultado.ok) {
+        throw new TRPCError({ code: "CONFLICT", message: "No se puede eliminar, ya fue usada en una autoevaluación. Desactívala en vez de borrarla." });
+      }
       return { success: true };
     }),
 });
