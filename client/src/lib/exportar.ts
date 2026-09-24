@@ -602,7 +602,7 @@ interface InscripcionPromocionExport {
 
 function prepararDatosInscripcionesPromocion(items: InscripcionPromocionExport[]) {
   return items.map((i) => ({
-    Trabajador: sanitizeCell(i.trabajadorNombre),
+    Servidor: sanitizeCell(i.trabajadorNombre),
     CURP: sanitizeCell(i.trabajadorCurp),
     Jefe: sanitizeCell(i.jefeNombre ?? "— cuenta no encontrada"),
     "Jefe Evaluó": i.jefeEvaluo ? "Sí" : "No",
@@ -651,7 +651,7 @@ export function exportarInscripcionesPromocionPDF(items: InscripcionPromocionExp
     14, 28,
   );
 
-  const headers = ["Trabajador", "CURP", "Jefe", "Evaluó", "Compañero 1", "Evaluó", "Compañero 2", "Evaluó", "Fecha"];
+  const headers = ["Servidor", "CURP", "Jefe", "Evaluó", "Compañero 1", "Evaluó", "Compañero 2", "Evaluó", "Fecha"];
   const rows = items.map((i) => [
     i.trabajadorNombre,
     i.trabajadorCurp,
