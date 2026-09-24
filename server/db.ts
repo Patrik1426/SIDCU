@@ -2602,6 +2602,62 @@ export async function contarPreguntasActivasEvaluador(rol: (typeof schema.EVALUA
   return fila?.count ?? 0;
 }
 
+// Todas las preguntas del rol pedido (activas e inactivas) -- panel admin
+// necesita ver el banco completo para revisar si la normalizacion de la
+// subida masiva (CSV) quedo bien, no solo las que ya estan activas. Mismo
+// patron que listarPreguntasAutoevaluacion.
+export async function listarPreguntasEvaluador(
+  rol: (typeof schema.EVALUADOR_ROLES_BANCO)[number],
+): Promise<Array<{ id: number; texto: string; respuestaCorrecta: (typeof schema.LIKERT_OPCIONES)[number]; activo: boolean }>> {
+  const d = await getDb();
+  return d.select({
+    id: schema.evaluadorPreguntas.id,
+    texto: schema.evaluadorPreguntas.texto,
+    respuestaCorrecta: schema.evaluadorPreguntas.respuestaCorrecta,
+    activo: schema.evaluadorPreguntas.activo,
+  })
+    .from(schema.evaluadorPreguntas)
+    .where(eq(schema.evaluadorPreguntas.rol, rol))
+    .orderBy(schema.evaluadorPreguntas.id);
+}
+
+// No hay eliminar directo salvo si nadie la ha usado: evaluacion_respuestas
+// tiene FK onDelete:"restrict" hacia esta tabla -- mismo criterio que
+// actualizarPreguntaAutoevaluacion/eliminarPreguntaAutoevaluacion.
+export async function actualizarPreguntaEvaluador(
+  id: number,
+  texto: string,
+  respuestaCorrectaCsv: string,
+  activo: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const textoLimpio = texto.trim();
+  if (!textoLimpio) return { ok: false, error: "Falta el texto de la pregunta" };
+
+  const respuestaCorrecta = normalizarOpcionLikert(respuestaCorrectaCsv);
+  if (!respuestaCorrecta) {
+    return { ok: false, error: `respuesta_correcta inválida: "${respuestaCorrectaCsv}" (usa siempre/frecuente/algunas_veces/nunca)` };
+  }
+
+  const d = await getDb();
+  await d.update(schema.evaluadorPreguntas)
+    .set({ texto: textoLimpio, respuestaCorrecta, activo })
+    .where(eq(schema.evaluadorPreguntas.id, id));
+  return { ok: true };
+}
+
+export async function eliminarPreguntaEvaluador(
+  id: number,
+): Promise<{ ok: true } | { ok: false; error: "EN_USO" }> {
+  const d = await getDb();
+  try {
+    await d.delete(schema.evaluadorPreguntas).where(eq(schema.evaluadorPreguntas.id, id));
+    return { ok: true };
+  } catch (err) {
+    if (codigoMysql(err) === "ER_ROW_IS_REFERENCED_2") return { ok: false, error: "EN_USO" };
+    throw err;
+  }
+}
+
 // Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
 // NO exige que la persona ya tenga cuenta `users` -- solo que exista un
 // registro activo en servidores_publicos. Si el pool exigiera cuenta previa,

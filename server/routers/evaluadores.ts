@@ -8,6 +8,9 @@ import {
   enviarEvaluacion,
   importarFilaPreguntaEvaluador,
   contarPreguntasActivasEvaluador,
+  listarPreguntasEvaluador,
+  actualizarPreguntaEvaluador,
+  eliminarPreguntaEvaluador,
   obtenerConfigModuloEvaluadores,
   moduloEvaluadoresHabilitado,
   actualizarModuloEvaluadoresManual,
@@ -118,6 +121,44 @@ export const evaluadoresRouter = router({
   contarActivas: adminProcedure
     .input(z.object({ rol: z.enum(EVALUADOR_ROLES_BANCO) }))
     .query(({ input }) => contarPreguntasActivasEvaluador(input.rol)),
+
+  listarPreguntas: adminProcedure
+    .input(z.object({ rol: z.enum(EVALUADOR_ROLES_BANCO) }))
+    .query(({ input }) => listarPreguntasEvaluador(input.rol)),
+
+  actualizarPregunta: adminProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      texto: z.string().min(1).max(500),
+      respuestaCorrecta: z.enum(LIKERT_OPCIONES),
+      activo: z.boolean(),
+    }))
+    .mutation(async ({ input }) => {
+      const resultado = await actualizarPreguntaEvaluador(input.id, input.texto, input.respuestaCorrecta, input.activo);
+      if (!resultado.ok) throw new TRPCError({ code: "BAD_REQUEST", message: resultado.error });
+      return { success: true };
+    }),
+
+  // Reusa importarFilaPreguntaEvaluador -- misma validacion (texto no
+  // vacio, respuesta_correcta Likert valida) que ya usa el CSV, solo que
+  // para una fila capturada a mano en vez de un import masivo.
+  crearPregunta: adminProcedure
+    .input(z.object({ rol: z.enum(EVALUADOR_ROLES_BANCO), texto: z.string().min(1).max(500), respuestaCorrecta: z.enum(LIKERT_OPCIONES) }))
+    .mutation(async ({ input }) => {
+      const resultado = await importarFilaPreguntaEvaluador(input.rol, input.texto, input.respuestaCorrecta);
+      if (!resultado.ok) throw new TRPCError({ code: "BAD_REQUEST", message: resultado.error });
+      return { success: true };
+    }),
+
+  eliminarPregunta: adminProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const resultado = await eliminarPreguntaEvaluador(input.id);
+      if (!resultado.ok) {
+        throw new TRPCError({ code: "CONFLICT", message: "No se puede eliminar, ya fue usada en una evaluación. Desactívala en vez de borrarla." });
+      }
+      return { success: true };
+    }),
 
   moduloConfig: adminProcedure.query(async () => {
     return obtenerConfigModuloEvaluadores();
