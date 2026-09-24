@@ -7,6 +7,8 @@ import {
   enviarAutoevaluacion,
   importarFilaPreguntaAutoevaluacion,
   contarPreguntasActivasAutoevaluacion,
+  listarPreguntasAutoevaluacion,
+  actualizarPreguntaAutoevaluacion,
 } from "../db";
 import { LIKERT_OPCIONES } from "../../drizzle/schema";
 import { PREGUNTAS_AUTOEVALUACION } from "../../shared/const";
@@ -100,4 +102,19 @@ export const autoevaluacionRouter = router({
     }),
 
   contarActivas: adminProcedure.query(() => contarPreguntasActivasAutoevaluacion()),
+
+  listarPreguntas: adminProcedure.query(() => listarPreguntasAutoevaluacion()),
+
+  actualizarPregunta: adminProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      texto: z.string().min(1).max(500),
+      respuestaCorrecta: z.enum(LIKERT_OPCIONES),
+      activo: z.boolean(),
+    }))
+    .mutation(async ({ input }) => {
+      const resultado = await actualizarPreguntaAutoevaluacion(input.id, input.texto, input.respuestaCorrecta, input.activo);
+      if (!resultado.ok) throw new TRPCError({ code: "BAD_REQUEST", message: resultado.error });
+      return { success: true };
+    }),
 });

@@ -1372,6 +1372,48 @@ export async function contarPreguntasActivasAutoevaluacion(): Promise<number> {
   return fila?.count ?? 0;
 }
 
+// Todas las preguntas (activas e inactivas) -- panel admin necesita ver el
+// banco completo para revisar si la normalizacion de la subida masiva (CSV)
+// quedo bien, no solo las que ya estan activas.
+export async function listarPreguntasAutoevaluacion(): Promise<
+  Array<{ id: number; texto: string; respuestaCorrecta: (typeof schema.LIKERT_OPCIONES)[number]; activo: boolean }>
+> {
+  const d = await getDb();
+  return d.select({
+    id: schema.autoevaluacionPreguntas.id,
+    texto: schema.autoevaluacionPreguntas.texto,
+    respuestaCorrecta: schema.autoevaluacionPreguntas.respuestaCorrecta,
+    activo: schema.autoevaluacionPreguntas.activo,
+  })
+    .from(schema.autoevaluacionPreguntas)
+    .orderBy(schema.autoevaluacionPreguntas.id);
+}
+
+// No hay eliminar: autoevaluacion_respuestas.preguntaId tiene FK
+// onDelete:"restrict" hacia esta tabla -- una pregunta que ya fue sorteada
+// en alguna autoevaluacion nunca se puede borrar. `activo` es el mecanismo
+// correcto (mismo patron que toggleActivo en Cursos).
+export async function actualizarPreguntaAutoevaluacion(
+  id: number,
+  texto: string,
+  respuestaCorrectaCsv: string,
+  activo: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const textoLimpio = texto.trim();
+  if (!textoLimpio) return { ok: false, error: "Falta el texto de la pregunta" };
+
+  const respuestaCorrecta = normalizarOpcionLikert(respuestaCorrectaCsv);
+  if (!respuestaCorrecta) {
+    return { ok: false, error: `respuesta_correcta inválida: "${respuestaCorrectaCsv}" (usa siempre/frecuente/algunas_veces/nunca)` };
+  }
+
+  const d = await getDb();
+  await d.update(schema.autoevaluacionPreguntas)
+    .set({ texto: textoLimpio, respuestaCorrecta, activo })
+    .where(eq(schema.autoevaluacionPreguntas.id, id));
+  return { ok: true };
+}
+
 // Pura, sin DB -- si logra probarse aislada, cubre el caso mas propenso a
 // errores de este feature (comparacion de fechas) sin necesidad de mocks.
 // Tipo estructural (no atado a InconformidadModuloConfig) -- la reusa tal

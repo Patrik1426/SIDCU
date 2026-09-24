@@ -54,3 +54,51 @@ describe("contarPreguntasActivasAutoevaluacion", () => {
     expect(resultado).toBe(45);
   });
 });
+
+describe("listarPreguntasAutoevaluacion", () => {
+  it("regresa todas las preguntas (activas e inactivas) ordenadas por id", async () => {
+    const filas = [
+      { id: 1, texto: "¿Llegas puntual?", respuestaCorrecta: "siempre", activo: true },
+      { id: 2, texto: "¿Atiendes con descortesía?", respuestaCorrecta: "nunca", activo: false },
+    ];
+    const { tx } = makeTxRecorder([filas], []);
+    const fakeDb = { select: tx.select };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { listarPreguntasAutoevaluacion } = await import("./db");
+    const resultado = await listarPreguntasAutoevaluacion();
+    expect(resultado).toEqual(filas);
+  });
+});
+
+describe("actualizarPreguntaAutoevaluacion", () => {
+  it("rechaza texto vacio sin llegar a la DB", async () => {
+    const { tx } = makeTxRecorder([], []);
+    const fakeDb = { update: tx.update };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { actualizarPreguntaAutoevaluacion } = await import("./db");
+    const resultado = await actualizarPreguntaAutoevaluacion(1, "   ", "siempre", true);
+    expect(resultado).toEqual({ ok: false, error: "Falta el texto de la pregunta" });
+  });
+
+  it("rechaza una respuestaCorrecta que no sea una opcion Likert valida", async () => {
+    const { actualizarPreguntaAutoevaluacion } = await import("./db");
+    const resultado = await actualizarPreguntaAutoevaluacion(1, "¿Llegas puntual?", "tal vez" as any, true);
+    expect(resultado).toEqual({ ok: false, error: 'respuesta_correcta inválida: "tal vez" (usa siempre/frecuente/algunas_veces/nunca)' });
+  });
+
+  it("actualiza texto, respuesta correcta y activo", async () => {
+    const { tx, setCalls } = makeTxRecorder([], []);
+    const fakeDb = { update: tx.update };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { actualizarPreguntaAutoevaluacion } = await import("./db");
+    const resultado = await actualizarPreguntaAutoevaluacion(1, "¿Llegas puntual?", "siempre", false);
+    expect(resultado).toEqual({ ok: true });
+    expect(setCalls).toEqual([{ texto: "¿Llegas puntual?", respuestaCorrecta: "siempre", activo: false }]);
+  });
+});
