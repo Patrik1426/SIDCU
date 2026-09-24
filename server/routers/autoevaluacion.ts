@@ -10,6 +10,10 @@ import {
   listarPreguntasAutoevaluacion,
   actualizarPreguntaAutoevaluacion,
   eliminarPreguntaAutoevaluacion,
+  obtenerConfigModuloAutoevaluacion,
+  moduloAutoevaluacionHabilitado,
+  actualizarModuloAutoevaluacionManual,
+  programarVentanaModuloAutoevaluacion,
 } from "../db";
 import { LIKERT_OPCIONES } from "../../drizzle/schema";
 import { PREGUNTAS_AUTOEVALUACION } from "../../shared/const";
@@ -53,6 +57,17 @@ function traducirErrorEnviar(error: ErrorCodigoEnviar): TRPCError {
 
 const filaImportSchema = z.object({ registros: z.array(z.record(z.string(), z.any())) });
 
+// "Pausa total": mientras el modulo esta deshabilitado, ningun trabajador
+// nuevo puede INICIAR su autoevaluacion -- aunque ya tenga Promocion
+// confirmada (requisito real cumplido). Lectura (miEstado) y lo ya
+// iniciado/enviado nunca se tocan -- mismo criterio que
+// exigirModuloHabilitado en promocion.ts/inconformidad.ts.
+async function exigirModuloHabilitado(): Promise<void> {
+  if (!(await moduloAutoevaluacionHabilitado())) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "El módulo Autoevaluación no está disponible en este momento." });
+  }
+}
+
 export const autoevaluacionRouter = router({
   // El participante nunca ve su puntaje (confirmado por el cliente
   // 2026-09-22 -- "en ningun momento el participante ve los puntajes", solo
@@ -67,6 +82,7 @@ export const autoevaluacionRouter = router({
   }),
 
   iniciar: protectedProcedureSinRestriccion.mutation(async ({ ctx }) => {
+    await exigirModuloHabilitado();
     const resultado = await iniciarAutoevaluacion(ctx.user.id);
     if (!resultado.ok) throw traducirErrorIniciar(resultado.error);
     return { success: true };
@@ -137,6 +153,34 @@ export const autoevaluacionRouter = router({
       if (!resultado.ok) {
         throw new TRPCError({ code: "CONFLICT", message: "No se puede eliminar, ya fue usada en una autoevaluación. Desactívala en vez de borrarla." });
       }
+      return { success: true };
+    }),
+
+  moduloConfig: adminProcedure.query(async () => {
+    return obtenerConfigModuloAutoevaluacion();
+  }),
+
+  moduloHabilitado: protectedProcedureSinRestriccion.query(async () => {
+    return moduloAutoevaluacionHabilitado();
+  }),
+
+  actualizarModulo: adminProcedure
+    .input(z.object({ habilitado: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await actualizarModuloAutoevaluacionManual(input.habilitado, ctx.user.id);
+      return { success: true };
+    }),
+
+  programarVentanaModulo: adminProcedure
+    .input(z.object({
+      fechaDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+      fechaHasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+    }).refine((v) => v.fechaHasta >= v.fechaDesde, {
+      message: '"Hasta" no puede ser antes que "Desde".',
+      path: ["fechaHasta"],
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await programarVentanaModuloAutoevaluacion(input.fechaDesde, input.fechaHasta, ctx.user.id);
       return { success: true };
     }),
 });

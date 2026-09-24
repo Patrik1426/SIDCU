@@ -1564,6 +1564,134 @@ export async function programarVentanaModuloPromocion(
   });
 }
 
+// ─── Config del modulo Autoevaluacion (Centro de Modulos) ─────────────
+// Mismo patron que Promocion arriba: fila unica id=1, ventana manda sobre
+// el flag manual, tocar el switch a mano limpia la ventana. Controla si el
+// trabajador puede INICIAR su autoevaluacion -- aunque ya tenga Promocion
+// confirmada (requisito real cumplido), el admin conserva control total.
+
+export async function obtenerConfigModuloAutoevaluacion() {
+  const d = await getDb();
+  const [row] = await d.select({
+    id: schema.autoevaluacionModuloConfig.id,
+    habilitado: schema.autoevaluacionModuloConfig.habilitado,
+    fechaDesde: schema.autoevaluacionModuloConfig.fechaDesde,
+    fechaHasta: schema.autoevaluacionModuloConfig.fechaHasta,
+    actualizadoPor: schema.autoevaluacionModuloConfig.actualizadoPor,
+    actualizadoPorNombre: schema.users.nombre,
+    updatedAt: schema.autoevaluacionModuloConfig.updatedAt,
+  })
+    .from(schema.autoevaluacionModuloConfig)
+    .leftJoin(schema.users, eq(schema.users.id, schema.autoevaluacionModuloConfig.actualizadoPor))
+    .where(eq(schema.autoevaluacionModuloConfig.id, 1));
+  if (row) return row;
+  return { id: 1, habilitado: true, fechaDesde: null, fechaHasta: null, actualizadoPor: null, actualizadoPorNombre: null, updatedAt: new Date() };
+}
+
+export async function moduloAutoevaluacionHabilitado(): Promise<boolean> {
+  const config = await obtenerConfigModuloAutoevaluacion();
+  return moduloEstaHabilitadoAhora(config);
+}
+
+export async function actualizarModuloAutoevaluacionManual(habilitado: boolean, adminUserId: number): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.autoevaluacionModuloConfig)
+      .set({ habilitado, fechaDesde: null, fechaHasta: null, actualizadoPor: adminUserId })
+      .where(eq(schema.autoevaluacionModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Autoevaluación ${habilitado ? "activado" : "desactivado"} manualmente (cancela ventana programada si había una)`,
+    });
+  });
+}
+
+export async function programarVentanaModuloAutoevaluacion(
+  fechaDesde: string,
+  fechaHasta: string,
+  adminUserId: number,
+): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.autoevaluacionModuloConfig)
+      .set({ fechaDesde, fechaHasta, actualizadoPor: adminUserId })
+      .where(eq(schema.autoevaluacionModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Autoevaluación: ventana programada del ${fechaDesde} al ${fechaHasta}`,
+    });
+  });
+}
+
+// ─── Config del modulo Evaluadores (Centro de Modulos) ────────────────
+// Mismo patron -- controla si un evaluador puede INICIAR su evaluacion
+// (aunque ya haya sido seleccionado, requisito real cumplido).
+
+export async function obtenerConfigModuloEvaluadores() {
+  const d = await getDb();
+  const [row] = await d.select({
+    id: schema.evaluadorModuloConfig.id,
+    habilitado: schema.evaluadorModuloConfig.habilitado,
+    fechaDesde: schema.evaluadorModuloConfig.fechaDesde,
+    fechaHasta: schema.evaluadorModuloConfig.fechaHasta,
+    actualizadoPor: schema.evaluadorModuloConfig.actualizadoPor,
+    actualizadoPorNombre: schema.users.nombre,
+    updatedAt: schema.evaluadorModuloConfig.updatedAt,
+  })
+    .from(schema.evaluadorModuloConfig)
+    .leftJoin(schema.users, eq(schema.users.id, schema.evaluadorModuloConfig.actualizadoPor))
+    .where(eq(schema.evaluadorModuloConfig.id, 1));
+  if (row) return row;
+  return { id: 1, habilitado: true, fechaDesde: null, fechaHasta: null, actualizadoPor: null, actualizadoPorNombre: null, updatedAt: new Date() };
+}
+
+export async function moduloEvaluadoresHabilitado(): Promise<boolean> {
+  const config = await obtenerConfigModuloEvaluadores();
+  return moduloEstaHabilitadoAhora(config);
+}
+
+export async function actualizarModuloEvaluadoresManual(habilitado: boolean, adminUserId: number): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.evaluadorModuloConfig)
+      .set({ habilitado, fechaDesde: null, fechaHasta: null, actualizadoPor: adminUserId })
+      .where(eq(schema.evaluadorModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Evaluadores ${habilitado ? "activado" : "desactivado"} manualmente (cancela ventana programada si había una)`,
+    });
+  });
+}
+
+export async function programarVentanaModuloEvaluadores(
+  fechaDesde: string,
+  fechaHasta: string,
+  adminUserId: number,
+): Promise<void> {
+  const d = await getDb();
+  await d.transaction(async (tx) => {
+    await tx.update(schema.evaluadorModuloConfig)
+      .set({ fechaDesde, fechaHasta, actualizadoPor: adminUserId })
+      .where(eq(schema.evaluadorModuloConfig.id, 1));
+
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Módulo Evaluadores: ventana programada del ${fechaDesde} al ${fechaHasta}`,
+    });
+  });
+}
+
 export async function obtenerInconformidad(userId: number) {
   const d = await getDb();
   const [cabecera] = await d.select().from(schema.inconformidades)

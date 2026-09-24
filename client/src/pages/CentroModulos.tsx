@@ -24,11 +24,11 @@ type ModuloConfig = {
   updatedAt: Date | string;
 };
 
-// Extraido al agregarse el segundo modulo real (Promocion) -- Inconformidad
-// y Promocion comparten forma de config identica (ver promocionModuloConfig /
-// inconformidadModuloConfig en drizzle/schema.ts), asi que la tarjeta completa
-// (switch + ventana programada) es la unidad que se repite, no solo el
-// switch. Autoevaluacion/Evaluadores la reusaran cuando existan.
+// Extraido al agregarse el segundo modulo real (Promocion) -- los 4 modulos
+// (Inconformidad, Promocion, Autoevaluacion, Evaluadores) comparten forma de
+// config identica (ver *ModuloConfig en drizzle/schema.ts), asi que la
+// tarjeta completa (switch + ventana programada) es la unidad que se repite,
+// no solo el switch.
 function ModuloToggleCard({
   titulo, Icono, habilitadoEfectivo, textoHabilitado, textoDeshabilitado,
   config, onIrAlPanel, linkLabel, onToggle, toggleLoading, onGuardarVentana, guardandoVentana,
@@ -181,6 +181,8 @@ export default function CentroModulos() {
   const utils = trpc.useUtils();
   const [confirmandoApagadoInconformidad, setConfirmandoApagadoInconformidad] = useState(false);
   const [confirmandoApagadoPromocion, setConfirmandoApagadoPromocion] = useState(false);
+  const [confirmandoApagadoAutoevaluacion, setConfirmandoApagadoAutoevaluacion] = useState(false);
+  const [confirmandoApagadoEvaluadores, setConfirmandoApagadoEvaluadores] = useState(false);
 
   const { data: configInconformidad, isLoading: cargandoInconformidad } = trpc.inconformidad.moduloConfig.useQuery();
   // Estado EFECTIVO (lo que el trabajador realmente ve ahora) -- NO es lo
@@ -192,6 +194,12 @@ export default function CentroModulos() {
 
   const { data: configPromocion, isLoading: cargandoPromocion } = trpc.promocion.moduloConfig.useQuery();
   const { data: habilitadoEfectivoPromocion } = trpc.promocion.moduloHabilitado.useQuery();
+
+  const { data: configAutoevaluacion, isLoading: cargandoAutoevaluacion } = trpc.autoevaluacion.moduloConfig.useQuery();
+  const { data: habilitadoEfectivoAutoevaluacion } = trpc.autoevaluacion.moduloHabilitado.useQuery();
+
+  const { data: configEvaluadores, isLoading: cargandoEvaluadores } = trpc.evaluadores.moduloConfig.useQuery();
+  const { data: habilitadoEfectivoEvaluadores } = trpc.evaluadores.moduloHabilitado.useQuery();
 
   const actualizarInconformidadMut = trpc.inconformidad.actualizarModulo.useMutation({
     onSuccess: (_data, variables) => {
@@ -229,6 +237,42 @@ export default function CentroModulos() {
     onError: (err) => toast.error(err.message),
   });
 
+  const actualizarAutoevaluacionMut = trpc.autoevaluacion.actualizarModulo.useMutation({
+    onSuccess: (_data, variables) => {
+      utils.autoevaluacion.moduloConfig.invalidate();
+      utils.autoevaluacion.moduloHabilitado.invalidate();
+      toast.success(`Módulo Autoevaluación ${variables.habilitado ? "activado" : "desactivado"}`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const programarAutoevaluacionMut = trpc.autoevaluacion.programarVentanaModulo.useMutation({
+    onSuccess: () => {
+      utils.autoevaluacion.moduloConfig.invalidate();
+      utils.autoevaluacion.moduloHabilitado.invalidate();
+      toast.success("Ventana guardada");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const actualizarEvaluadoresMut = trpc.evaluadores.actualizarModulo.useMutation({
+    onSuccess: (_data, variables) => {
+      utils.evaluadores.moduloConfig.invalidate();
+      utils.evaluadores.moduloHabilitado.invalidate();
+      toast.success(`Módulo Evaluadores ${variables.habilitado ? "activado" : "desactivado"}`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const programarEvaluadoresMut = trpc.evaluadores.programarVentanaModulo.useMutation({
+    onSuccess: () => {
+      utils.evaluadores.moduloConfig.invalidate();
+      utils.evaluadores.moduloHabilitado.invalidate();
+      toast.success("Ventana guardada");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const handleToggleInconformidad = () => {
     if (habilitadoEfectivoInconformidad) {
       setConfirmandoApagadoInconformidad(true);
@@ -245,7 +289,28 @@ export default function CentroModulos() {
     }
   };
 
-  if (cargandoInconformidad || !configInconformidad || cargandoPromocion || !configPromocion) {
+  const handleToggleAutoevaluacion = () => {
+    if (habilitadoEfectivoAutoevaluacion) {
+      setConfirmandoApagadoAutoevaluacion(true);
+    } else {
+      actualizarAutoevaluacionMut.mutate({ habilitado: true });
+    }
+  };
+
+  const handleToggleEvaluadores = () => {
+    if (habilitadoEfectivoEvaluadores) {
+      setConfirmandoApagadoEvaluadores(true);
+    } else {
+      actualizarEvaluadoresMut.mutate({ habilitado: true });
+    }
+  };
+
+  if (
+    cargandoInconformidad || !configInconformidad ||
+    cargandoPromocion || !configPromocion ||
+    cargandoAutoevaluacion || !configAutoevaluacion ||
+    cargandoEvaluadores || !configEvaluadores
+  ) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
@@ -255,6 +320,8 @@ export default function CentroModulos() {
 
   const tieneVentanaInconformidad = Boolean(configInconformidad.fechaDesde && configInconformidad.fechaHasta);
   const tieneVentanaPromocion = Boolean(configPromocion.fechaDesde && configPromocion.fechaHasta);
+  const tieneVentanaAutoevaluacion = Boolean(configAutoevaluacion.fechaDesde && configAutoevaluacion.fechaHasta);
+  const tieneVentanaEvaluadores = Boolean(configEvaluadores.fechaDesde && configEvaluadores.fechaHasta);
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
@@ -271,6 +338,16 @@ export default function CentroModulos() {
       {!habilitadoEfectivoPromocion && (
         <motion.div variants={fadeUp} role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
           El módulo Promoción está desactivado — los trabajadores no pueden confirmar inscripción nueva.
+        </motion.div>
+      )}
+      {!habilitadoEfectivoAutoevaluacion && (
+        <motion.div variants={fadeUp} role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+          El módulo Autoevaluación está desactivado — nadie puede iniciar una autoevaluación nueva, aunque ya tenga Promoción confirmada.
+        </motion.div>
+      )}
+      {!habilitadoEfectivoEvaluadores && (
+        <motion.div variants={fadeUp} role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+          El módulo Evaluadores está desactivado — ningún evaluador puede iniciar su evaluación, aunque ya haya sido seleccionado.
         </motion.div>
       )}
 
@@ -305,24 +382,35 @@ export default function CentroModulos() {
           guardandoVentana={programarPromocionMut.isPending}
         />
 
-        {/* Futuros: agrupados, sin switch (no hay estado real que mostrar todavia) */}
-        <div className="rounded-2xl bg-gray-50 p-5 border border-gray-100">
-          <p className="text-micro font-semibold uppercase tracking-widest text-slate-400">Próximamente</p>
-          <div className="mt-1 divide-y divide-gray-100">
-            <div className="flex items-center justify-between py-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-400">
-                <ClipboardCheck size={16} aria-hidden="true" /> Autoevaluación
-              </p>
-              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-slate-500">Sin construir</span>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-400">
-                <Users size={16} aria-hidden="true" /> Evaluadores
-              </p>
-              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-slate-500">Sin construir</span>
-            </div>
-          </div>
-        </div>
+        <ModuloToggleCard
+          titulo="Autoevaluación"
+          Icono={ClipboardCheck}
+          habilitadoEfectivo={habilitadoEfectivoAutoevaluacion}
+          textoHabilitado="Los trabajadores con Promoción confirmada pueden iniciar su autoevaluación."
+          textoDeshabilitado="Nadie puede iniciar una autoevaluación nueva, aunque ya tenga Promoción confirmada."
+          config={configAutoevaluacion}
+          onIrAlPanel={() => navigate("/autoevaluaciones")}
+          linkLabel="Ir al panel de Autoevaluación"
+          onToggle={handleToggleAutoevaluacion}
+          toggleLoading={actualizarAutoevaluacionMut.isPending}
+          onGuardarVentana={(fechaDesde, fechaHasta) => programarAutoevaluacionMut.mutate({ fechaDesde, fechaHasta })}
+          guardandoVentana={programarAutoevaluacionMut.isPending}
+        />
+
+        <ModuloToggleCard
+          titulo="Evaluadores"
+          Icono={Users}
+          habilitadoEfectivo={habilitadoEfectivoEvaluadores}
+          textoHabilitado="Los evaluadores seleccionados (Jefe/Compañero) pueden iniciar su evaluación."
+          textoDeshabilitado="Ningún evaluador puede iniciar su evaluación, aunque ya haya sido seleccionado."
+          config={configEvaluadores}
+          onIrAlPanel={() => navigate("/evaluadores")}
+          linkLabel="Ir al panel de Evaluadores"
+          onToggle={handleToggleEvaluadores}
+          toggleLoading={actualizarEvaluadoresMut.isPending}
+          onGuardarVentana={(fechaDesde, fechaHasta) => programarEvaluadoresMut.mutate({ fechaDesde, fechaHasta })}
+          guardandoVentana={programarEvaluadoresMut.isPending}
+        />
       </motion.div>
 
       <ConfirmModal
@@ -356,6 +444,40 @@ export default function CentroModulos() {
         onCancel={() => setConfirmandoApagadoPromocion(false)}
         onConfirm={() => {
           actualizarPromocionMut.mutate({ habilitado: false }, { onSuccess: () => setConfirmandoApagadoPromocion(false) });
+        }}
+      />
+
+      <ConfirmModal
+        open={confirmandoApagadoAutoevaluacion}
+        variant="warning"
+        title="¿Desactivar Autoevaluación?"
+        message={
+          tieneVentanaAutoevaluacion
+            ? "Nadie podrá iniciar una autoevaluación nueva de inmediato y se cancela la ventana programada. Las autoevaluaciones ya iniciadas o enviadas no se pierden."
+            : "Nadie podrá iniciar una autoevaluación nueva de inmediato, aunque ya tenga Promoción confirmada. Las autoevaluaciones ya iniciadas o enviadas no se pierden."
+        }
+        confirmLabel="Sí, desactivar"
+        loading={actualizarAutoevaluacionMut.isPending}
+        onCancel={() => setConfirmandoApagadoAutoevaluacion(false)}
+        onConfirm={() => {
+          actualizarAutoevaluacionMut.mutate({ habilitado: false }, { onSuccess: () => setConfirmandoApagadoAutoevaluacion(false) });
+        }}
+      />
+
+      <ConfirmModal
+        open={confirmandoApagadoEvaluadores}
+        variant="warning"
+        title="¿Desactivar Evaluadores?"
+        message={
+          tieneVentanaEvaluadores
+            ? "Ningún evaluador podrá iniciar su evaluación de inmediato y se cancela la ventana programada. Las evaluaciones ya iniciadas o enviadas no se pierden."
+            : "Ningún evaluador podrá iniciar su evaluación de inmediato, aunque ya haya sido seleccionado. Las evaluaciones ya iniciadas o enviadas no se pierden."
+        }
+        confirmLabel="Sí, desactivar"
+        loading={actualizarEvaluadoresMut.isPending}
+        onCancel={() => setConfirmandoApagadoEvaluadores(false)}
+        onConfirm={() => {
+          actualizarEvaluadoresMut.mutate({ habilitado: false }, { onSuccess: () => setConfirmandoApagadoEvaluadores(false) });
         }}
       />
     </motion.div>

@@ -172,6 +172,31 @@ export const promocionModuloConfig = mysqlTable("promocion_modulo_config", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 
+// Mismo patron que promocionModuloConfig -- controla si un trabajador puede
+// INICIAR su autoevaluacion (aunque ya tenga Promocion confirmada, requisito
+// real cumplido), no afecta autoevaluaciones ya iniciadas/enviadas ni el
+// panel admin.
+export const autoevaluacionModuloConfig = mysqlTable("autoevaluacion_modulo_config", {
+  id: int("id").autoincrement().primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+  fechaDesde: date("fecha_desde", { mode: "string" }),
+  fechaHasta: date("fecha_hasta", { mode: "string" }),
+  actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+// Mismo patron -- controla si un evaluador (Jefe/Companero) puede INICIAR su
+// evaluacion (aunque ya haya sido seleccionado, requisito real cumplido), no
+// afecta evaluaciones ya iniciadas/enviadas ni el panel admin.
+export const evaluadorModuloConfig = mysqlTable("evaluador_modulo_config", {
+  id: int("id").autoincrement().primaryKey(),
+  habilitado: boolean("habilitado").notNull().default(true),
+  fechaDesde: date("fecha_desde", { mode: "string" }),
+  fechaHasta: date("fecha_hasta", { mode: "string" }),
+  actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
 export const passwordResetTokens = mysqlTable("password_reset_tokens", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -515,6 +540,8 @@ export type Promocion = typeof promociones.$inferSelect;
 export type PromocionEvaluadorPool = typeof promocionEvaluadorPool.$inferSelect;
 export type PromocionCorreoPendiente = typeof promocionCorreosPendientes.$inferSelect;
 export type PromocionModuloConfig = typeof promocionModuloConfig.$inferSelect;
+export type AutoevaluacionModuloConfig = typeof autoevaluacionModuloConfig.$inferSelect;
+export type EvaluadorModuloConfig = typeof evaluadorModuloConfig.$inferSelect;
 export type AutoevaluacionPregunta = typeof autoevaluacionPreguntas.$inferSelect;
 export type Autoevaluacion = typeof autoevaluaciones.$inferSelect;
 export type AutoevaluacionRespuesta = typeof autoevaluacionRespuestas.$inferSelect;

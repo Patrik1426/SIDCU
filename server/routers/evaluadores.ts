@@ -8,6 +8,10 @@ import {
   enviarEvaluacion,
   importarFilaPreguntaEvaluador,
   contarPreguntasActivasEvaluador,
+  obtenerConfigModuloEvaluadores,
+  moduloEvaluadoresHabilitado,
+  actualizarModuloEvaluadoresManual,
+  programarVentanaModuloEvaluadores,
 } from "../db";
 import { LIKERT_OPCIONES, EVALUADOR_ROLES_BANCO } from "../../drizzle/schema";
 import { PREGUNTAS_EVALUADOR } from "../../shared/const";
@@ -53,6 +57,17 @@ function traducirErrorEnviar(error: ErrorCodigoEnviar): TRPCError {
 
 const filaImportSchema = z.object({ rol: z.enum(EVALUADOR_ROLES_BANCO), registros: z.array(z.record(z.string(), z.any())) });
 
+// "Pausa total": mientras el modulo esta deshabilitado, ningun evaluador
+// puede INICIAR su evaluacion -- aunque ya haya sido seleccionado
+// (requisito real cumplido). Lectura (misPendientes, miEvaluacion) y lo ya
+// iniciado/enviado nunca se tocan -- mismo criterio que
+// exigirModuloHabilitado en autoevaluacion.ts/promocion.ts.
+async function exigirModuloHabilitado(): Promise<void> {
+  if (!(await moduloEvaluadoresHabilitado())) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "El módulo Evaluadores no está disponible en este momento." });
+  }
+}
+
 export const evaluadoresRouter = router({
   misPendientes: protectedProcedure.query(({ ctx }) => listarMisEvaluacionesPendientes(ctx.user.id)),
 
@@ -63,6 +78,7 @@ export const evaluadoresRouter = router({
   iniciar: protectedProcedure
     .input(z.object({ evaluacionId: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
+      await exigirModuloHabilitado();
       const resultado = await iniciarEvaluacion(ctx.user.id, input.evaluacionId);
       if (!resultado.ok) throw traducirErrorIniciar(resultado.error);
       return { success: true };
@@ -102,4 +118,32 @@ export const evaluadoresRouter = router({
   contarActivas: adminProcedure
     .input(z.object({ rol: z.enum(EVALUADOR_ROLES_BANCO) }))
     .query(({ input }) => contarPreguntasActivasEvaluador(input.rol)),
+
+  moduloConfig: adminProcedure.query(async () => {
+    return obtenerConfigModuloEvaluadores();
+  }),
+
+  moduloHabilitado: protectedProcedure.query(async () => {
+    return moduloEvaluadoresHabilitado();
+  }),
+
+  actualizarModulo: adminProcedure
+    .input(z.object({ habilitado: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await actualizarModuloEvaluadoresManual(input.habilitado, ctx.user.id);
+      return { success: true };
+    }),
+
+  programarVentanaModulo: adminProcedure
+    .input(z.object({
+      fechaDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+      fechaHasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+    }).refine((v) => v.fechaHasta >= v.fechaDesde, {
+      message: '"Hasta" no puede ser antes que "Desde".',
+      path: ["fechaHasta"],
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await programarVentanaModuloEvaluadores(input.fechaDesde, input.fechaHasta, ctx.user.id);
+      return { success: true };
+    }),
 });
