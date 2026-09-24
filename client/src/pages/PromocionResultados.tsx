@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Search, ChevronRight, Download, FileSpreadsheet } from "lucide-react";
+import { Search, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
 import { exportarResultadosPromocionExcel, exportarResultadosPromocionPDF } from "@/lib/exportar";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
@@ -35,6 +35,7 @@ export default function PromocionResultados() {
   const [ordenTotal, setOrdenTotal] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
+  const [expandido, setExpandido] = useState<number | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarResultados.useQuery({
     search: search || undefined,
@@ -110,16 +111,16 @@ export default function PromocionResultados() {
           <button
             onClick={() => handleExport("excel")}
             disabled={exportando !== null || !data || data.total === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
           >
-            <FileSpreadsheet size={14} /> {exportando === "excel" ? "Exportando..." : "Excel"}
+            <FileSpreadsheet size={16} /> {exportando === "excel" ? "Exportando..." : "Excel"}
           </button>
           <button
             onClick={() => handleExport("pdf")}
             disabled={exportando !== null || !data || data.total === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
           >
-            <Download size={14} /> {exportando === "pdf" ? "Exportando..." : "PDF"}
+            <FileText size={16} /> {exportando === "pdf" ? "Exportando..." : "PDF"}
           </button>
         </div>
       </motion.div>
@@ -152,31 +153,66 @@ export default function PromocionResultados() {
         ) : data?.items.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-gray-400">Sin resultados</div>
         ) : (
-          data?.items.map((item) => (
-            <div key={item.promocionId} className="border-t border-gray-100 p-4 first:border-t-0">
-              <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary-500 to-accent-500 text-[11px] font-bold text-white">
-                  {iniciales(item.trabajadorNombre)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold text-gray-800">{item.trabajadorNombre}</p>
-                  <p className="text-[11.5px] text-gray-400 tabular-nums">{item.trabajadorCurp}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-extrabold tabular-nums text-gray-900">{item.total.toFixed(3)}</p>
-                  <p className={`text-[10px] font-semibold ${item.completo ? "text-emerald-600" : "text-gray-400"}`}>
-                    de 40 · {item.completo ? "Completo" : "Parcial"}
-                  </p>
-                </div>
+          data?.items.map((item) => {
+            const componentes = [
+              { rol: "auto", enviado: item.autoevaluacion?.estado === "enviado" },
+              { rol: "jefe", enviado: item.jefe?.estado === "enviado" },
+              { rol: "c1", enviado: item.companero1?.estado === "enviado" },
+              { rol: "c2", enviado: item.companero2?.estado === "enviado" },
+            ];
+            const completados = componentes.filter((c) => c.enviado).length;
+            const abierto = expandido === item.promocionId;
+
+            return (
+              <div key={item.promocionId} className="border-t border-gray-100 first:border-t-0">
+                <button
+                  type="button"
+                  onClick={() => setExpandido(abierto ? null : item.promocionId)}
+                  aria-expanded={abierto}
+                  className="grid w-full grid-cols-[34px_1.7fr_1fr_88px_18px] items-center gap-3.5 px-4.5 py-2.5 text-left hover:bg-gray-50"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary-500 to-accent-500 text-[11px] font-bold text-white">
+                    {iniciales(item.trabajadorNombre)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13.5px] font-semibold text-gray-800">{item.trabajadorNombre}</span>
+                    <span className="block text-[11.5px] text-gray-400 tabular-nums">{item.trabajadorCurp}</span>
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="flex shrink-0 gap-0.5">
+                      {componentes.map((c) => (
+                        <span key={c.rol} className={`h-1.5 w-1.5 rounded-full ${c.enviado ? "bg-emerald-600" : "bg-gray-200"}`} />
+                      ))}
+                    </span>
+                    <span className={`truncate text-xs ${item.completo ? "text-gray-500" : "font-semibold text-amber-700"}`}>
+                      {item.completo ? "Completo" : `${4 - completados} pendiente${4 - completados > 1 ? "s" : ""}`}
+                    </span>
+                  </span>
+                  <span className="text-right text-xs font-bold tabular-nums text-gray-900">{item.total.toFixed(3)}<span className="ml-0.5 font-normal text-gray-400">/40</span></span>
+                  <ChevronRight size={16} className={`justify-self-end text-gray-300 transition-transform ${abierto ? "rotate-90" : ""}`} />
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {abierto && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18 }}
+                      className="overflow-hidden bg-gray-50/60"
+                    >
+                      <div className="grid grid-cols-2 gap-2.5 px-4.5 pb-4.5 pt-1 sm:grid-cols-4">
+                        <Badge label="Autoevaluación (14)" decimales={1} valor={item.autoevaluacion?.estado === "enviado" ? item.autoevaluacion.puntaje : null} />
+                        <Badge label="Jefe (14)" decimales={0} valor={item.jefe?.estado === "enviado" ? item.jefe.puntaje : null} />
+                        <Badge label="Compañero 1 (6)" decimales={3} valor={item.companero1?.estado === "enviado" ? item.companero1.puntaje : null} />
+                        <Badge label="Compañero 2 (6)" decimales={3} valor={item.companero2?.estado === "enviado" ? item.companero2.puntaje : null} />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <Badge label="Autoevaluación (14)" decimales={1} valor={item.autoevaluacion?.estado === "enviado" ? item.autoevaluacion.puntaje : null} />
-                <Badge label="Jefe (14)" decimales={0} valor={item.jefe?.estado === "enviado" ? item.jefe.puntaje : null} />
-                <Badge label="Compañero 1 (6)" decimales={3} valor={item.companero1?.estado === "enviado" ? item.companero1.puntaje : null} />
-                <Badge label="Compañero 2 (6)" decimales={3} valor={item.companero2?.estado === "enviado" ? item.companero2.puntaje : null} />
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
 
         {data && data.totalPages > 1 && (
