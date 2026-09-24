@@ -490,15 +490,23 @@ interface ResultadoPromocionExport {
   completo: boolean;
 }
 
+// Decimales por componente segun su precision real de storage (ver
+// drizzle/schema.ts): Autoevaluacion es decimal(4,1) (0.5pt/acierto),
+// Jefe es entero (1pt/acierto), Compañero es decimal(5,3) (fraccion
+// 6/14 no-terminante, ej. 2.571) -- mostrar los 4 siempre a 3 decimales
+// sugiere falsa precision en Autoevaluacion/Jefe, que nunca la tienen.
+function fmtResultado(v: number | "pendiente", decimales: number): string {
+  return v === "pendiente" ? "Pendiente" : v.toFixed(decimales);
+}
+
 function prepararDatosResultadosPromocion(items: ResultadoPromocionExport[]) {
-  const fmt = (v: number | "pendiente") => (v === "pendiente" ? "Pendiente" : v.toFixed(3));
   return items.map((r) => ({
     "Nombre Completo": sanitizeCell(r.trabajadorNombre),
     CURP: sanitizeCell(r.trabajadorCurp),
-    "Autoevaluación (14)": fmt(r.autoevaluacion),
-    "Jefe (14)": fmt(r.jefe),
-    "Compañero 1 (6)": fmt(r.companero1),
-    "Compañero 2 (6)": fmt(r.companero2),
+    "Autoevaluación (14)": fmtResultado(r.autoevaluacion, 1),
+    "Jefe (14)": fmtResultado(r.jefe, 0),
+    "Compañero 1 (6)": fmtResultado(r.companero1, 3),
+    "Compañero 2 (6)": fmtResultado(r.companero2, 3),
     "Total (40)": r.total.toFixed(3),
     Estado: r.completo ? "Completo" : "Pendiente",
   }));
@@ -540,15 +548,14 @@ export function exportarResultadosPromocionPDF(items: ResultadoPromocionExport[]
     14, 28,
   );
 
-  const fmt = (v: number | "pendiente") => (v === "pendiente" ? "Pendiente" : v.toFixed(3));
   const headers = ["Nombre", "CURP", "Autoeval. (14)", "Jefe (14)", "Comp. 1 (6)", "Comp. 2 (6)", "Total (40)", "Estado"];
   const rows = items.map((r) => [
     r.trabajadorNombre,
     r.trabajadorCurp,
-    fmt(r.autoevaluacion),
-    fmt(r.jefe),
-    fmt(r.companero1),
-    fmt(r.companero2),
+    fmtResultado(r.autoevaluacion, 1),
+    fmtResultado(r.jefe, 0),
+    fmtResultado(r.companero1, 3),
+    fmtResultado(r.companero2, 3),
     r.total.toFixed(3),
     r.completo ? "Completo" : "Pendiente",
   ]);

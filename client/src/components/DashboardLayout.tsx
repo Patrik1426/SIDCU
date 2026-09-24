@@ -26,6 +26,7 @@ import {
   Award,
   ToggleLeft,
   ListChecks,
+  BarChart3,
 } from "lucide-react";
 
 interface NavItem {
@@ -52,7 +53,7 @@ const navItems: NavItem[] = [
   { label: "Solicitudes", href: "/solicitudes", icon: Inbox, roles: ["admin"] },
   { label: "Inconformidades", href: "/inconformidades", icon: FileWarning, roles: ["admin"] },
   { label: "Promociones", href: "/promociones", icon: Award, roles: ["admin"] },
-  { label: "Resultados de Promoción", href: "/promocion-resultados", icon: Award, roles: ["admin"] },
+  { label: "Resultados de Promoción", href: "/promocion-resultados", icon: BarChart3, roles: ["admin"] },
   { label: "Autoevaluaciones", href: "/autoevaluaciones", icon: ListChecks, roles: ["admin"] },
   { label: "Evaluadores", href: "/evaluadores", icon: ClipboardList, roles: ["admin"] },
   { label: "Usuarios", href: "/usuarios", icon: UserCog, roles: ["admin"] },

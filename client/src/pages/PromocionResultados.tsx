@@ -13,13 +13,17 @@ function iniciales(nombre: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
-function Badge({ label, valor }: { label: string; valor: number | null }) {
+// Decimales segun la precision real de storage de cada componente (ver
+// drizzle/schema.ts): Autoevaluacion decimal(4,1), Jefe entero,
+// Compañero decimal(5,3) (fraccion 6/14 no-terminante) -- mostrar los 4
+// siempre a 3 decimales sugeria falsa precision en los que no la tienen.
+function Badge({ label, valor, decimales }: { label: string; valor: number | null; decimales: number }) {
   const pendiente = valor === null;
   return (
     <div className={`rounded-xl border p-2.5 ${pendiente ? "border-gray-100 bg-gray-50" : "border-emerald-100 bg-emerald-50"}`}>
       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
       <p className={`mt-0.5 text-sm font-bold tabular-nums ${pendiente ? "text-gray-400" : "text-emerald-700"}`}>
-        {pendiente ? "Pendiente" : valor.toFixed(3)}
+        {pendiente ? "Pendiente" : valor.toFixed(decimales)}
       </p>
     </div>
   );
@@ -160,14 +164,16 @@ export default function PromocionResultados() {
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-extrabold tabular-nums text-gray-900">{item.total.toFixed(3)}</p>
-                  <p className="text-[10px] text-gray-400">de 40</p>
+                  <p className={`text-[10px] font-semibold ${item.completo ? "text-emerald-600" : "text-gray-400"}`}>
+                    de 40 · {item.completo ? "Completo" : "Parcial"}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <Badge label="Autoevaluación (14)" valor={item.autoevaluacion?.estado === "enviado" ? item.autoevaluacion.puntaje : null} />
-                <Badge label="Jefe (14)" valor={item.jefe?.estado === "enviado" ? item.jefe.puntaje : null} />
-                <Badge label="Compañero 1 (6)" valor={item.companero1?.estado === "enviado" ? item.companero1.puntaje : null} />
-                <Badge label="Compañero 2 (6)" valor={item.companero2?.estado === "enviado" ? item.companero2.puntaje : null} />
+                <Badge label="Autoevaluación (14)" decimales={1} valor={item.autoevaluacion?.estado === "enviado" ? item.autoevaluacion.puntaje : null} />
+                <Badge label="Jefe (14)" decimales={0} valor={item.jefe?.estado === "enviado" ? item.jefe.puntaje : null} />
+                <Badge label="Compañero 1 (6)" decimales={3} valor={item.companero1?.estado === "enviado" ? item.companero1.puntaje : null} />
+                <Badge label="Compañero 2 (6)" decimales={3} valor={item.companero2?.estado === "enviado" ? item.companero2.puntaje : null} />
               </div>
             </div>
           ))
