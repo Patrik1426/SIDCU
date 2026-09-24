@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Download, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { exportarInconformidadesExcel, exportarInconformidadesPDF } from "@/lib/exportar";
 import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
 
@@ -77,17 +77,17 @@ export default function GestionInconformidades() {
           <button
             onClick={() => handleExport("excel")}
             disabled={exportando !== null || filasExport.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
           >
-            <Download size={16} />
+            <FileSpreadsheet size={16} />
             {exportando === "excel" ? "Exportando..." : "Excel"}
           </button>
           <button
             onClick={() => handleExport("pdf")}
             disabled={exportando !== null || filasExport.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
           >
-            <Download size={16} />
+            <FileText size={16} />
             {exportando === "pdf" ? "Exportando..." : "PDF"}
           </button>
         </div>
