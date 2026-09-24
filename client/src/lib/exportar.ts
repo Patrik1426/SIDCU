@@ -587,3 +587,98 @@ export function exportarResultadosPromocionPDF(items: ResultadoPromocionExport[]
 
   doc.save(`${filename}_${fechaLocalISO()}.pdf`);
 }
+
+interface InscripcionPromocionExport {
+  trabajadorNombre: string;
+  trabajadorCurp: string;
+  jefeNombre: string | null;
+  jefeEvaluo: boolean;
+  companero1Nombre: string | null;
+  companero1Evaluo: boolean;
+  companero2Nombre: string | null;
+  companero2Evaluo: boolean;
+  enviadoAt: Date | string;
+}
+
+function prepararDatosInscripcionesPromocion(items: InscripcionPromocionExport[]) {
+  return items.map((i) => ({
+    Trabajador: sanitizeCell(i.trabajadorNombre),
+    CURP: sanitizeCell(i.trabajadorCurp),
+    Jefe: sanitizeCell(i.jefeNombre ?? "— cuenta no encontrada"),
+    "Jefe Evaluó": i.jefeEvaluo ? "Sí" : "No",
+    "Compañero 1": sanitizeCell(i.companero1Nombre ?? "— cuenta no encontrada"),
+    "Compañero 1 Evaluó": i.companero1Evaluo ? "Sí" : "No",
+    "Compañero 2": sanitizeCell(i.companero2Nombre ?? "— cuenta no encontrada"),
+    "Compañero 2 Evaluó": i.companero2Evaluo ? "Sí" : "No",
+    "Fecha de Inscripción": formatFechaHora(i.enviadoAt),
+  }));
+}
+
+export function exportarInscripcionesPromocionExcel(items: InscripcionPromocionExport[], filename = "inscripciones_promocion") {
+  const datos = prepararDatosInscripcionesPromocion(items);
+  const ws = XLSX.utils.json_to_sheet(datos);
+  ws["!cols"] = [
+    { wch: 28 }, // Trabajador
+    { wch: 20 }, // CURP
+    { wch: 26 }, // Jefe
+    { wch: 12 }, // Jefe Evaluó
+    { wch: 26 }, // Compañero 1
+    { wch: 16 }, // Compañero 1 Evaluó
+    { wch: 26 }, // Compañero 2
+    { wch: 16 }, // Compañero 2 Evaluó
+    { wch: 18 }, // Fecha
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Inscripciones Promoción");
+  XLSX.writeFile(wb, `${filename}_${fechaLocalISO()}.xlsx`);
+}
+
+export function exportarInscripcionesPromocionPDF(items: InscripcionPromocionExport[], filename = "inscripciones_promocion") {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
+
+  doc.setFontSize(16);
+  doc.setTextColor(97, 18, 50);
+  doc.text("Secretaría de Cultura", 14, 15);
+
+  doc.setFontSize(11);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Inscripciones a Promoción", 14, 22);
+
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Generado: ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })} · ${items.length} registros`,
+    14, 28,
+  );
+
+  const headers = ["Trabajador", "CURP", "Jefe", "Evaluó", "Compañero 1", "Evaluó", "Compañero 2", "Evaluó", "Fecha"];
+  const rows = items.map((i) => [
+    i.trabajadorNombre,
+    i.trabajadorCurp,
+    i.jefeNombre ?? "— cuenta no encontrada",
+    i.jefeEvaluo ? "Sí" : "No",
+    i.companero1Nombre ?? "— cuenta no encontrada",
+    i.companero1Evaluo ? "Sí" : "No",
+    i.companero2Nombre ?? "— cuenta no encontrada",
+    i.companero2Evaluo ? "Sí" : "No",
+    formatFechaHora(i.enviadoAt),
+  ]);
+
+  autoTable(doc, {
+    head: [headers],
+    body: rows,
+    startY: 33,
+    styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.1 },
+    headStyles: {
+      fillColor: [97, 18, 50],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 7.5,
+    },
+    alternateRowStyles: {
+      fillColor: [253, 242, 245],
+    },
+  });
+
+  doc.save(`${filename}_${fechaLocalISO()}.pdf`);
+}

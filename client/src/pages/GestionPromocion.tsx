@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2, X } from "lucide-react";
+import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2, X, FileSpreadsheet, FileText } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 import ConfirmModal from "@/components/ConfirmModal";
+import { exportarInscripcionesPromocionExcel, exportarInscripcionesPromocionPDF } from "@/lib/exportar";
 
 type RolPool = "jefe" | "companero";
 
@@ -40,6 +41,7 @@ export default function GestionPromocion() {
   const [searchPool, setSearchPool] = useState("");
   const [pagePool, setPagePool] = useState(1);
   const [quitando, setQuitando] = useState<{ servidorId: number; rol: RolPool; nombreCompleto: string } | null>(null);
+  const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery({ search: search || undefined, page, limit: 20 });
   const { data: correosFallidos } = trpc.promocion.listarCorreosFallidos.useQuery();
@@ -97,6 +99,40 @@ export default function GestionPromocion() {
 
   const inputClass = "rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20";
 
+  // Export sin paginar en la UI -- listarInscripciones tiene `limit` topado
+  // en 100 via Zod (adminProcedure), mismo patron que
+  // PromocionResultados.tsx: se recorren paginas de 100 en 100 hasta cubrir
+  // totalPages en vez de pedir un limit alto de un solo golpe.
+  const handleExport = async (tipo: "excel" | "pdf") => {
+    setExportando(tipo);
+    try {
+      const limitePorPagina = 100;
+      const primera = await utils.promocion.listarInscripciones.fetch({ search: search || undefined, page: 1, limit: limitePorPagina });
+      let todos = primera.items;
+      for (let p = 2; p <= primera.totalPages; p++) {
+        const siguiente = await utils.promocion.listarInscripciones.fetch({ search: search || undefined, page: p, limit: limitePorPagina });
+        todos = todos.concat(siguiente.items);
+      }
+      const datos = todos.map((item) => ({
+        trabajadorNombre: item.trabajadorNombre,
+        trabajadorCurp: item.trabajadorCurp,
+        jefeNombre: item.jefeNombre,
+        jefeEvaluo: item.jefeEvaluacionEstado === "enviado",
+        companero1Nombre: item.companero1Nombre,
+        companero1Evaluo: item.companero1EvaluacionEstado === "enviado",
+        companero2Nombre: item.companero2Nombre,
+        companero2Evaluo: item.companero2EvaluacionEstado === "enviado",
+        enviadoAt: item.enviadoAt,
+      }));
+      if (tipo === "excel") exportarInscripcionesPromocionExcel(datos);
+      else exportarInscripcionesPromocionPDF(datos);
+    } catch (err: any) {
+      toast.error("No se pudo exportar", { description: err.message ?? "Intenta de nuevo." });
+    } finally {
+      setExportando(null);
+    }
+  };
+
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={fadeUp} className="flex flex-wrap items-center justify-between gap-3">
@@ -105,6 +141,22 @@ export default function GestionPromocion() {
           <p className="mt-0.5 text-sm text-gray-500">Catálogos y evaluadores asignados.</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => handleExport("excel")}
+            disabled={exportando !== null || !data || data.total === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+          >
+            <FileSpreadsheet size={16} />
+            {exportando === "excel" ? "Exportando..." : "Excel"}
+          </button>
+          <button
+            onClick={() => handleExport("pdf")}
+            disabled={exportando !== null || !data || data.total === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
+          >
+            <FileText size={16} />
+            {exportando === "pdf" ? "Exportando..." : "PDF"}
+          </button>
           <button
             onClick={() => setCatalogoAbierto((v) => !v)}
             className={`rounded-lg border px-3 py-2 text-sm font-medium ${catalogoAbierto ? "border-primary-300 bg-primary-50 text-primary-700" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}
