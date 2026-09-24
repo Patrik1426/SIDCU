@@ -613,11 +613,11 @@ function prepararDatosInscripcionesPromocion(items: InscripcionPromocionExport[]
     Servidor: sanitizeCell(i.trabajadorNombre),
     CURP: sanitizeCell(i.trabajadorCurp),
     Jefe: sanitizeCell(i.jefeNombre ?? "— cuenta no encontrada"),
-    "Jefe Evaluó": fmtCalificacion(i.jefePuntaje),
+    "Jefe Evaluó (0-14)": fmtCalificacion(i.jefePuntaje),
     "Compañero 1": sanitizeCell(i.companero1Nombre ?? "— cuenta no encontrada"),
-    "Compañero 1 Evaluó": fmtCalificacion(i.companero1Puntaje),
+    "Compañero 1 Evaluó (0-6)": fmtCalificacion(i.companero1Puntaje),
     "Compañero 2": sanitizeCell(i.companero2Nombre ?? "— cuenta no encontrada"),
-    "Compañero 2 Evaluó": fmtCalificacion(i.companero2Puntaje),
+    "Compañero 2 Evaluó (0-6)": fmtCalificacion(i.companero2Puntaje),
     "Fecha de Inscripción": formatFechaHora(i.enviadoAt),
   }));
 }
@@ -629,11 +629,11 @@ export function exportarInscripcionesPromocionExcel(items: InscripcionPromocionE
     { wch: 28 }, // Servidor
     { wch: 20 }, // CURP
     { wch: 26 }, // Jefe
-    { wch: 12 }, // Jefe Evaluó
+    { wch: 16 }, // Jefe Evaluó (0-14)
     { wch: 26 }, // Compañero 1
-    { wch: 16 }, // Compañero 1 Evaluó
+    { wch: 18 }, // Compañero 1 Evaluó (0-6)
     { wch: 26 }, // Compañero 2
-    { wch: 16 }, // Compañero 2 Evaluó
+    { wch: 18 }, // Compañero 2 Evaluó (0-6)
     { wch: 18 }, // Fecha
   ];
   const wb = XLSX.utils.book_new();
@@ -659,7 +659,7 @@ export function exportarInscripcionesPromocionPDF(items: InscripcionPromocionExp
     14, 28,
   );
 
-  const headers = ["Servidor", "CURP", "Jefe", "Evaluó", "Compañero 1", "Evaluó", "Compañero 2", "Evaluó", "Fecha"];
+  const headers = ["Servidor", "CURP", "Jefe", "Evaluó (0-14)", "Compañero 1", "Evaluó (0-6)", "Compañero 2", "Evaluó (0-6)", "Fecha"];
   const rows = items.map((i) => [
     i.trabajadorNombre,
     i.trabajadorCurp,
