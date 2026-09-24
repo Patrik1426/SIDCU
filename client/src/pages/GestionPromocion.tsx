@@ -117,11 +117,11 @@ export default function GestionPromocion() {
         trabajadorNombre: item.trabajadorNombre,
         trabajadorCurp: item.trabajadorCurp,
         jefeNombre: item.jefeNombre,
-        jefeEvaluo: item.jefeEvaluacionEstado === "enviado",
+        jefePuntaje: item.jefePuntaje,
         companero1Nombre: item.companero1Nombre,
-        companero1Evaluo: item.companero1EvaluacionEstado === "enviado",
+        companero1Puntaje: item.companero1Puntaje,
         companero2Nombre: item.companero2Nombre,
-        companero2Evaluo: item.companero2EvaluacionEstado === "enviado",
+        companero2Puntaje: item.companero2Puntaje,
         enviadoAt: item.enviadoAt,
       }));
       if (tipo === "excel") exportarInscripcionesPromocionExcel(datos);

@@ -24,7 +24,7 @@ describe("listarInscripcionesPromocion", () => {
   // comportamiento real de paginacion se verifico en vivo contra MySQL real
   // en el Task 9 de este plan (ver progress.md).
   it("regresa items y metadatos de paginación con el shape correcto", async () => {
-    const filaEjemplo = { id: 1, enviadoAt: new Date(), trabajadorNombre: "Ana", trabajadorCurp: "X", jefeNombre: "Jefe", companero1Nombre: "C1", companero2Nombre: "C2" };
+    const filaEjemplo = { id: 1, enviadoAt: new Date(), trabajadorNombre: "Ana", trabajadorCurp: "X", jefeNombre: "Jefe", companero1Nombre: "C1", companero2Nombre: "C2", jefePuntaje: 5, companero1Puntaje: null, companero2Puntaje: 2.571 };
     const { tx } = makeTxRecorder([[filaEjemplo], [{ count: 1 }], [{ count: 0 }]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");

@@ -593,12 +593,19 @@ interface InscripcionPromocionExport {
   trabajadorNombre: string;
   trabajadorCurp: string;
   jefeNombre: string | null;
-  jefeEvaluo: boolean;
+  jefePuntaje: number | null;
   companero1Nombre: string | null;
-  companero1Evaluo: boolean;
+  companero1Puntaje: number | null;
   companero2Nombre: string | null;
-  companero2Evaluo: boolean;
+  companero2Puntaje: number | null;
   enviadoAt: Date | string;
+}
+
+// null (no enviado) -> "Pendiente"; con puntaje real -> formatearPuntaje
+// (quita ceros de cola, ej. 5.000 -> "5"), mismo criterio que Resultados
+// de Promoción -- un evaluador que no ha calificado nunca se lee como "0".
+function fmtCalificacion(puntaje: number | null): string {
+  return puntaje === null ? "Pendiente" : formatearPuntaje(puntaje);
 }
 
 function prepararDatosInscripcionesPromocion(items: InscripcionPromocionExport[]) {
@@ -606,11 +613,11 @@ function prepararDatosInscripcionesPromocion(items: InscripcionPromocionExport[]
     Servidor: sanitizeCell(i.trabajadorNombre),
     CURP: sanitizeCell(i.trabajadorCurp),
     Jefe: sanitizeCell(i.jefeNombre ?? "— cuenta no encontrada"),
-    "Jefe Evaluó": i.jefeEvaluo ? "Sí" : "No",
+    "Jefe Evaluó": fmtCalificacion(i.jefePuntaje),
     "Compañero 1": sanitizeCell(i.companero1Nombre ?? "— cuenta no encontrada"),
-    "Compañero 1 Evaluó": i.companero1Evaluo ? "Sí" : "No",
+    "Compañero 1 Evaluó": fmtCalificacion(i.companero1Puntaje),
     "Compañero 2": sanitizeCell(i.companero2Nombre ?? "— cuenta no encontrada"),
-    "Compañero 2 Evaluó": i.companero2Evaluo ? "Sí" : "No",
+    "Compañero 2 Evaluó": fmtCalificacion(i.companero2Puntaje),
     "Fecha de Inscripción": formatFechaHora(i.enviadoAt),
   }));
 }
@@ -619,7 +626,7 @@ export function exportarInscripcionesPromocionExcel(items: InscripcionPromocionE
   const datos = prepararDatosInscripcionesPromocion(items);
   const ws = XLSX.utils.json_to_sheet(datos);
   ws["!cols"] = [
-    { wch: 28 }, // Trabajador
+    { wch: 28 }, // Servidor
     { wch: 20 }, // CURP
     { wch: 26 }, // Jefe
     { wch: 12 }, // Jefe Evaluó
@@ -657,11 +664,11 @@ export function exportarInscripcionesPromocionPDF(items: InscripcionPromocionExp
     i.trabajadorNombre,
     i.trabajadorCurp,
     i.jefeNombre ?? "— cuenta no encontrada",
-    i.jefeEvaluo ? "Sí" : "No",
+    fmtCalificacion(i.jefePuntaje),
     i.companero1Nombre ?? "— cuenta no encontrada",
-    i.companero1Evaluo ? "Sí" : "No",
+    fmtCalificacion(i.companero1Puntaje),
     i.companero2Nombre ?? "— cuenta no encontrada",
-    i.companero2Evaluo ? "Sí" : "No",
+    fmtCalificacion(i.companero2Puntaje),
     formatFechaHora(i.enviadoAt),
   ]);
 

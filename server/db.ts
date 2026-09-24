@@ -2623,6 +2623,14 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
         jefeEvaluacionEstado: evalJefe.estado,
         companero1EvaluacionEstado: evalCompanero1.estado,
         companero2EvaluacionEstado: evalCompanero2.estado,
+        // Puntaje real de cada evaluador -- listarInscripcionesPromocion
+        // solo la expone via adminProcedure (nadie mas la llama, ver
+        // server/routers/promocion.ts), consistente con la regla de que
+        // solo el admin ve puntajes (mismo criterio que
+        // listarResultadosPromocion).
+        jefePuntaje: evalJefe.puntajeFinal,
+        companero1Puntaje: evalCompanero1.puntajeFinal,
+        companero2Puntaje: evalCompanero2.puntajeFinal,
       })
       .from(schema.promociones)
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
