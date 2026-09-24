@@ -474,6 +474,15 @@ export function exportarInconformidadesPDF(items: InconformidadExport[], filenam
     startY: 33,
     columnStyles: { 3: { cellWidth: 90 } },
     styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.1 },
+    headStyles: {
+      fillColor: [97, 18, 50],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 7.5,
+    },
+    alternateRowStyles: {
+      fillColor: [253, 242, 245],
+    },
   });
 
   doc.save(`${filename}_${fechaLocalISO()}.pdf`);
@@ -565,6 +574,15 @@ export function exportarResultadosPromocionPDF(items: ResultadoPromocionExport[]
     body: rows,
     startY: 33,
     styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.1 },
+    headStyles: {
+      fillColor: [97, 18, 50],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 7.5,
+    },
+    alternateRowStyles: {
+      fillColor: [253, 242, 245],
+    },
   });
 
   doc.save(`${filename}_${fechaLocalISO()}.pdf`);
