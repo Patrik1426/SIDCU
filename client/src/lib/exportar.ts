@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { FACTOR_INCONFORMIDAD_LABELS } from "@shared/const";
+import { formatearPuntaje } from "@shared/utils";
 
 const NIVEL_LABELS: Record<string, string> = {
   federal: "Federal",
@@ -516,7 +517,7 @@ function prepararDatosResultadosPromocion(items: ResultadoPromocionExport[]) {
     "Jefe (14)": fmtResultado(r.jefe, 0),
     "Compañero 1 (6)": fmtResultado(r.companero1, 3),
     "Compañero 2 (6)": fmtResultado(r.companero2, 3),
-    "Total (40)": r.total.toFixed(3),
+    "Total (40)": formatearPuntaje(r.total),
     Estado: r.completo ? "Completo" : "Pendiente",
   }));
 }
@@ -565,7 +566,7 @@ export function exportarResultadosPromocionPDF(items: ResultadoPromocionExport[]
     fmtResultado(r.jefe, 0),
     fmtResultado(r.companero1, 3),
     fmtResultado(r.companero2, 3),
-    r.total.toFixed(3),
+    formatearPuntaje(r.total),
     r.completo ? "Completo" : "Pendiente",
   ]);
 

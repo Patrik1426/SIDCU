@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Search, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
 import { exportarResultadosPromocionExcel, exportarResultadosPromocionPDF } from "@/lib/exportar";
+import { formatearPuntaje } from "@shared/utils";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } } };
@@ -188,7 +189,7 @@ export default function PromocionResultados() {
                       {item.completo ? "Completo" : `${4 - completados} pendiente${4 - completados > 1 ? "s" : ""}`}
                     </span>
                   </span>
-                  <span className="text-right text-xs font-bold tabular-nums text-gray-900">{item.total.toFixed(3)}<span className="ml-0.5 font-normal text-gray-400">/40</span></span>
+                  <span className="text-right text-xs font-bold tabular-nums text-gray-900">{formatearPuntaje(item.total)}<span className="ml-0.5 font-normal text-gray-400">/40</span></span>
                   <ChevronRight size={16} className={`justify-self-end text-gray-300 transition-transform ${abierto ? "rotate-90" : ""}`} />
                 </button>
 
