@@ -3308,11 +3308,17 @@ export async function procesarLotePendientesCorreo(limite = 50): Promise<{ proce
     } else {
       fallidos++;
       const nuevosIntentos = fila.intentos + 1;
+      const esFalloDefinitivo = nuevosIntentos >= TOPE_INTENTOS_CORREO;
       await d.update(schema.promocionCorreosPendientes)
         .set({
-          estado: nuevosIntentos >= TOPE_INTENTOS_CORREO ? "fallido" : "pendiente",
+          estado: esFalloDefinitivo ? "fallido" : "pendiente",
           intentos: nuevosIntentos,
           ultimoError: resultado.error,
+          // Hallazgo de auditoria DBA: al quedar "fallido" definitivo ya no
+          // hay reintento automatico posible -- dejar el password real en
+          // claro en la fila para siempre es exposicion sin beneficio (el
+          // admin reasigna/reintenta desde el panel sin necesitar releerlo).
+          ...(esFalloDefinitivo ? { passwordTemporalEnClaro: null } : {}),
         })
         .where(eq(schema.promocionCorreosPendientes.id, fila.id));
     }

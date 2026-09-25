@@ -67,6 +67,31 @@ describe("procesarLotePendientesCorreo", () => {
     expect(calls).toContain("update");
   });
 
+  // Hallazgo de auditoria DBA: antes, cuando un fallo real agotaba los 5
+  // reintentos (estado="fallido" definitivo), passwordTemporalEnClaro se
+  // quedaba en la fila para siempre -- un password real y vigente de una
+  // cuenta on-the-fly visible en texto plano indefinidamente para cualquiera
+  // con lectura de la DB. Solo el camino de exito (estado="enviado") lo
+  // limpiaba. El admin ya puede reasignar/reintentar desde el panel de
+  // correos fallidos sin necesitar releer este valor.
+  it("al agotar los reintentos (fallido definitivo) limpia passwordTemporalEnClaro, no lo deja en claro para siempre", async () => {
+    // intentos:4 -- el proximo fallo suma 5, que es TOPE_INTENTOS_CORREO (privado en db.ts, no exportado).
+    const pendiente = { id: 1, promocionId: 1, destinatarioUserId: 100, rol: "jefe", intentos: 4, passwordTemporalEnClaro: "PASSTEMP12AB" };
+    const destinatario = { email: "jefe@example.com", nombre: "Ana Lopez", curp: "AAAA000101HDFXXX01" };
+    const trabajador = { nombreCompleto: "Beto Ruiz" };
+    const { tx, setCalls } = makeTxRecorder([[pendiente], [destinatario], [trabajador]], []);
+    const fakeDb = { select: tx.select, update: tx.update };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+    const { enviarCorreoEvaluador } = await import("./lib/email");
+    vi.mocked(enviarCorreoEvaluador).mockResolvedValue({ ok: false, error: "dominio no existe" });
+
+    const { procesarLotePendientesCorreo } = await import("./db");
+    const resultado = await procesarLotePendientesCorreo();
+    expect(resultado).toEqual({ procesados: 1, enviados: 0, fallidos: 1 });
+    expect(setCalls[0]).toEqual(expect.objectContaining({ estado: "fallido", passwordTemporalEnClaro: null }));
+  });
+
   // I6 (revision final de rama): antes, un RESEND_API_KEY/RESEND_FROM_EMAIL
   // faltante regresaba la MISMA forma que una falla real de envio -- el
   // worker incrementaba `intentos` igual, y a los 5 ciclos (10 minutos,
