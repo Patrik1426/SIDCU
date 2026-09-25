@@ -44,8 +44,18 @@ app.get("/api/health", async (_req, res) => {
     const { getDb } = await import("./db");
     const { dbCircuitBreaker } = await import("./middleware/circuitBreaker");
     const { sql } = await import("drizzle-orm");
-    const d = await getDb();
-    await d.execute(sql`SELECT 1`);
+    // Hallazgo de auditoria DBA: antes este SELECT 1 iba directo, sin pasar
+    // por el circuit breaker -- dbCircuitBreaker.getState() de la linea de
+    // abajo siempre reportaba "CLOSED" (nada lo alimentaba con fallos
+    // reales), asi que el campo "circuit" del health check era decorativo,
+    // nunca reflejaba saturacion real. Envolverlo aqui hace que rachas de
+    // fallos reales de conectividad SI abran el circuito (30s de pausa,
+    // ver circuitBreaker.ts) antes de que Railway siga mandando trafico a
+    // una DB ya en apuros.
+    await dbCircuitBreaker.execute(async () => {
+      const d = await getDb();
+      await d.execute(sql`SELECT 1`);
+    });
     const circuit = dbCircuitBreaker.getState();
     res.json({
       status: "ok",
