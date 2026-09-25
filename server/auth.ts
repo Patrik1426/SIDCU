@@ -1,7 +1,7 @@
 import Piscina from "piscina";
 import { fileURLToPath } from "node:url";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import type { User } from "../drizzle/schema";
 
 // Sin fallback silencioso: si NODE_ENV no queda exacto "production" en
@@ -66,6 +66,18 @@ export function generateToken(
     JWT_SECRET,
     { expiresIn: "7d" },
   );
+}
+
+// El token de restablecimiento en si (randomBytes(32).hex, 256 bits de
+// entropia) ya es suficiente contra fuerza bruta -- este hash NO es sobre
+// una contraseña de baja entropia (no hace falta bcrypt/argon2, seria costo
+// sin beneficio real). El punto es que la DB guarde solo el hash: si alguien
+// lee la tabla (backup mal manejado, dump de soporte) no puede reconstruir
+// el link de restablecimiento real, solo compararlo si YA lo tiene.
+// Deterministico a proposito -- routers.ts hashea el token que llega del
+// usuario con esta misma funcion antes de buscarlo por igualdad en la DB.
+export function hashTokenRestablecimiento(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export function verifyToken(

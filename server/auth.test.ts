@@ -5,6 +5,7 @@ import {
   generateToken,
   verifyToken,
   generarPasswordTemporal,
+  hashTokenRestablecimiento,
 } from "./auth";
 
 describe("auth", () => {
@@ -49,5 +50,27 @@ describe("generarPasswordTemporal", () => {
     const a = generarPasswordTemporal();
     const b = generarPasswordTemporal();
     expect(a).not.toBe(b);
+  });
+});
+
+// Hallazgo de auditoria DBA: password_reset_tokens.token se guardaba en
+// texto plano -- cualquiera con lectura de la DB (backup mal manejado, un
+// dump de soporte) podia forjar el link de restablecimiento de cualquier
+// cuenta con un token vigente sin necesitar el correo real. Debe ser
+// determinista (la misma entrada siempre hashea igual, para poder buscarla
+// por hash en la DB) pero jamas reversible a partir del hash guardado.
+describe("hashTokenRestablecimiento", () => {
+  it("es deterministico: el mismo token siempre hashea igual", () => {
+    const token = "abc123def456";
+    expect(hashTokenRestablecimiento(token)).toBe(hashTokenRestablecimiento(token));
+  });
+
+  it("nunca regresa el valor original en claro", () => {
+    const token = "abc123def456";
+    expect(hashTokenRestablecimiento(token)).not.toBe(token);
+  });
+
+  it("tokens distintos producen hashes distintos", () => {
+    expect(hashTokenRestablecimiento("token-a")).not.toBe(hashTokenRestablecimiento("token-b"));
   });
 });

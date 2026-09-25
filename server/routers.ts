@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { randomBytes } from "crypto";
-import { hashPassword, verifyPassword, generateToken } from "./auth";
+import { hashPassword, verifyPassword, generateToken, hashTokenRestablecimiento } from "./auth";
 import { verificarTurnstile } from "./turnstile";
 import { capitalizarNombre } from "../shared/utils";
 import {
@@ -158,10 +158,14 @@ const authRouter = router({
     .mutation(async ({ input }) => {
       const user = await getUserByEmail(input.email);
       if (!user) return { success: true }; // don't reveal if user exists
+      // El token en claro es lo que iria en el link del correo (todavia sin
+      // construir, ver Pendiente en CLAUDE.md) -- la DB solo guarda su hash
+      // (hallazgo de auditoria DBA: guardarlo en claro exponia el link real
+      // a cualquiera con lectura de la tabla).
       const token = randomBytes(32).toString("hex");
       await crearTokenRestablecimiento(
         user.id,
-        token,
+        hashTokenRestablecimiento(token),
         new Date(Date.now() + 24 * 60 * 60 * 1000),
       );
       // TODO: send email with reset link
@@ -171,7 +175,7 @@ const authRouter = router({
   restablecerContrasena: publicProcedure
     .input(z.object({ token: z.string(), password: z.string().min(8) }))
     .mutation(async ({ input }) => {
-      const record = await obtenerTokenRestablecimiento(input.token);
+      const record = await obtenerTokenRestablecimiento(hashTokenRestablecimiento(input.token));
       if (!record || record.usedAt || new Date() > record.expiresAt) {
         throw new TRPCError({
           code: "BAD_REQUEST",
