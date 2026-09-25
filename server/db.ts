@@ -2142,6 +2142,14 @@ export function calcularElegibilidadPromocion(
 
 export async function elegibilidadPromocion(userId: number) {
   const d = await getDb();
+  // .orderBy obligatorio -- calcularElegibilidadPromocion usa los primeros 2
+  // elementos del arreglo ("tus primeros 2 cursos completados"), y sin orden
+  // explicito MySQL no garantiza el orden de un SELECT: alguien con 3+ cursos
+  // completados podia ver que calificacion1/calificacion2 (y hasta el
+  // resultado elegible/no-elegible) cambiaran entre una carga de pantalla y
+  // otra sin que nada cambiara en la DB. createdAt (fecha de inscripcion) es
+  // inmutable, a diferencia de updatedAt que un admin puede tocar despues
+  // (ej. editar notasAdmin) sin relacion con el orden real de finalizacion.
   const completadas = await d
     .select({ calificacion: schema.solicitudesCurso.calificacion, nombreCurso: schema.cursos.nombre })
     .from(schema.solicitudesCurso)
@@ -2149,7 +2157,8 @@ export async function elegibilidadPromocion(userId: number) {
     .where(and(
       eq(schema.solicitudesCurso.userId, userId),
       eq(schema.solicitudesCurso.estado, "completada"),
-    ));
+    ))
+    .orderBy(schema.solicitudesCurso.createdAt);
   const resultado = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
   // nombreCurso1/2 son solo para mostrarle al trabajador qué curso sacó qué
   // calificación (retroalimentacion cliente 2026-09-17) -- no participan en
@@ -2295,13 +2304,18 @@ export async function confirmarInscripcion(
   const d = await getDb();
   try {
     return await d.transaction(async (tx) => {
+      // Mismo .orderBy que elegibilidadPromocion (ver ese comentario) -- debe
+      // seleccionar EXACTAMENTE los mismos 2 cursos que el trabajador vio en
+      // pantalla antes de inscribirse, o "elegible" en la lectura podia
+      // convertirse en NO_ELEGIBLE aqui por puro azar de orden de MySQL.
       const completadas = await tx
         .select({ calificacion: schema.solicitudesCurso.calificacion })
         .from(schema.solicitudesCurso)
         .where(and(
           eq(schema.solicitudesCurso.userId, userId),
           eq(schema.solicitudesCurso.estado, "completada"),
-        ));
+        ))
+        .orderBy(schema.solicitudesCurso.createdAt);
       const elegibilidad = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
       if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
 
