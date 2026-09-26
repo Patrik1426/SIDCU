@@ -2682,57 +2682,51 @@ export async function eliminarPreguntaEvaluador(
 }
 
 // Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
-// NO exige que la persona ya tenga cuenta `users` -- solo que exista un
-// registro activo en servidores_publicos. Si el pool exigiera cuenta previa,
-// la creacion de cuenta on-the-fly (asignarEvaluador) nunca se activaria.
-// Ver spec, seccion 2, "Por que el pool ya no exige cuenta users previa".
-async function buscarServidorActivoPorCurp(curp: string): Promise<{ servidorId: number; nombreCompleto: string } | null> {
-  const d = await getDb();
-  const [row] = await d
-    .select({ servidorId: schema.servidoresPublicos.id, nombreCompleto: schema.servidoresPublicos.nombreCompleto })
-    .from(schema.servidoresPublicos)
-    .where(and(
-      eq(schema.servidoresPublicos.curp, curp.toUpperCase()),
-      eq(schema.servidoresPublicos.estatus, "activo"),
-    ));
-  return row ?? null;
-}
-
-function normalizarNombre(n: string): string {
-  return n.trim().toUpperCase().replace(/\s+/g, " ");
-}
-
+// Rediseño 2026-09-26: ya no valida contra servidores_publicos -- la mayoria
+// de Jefes/Companeros del roster real nunca fueron importados como servidor
+// (son gente externa a SIDCU). El pool es ahora identidad directa: upsert
+// por (curp, rol) con lo que traiga el CSV, sin padrón contra el cual
+// comparar nombre.
 export async function importarFilaEvaluador(
   curp: string,
   nombreCsv: string,
   rol: "jefe" | "companero",
   correoCsv: string | undefined,
   adminUserId: number,
+  rfcCsv?: string,
 ): Promise<{ ok: true; advertencia?: string } | { ok: false; error: string }> {
-  const servidor = await buscarServidorActivoPorCurp(curp);
-  if (!servidor) return { ok: false, error: `CURP "${curp}" no tiene registro activo en el padrón` };
-
-  let advertencia: string | undefined;
-  if (normalizarNombre(nombreCsv) !== normalizarNombre(servidor.nombreCompleto)) {
-    advertencia = `${servidor.nombreCompleto}: el nombre no coincide con el CSV`;
+  const curpNormalizada = curp.trim().toUpperCase();
+  const nombreNormalizado = nombreCsv.trim();
+  if (!curpNormalizada || !nombreNormalizado) {
+    return { ok: false, error: "Faltan columnas curp/nombre" };
   }
 
+  let advertencia: string | undefined;
   let correoSugerido: string | null = null;
   if (correoCsv) {
     const correoValido = await validarCorreoEvaluador(correoCsv);
     if (!correoValido.ok) {
-      advertencia = advertencia
-        ? `${advertencia}, correo inválido`
-        : `${servidor.nombreCompleto}: correo inválido`;
+      advertencia = `${nombreNormalizado}: correo inválido`;
     } else {
       correoSugerido = correoCsv.trim().toLowerCase();
     }
   }
+  const rfcNormalizado = rfcCsv?.trim() ? rfcCsv.trim().toUpperCase() : null;
 
   const d = await getDb();
   await d.insert(schema.promocionEvaluadorPool)
-    .values({ servidorId: servidor.servidorId, rol, activo: true, correoSugerido, actualizadoPor: adminUserId })
-    .onDuplicateKeyUpdate({ set: { activo: true, correoSugerido, actualizadoPor: adminUserId } });
+    .values({
+      curp: curpNormalizada,
+      nombre: nombreNormalizado,
+      rfc: rfcNormalizado,
+      rol,
+      activo: true,
+      correoSugerido,
+      actualizadoPor: adminUserId,
+    })
+    .onDuplicateKeyUpdate({
+      set: { nombre: nombreNormalizado, rfc: rfcNormalizado, activo: true, correoSugerido, actualizadoPor: adminUserId },
+    });
 
   return advertencia ? { ok: true, advertencia } : { ok: true };
 }
