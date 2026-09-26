@@ -3056,10 +3056,16 @@ function escaparComodinesLike(valor: string): string {
   return valor.replace(/[%_\\]/g, (c) => `\\${c}`);
 }
 
-// Rediseño 2026-09-26: ya no hay servidores_publicos en este flujo -- la
-// precedencia de correoPrellenado se reduce a 2 fuentes (antes 3, ver spec
-// seccion "Backend"): users.email (cuenta ya existente) -> correoSugerido
-// (CSV). `excluido` resuelve el CURP del propio llamante (si tiene) para no
+// correoPrellenado SOLO viene de users.email (cuenta SIDCU real, verificada
+// por el propio dueño al registrarse) -- nunca de correoSugerido (el correo
+// del CSV del roster, capturado por el admin, sin verificar). Antes caia a
+// correoSugerido si la persona no tenia cuenta, pero eso precargaba un
+// correo no confirmado como si fuera dato confiable -- el trabajador podia
+// confiar en el sin darse cuenta de que nadie lo valido. Ahora si no hay
+// cuenta el campo queda en blanco y el trabajador lo captura el mismo
+// (decision de producto 2026-09-26, tras verificar en vivo con Playwright
+// que el fallback viejo sí se disparaba).
+// `excluido` resuelve el CURP del propio llamante (si tiene) para no
 // mostrarlo en su propia busqueda -- si no tiene CURP (o no existe), no se
 // excluye nada. `.limit(1)` en el select de `excluido`: users.curp no tiene
 // UNIQUE (a diferencia de users.id, que si), asi que sin el limit una fila
@@ -3082,7 +3088,6 @@ export async function buscarEnPoolPromocion(
     .select({
       curp: schema.promocionEvaluadorPool.curp,
       nombre: schema.promocionEvaluadorPool.nombre,
-      correoSugerido: schema.promocionEvaluadorPool.correoSugerido,
       userId: schema.users.id,
       emailCuenta: schema.users.email,
     })
@@ -3117,7 +3122,7 @@ export async function buscarEnPoolPromocion(
       curp: f.curp,
       nombre: f.nombre,
       tieneCuenta: f.userId !== null,
-      correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? null,
+      correoPrellenado: f.emailCuenta ?? null,
     }));
 }
 

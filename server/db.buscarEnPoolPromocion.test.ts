@@ -13,7 +13,7 @@ beforeEach(() => {
 
 describe("buscarEnPoolPromocion", () => {
   it("regresa coincidencias del rol pedido con tieneCuenta calculado", async () => {
-    const fila = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", correoSugerido: null, userId: 12, emailCuenta: null };
+    const fila = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", userId: 12, emailCuenta: null };
     // Primer select: resolver el curp del excluirUserId (aqui sin curp -- no excluye nada).
     // Segundo select: la busqueda real en el pool.
     const { tx } = makeTxRecorder([[], [fila]], []);
@@ -27,7 +27,7 @@ describe("buscarEnPoolPromocion", () => {
   });
 
   it("tieneCuenta es false si userId viene null (sin cuenta creada todavia)", async () => {
-    const fila = { curp: "BBBB000101HDFXXX02", nombre: "Beto Ruiz", correoSugerido: null, userId: null, emailCuenta: null };
+    const fila = { curp: "BBBB000101HDFXXX02", nombre: "Beto Ruiz", userId: null, emailCuenta: null };
     const { tx } = makeTxRecorder([[], [fila]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
@@ -38,11 +38,12 @@ describe("buscarEnPoolPromocion", () => {
     expect(resultado.tieneCuenta).toBe(false);
   });
 
-  // I2 original: precedencia de correo a prellenar. Rediseño 2026-09-26 quita
-  // el 3er nivel (servidoresPublicos.email/padron) -- ya no hay padron en
-  // este flujo, solo quedan 2 fuentes.
-  it("correoPrellenado prioriza users.email sobre correoSugerido", async () => {
-    const fila = { curp: "CCCC000101HDFXXX03", nombre: "Carla Diaz", correoSugerido: "csv@example.com", userId: 20, emailCuenta: "cuenta@example.com" };
+  // Decision de producto 2026-09-26: correoPrellenado SOLO sale de
+  // users.email (cuenta real verificada) -- correoSugerido (CSV del roster,
+  // sin verificar) ya no se usa como fallback, para no precargar al
+  // trabajador un correo no confirmado como si fuera confiable.
+  it("correoPrellenado usa users.email si tiene cuenta", async () => {
+    const fila = { curp: "CCCC000101HDFXXX03", nombre: "Carla Diaz", userId: 20, emailCuenta: "cuenta@example.com" };
     const { tx } = makeTxRecorder([[], [fila]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
@@ -53,8 +54,8 @@ describe("buscarEnPoolPromocion", () => {
     expect(resultado.correoPrellenado).toBe("cuenta@example.com");
   });
 
-  it("correoPrellenado cae a correoSugerido si no hay cuenta (users.email null)", async () => {
-    const fila = { curp: "DDDD000101HDFXXX04", nombre: "Dario Ruiz", correoSugerido: "csv@example.com", userId: null, emailCuenta: null };
+  it("correoPrellenado es null si no hay cuenta, aunque el pool tenga correoSugerido", async () => {
+    const fila = { curp: "DDDD000101HDFXXX04", nombre: "Dario Ruiz", userId: null, emailCuenta: null };
     const { tx } = makeTxRecorder([[], [fila]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
@@ -62,11 +63,11 @@ describe("buscarEnPoolPromocion", () => {
 
     const { buscarEnPoolPromocion } = await import("./db");
     const [resultado] = await buscarEnPoolPromocion("Dario", "companero", 1);
-    expect(resultado.correoPrellenado).toBe("csv@example.com");
+    expect(resultado.correoPrellenado).toBeNull();
   });
 
-  it("correoPrellenado es null si ninguna de las 2 fuentes tiene valor", async () => {
-    const fila = { curp: "FFFF000101HDFXXX06", nombre: "Fabian Sosa", correoSugerido: null, userId: null, emailCuenta: null };
+  it("correoPrellenado es null si tiene cuenta pero users.email tambien es null", async () => {
+    const fila = { curp: "FFFF000101HDFXXX06", nombre: "Fabian Sosa", userId: 40, emailCuenta: null };
     const { tx } = makeTxRecorder([[], [fila]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");

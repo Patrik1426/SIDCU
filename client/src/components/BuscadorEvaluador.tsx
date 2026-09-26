@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 
 interface BuscadorEvaluadorProps {
-  // I2: correoPrellenado sigue la precedencia del spec -- users.email ->
-  // correoSugerido -> null (rediseño 2026-09-26: ya no hay padron en este
-  // flujo). El caller decide que hacer si viene null (ej. Promocion.tsx cae a "").
+  // correoPrellenado SOLO viene de users.email (cuenta SIDCU real) -- nunca
+  // del correoSugerido del CSV, sin verificar (decision 2026-09-26, evita
+  // que el trabajador confie en un correo que nadie confirmo). El caller
+  // decide que hacer si viene null (ej. Promocion.tsx cae a "").
   onElegir: (curp: string, nombre: string, correoPrellenado: string | null) => void;
   placeholder?: string;
   rol: "jefe" | "companero";
