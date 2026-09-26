@@ -2681,7 +2681,6 @@ export async function eliminarPreguntaEvaluador(
   }
 }
 
-// Relajado a proposito respecto a la version anterior (buscarCuentaActivaPorCurp):
 // Rediseño 2026-09-26: ya no valida contra servidores_publicos -- la mayoria
 // de Jefes/Companeros del roster real nunca fueron importados como servidor
 // (son gente externa a SIDCU). El pool es ahora identidad directa: upsert
