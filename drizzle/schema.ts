@@ -321,26 +321,27 @@ export const solicitudesCurso = mysqlTable("solicitudes_curso", {
 
 export const PROMOCION_ROLES_POOL = ["jefe", "companero"] as const;
 
+// Catálogo de Jefes/Compañeros por identidad directa (CURP/nombre/correo),
+// SIN depender de servidores_publicos -- la mayoría de estas personas nunca
+// pasó por la importación general de servidores (son gente externa a SIDCU
+// que solo participa una vez, como evaluador de Promoción). Decisión de
+// diseño 2026-09-26 (ver docs/superpowers/specs/2026-09-26-pool-evaluadores-identidad-directa-design.md):
+// crear un servidor "stub" para estos casos contaminaba Reportes/catálogo de
+// cursos con datos categóricos fabricados (programa/grupoFuncion/nivel sin
+// valor real). CURP es la llave de identidad, igual que en el resto del
+// sistema -- siempre en mayúsculas (ver importarFilaEvaluador).
 export const promocionEvaluadorPool = mysqlTable("promocion_evaluador_pool", {
-  servidorId: int("servidor_id").notNull().references(() => servidoresPublicos.id, { onDelete: "cascade" }),
+  curp: varchar("curp", { length: 18 }).notNull(),
+  nombre: varchar("nombre", { length: 255 }).notNull(),
+  rfc: varchar("rfc", { length: 13 }),
   rol: mysqlEnum("rol", PROMOCION_ROLES_POOL).notNull(),
   activo: boolean("activo").notNull().default(true),
   correoSugerido: varchar("correo_sugerido", { length: 320 }),
   actualizadoPor: int("actualizado_por").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
-  pk: primaryKey({ columns: [table.servidorId, table.rol] }),
+  pk: primaryKey({ columns: [table.curp, table.rol] }),
   rolActivoIdx: index("promo_pool_rol_activo_idx").on(table.rol, table.activo),
-  // Bug conocido de drizzle-kit push (MySQL, ver drizzle-team/drizzle-orm#5125):
-  // en CADA push reintenta un DROP+ADD PRIMARY KEY idéntico (falso positivo de
-  // diff) sobre esta PK compuesta -- el DROP truena con ER_DROP_INDEX_FK
-  // porque el FK de servidorId necesita SIEMPRE algún índice cubriéndolo, y
-  // sin este índice separado el único candidato era la propia PK. Con este
-  // índice dedicado, el DROP de la PK ya no se queda sin cobertura -- el
-  // push (incluido el automático de Railway en cada deploy, ver railway.json)
-  // deja de tronar. El DROP+ADD sigue siendo ruido inofensivo en cada push
-  // hasta que se resuelva río arriba en drizzle-kit.
-  servidorIdIdx: index("promo_pool_servidor_id_idx").on(table.servidorId),
 }));
 
 // onDelete: "restrict" en las FKs de evaluadores (jefeAsignadoId/companeroXId)
