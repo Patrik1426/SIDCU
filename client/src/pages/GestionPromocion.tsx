@@ -18,6 +18,32 @@ function iniciales(nombre: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
+// Encabezados sin acentos/mayúsculas para matchear el roster real del
+// cliente (CURP, NOMBRE, RFC, UP, No, TIPO DE EVAL) sin exigirle editar el
+// archivo -- procesarFilas de ImportarCSVModal corre esto antes del preview.
+function normalizarHeader(h: string): string {
+  return h
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function mapearFilasEvaluadorPool(registros: Record<string, string>[]): Record<string, string>[] {
+  return registros.map((row) => {
+    const headers = Object.keys(row);
+    const buscar = (target: string) => headers.find((h) => normalizarHeader(h) === target);
+    const hCurp = buscar("CURP");
+    const hNombre = buscar("NOMBRE");
+    const hCorreo = buscar("CORREO") ?? buscar("EMAIL");
+    return {
+      curp: hCurp ? row[hCurp] : "",
+      nombre: hNombre ? row[hNombre] : "",
+      correo: hCorreo ? row[hCorreo] : "",
+    };
+  });
+}
+
 export default function GestionPromocion() {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
@@ -447,6 +473,7 @@ export default function GestionPromocion() {
             { key: "nombre", label: "Nombre", ejemplo: "Juan Pérez López" },
             { key: "correo", label: "Correo (opcional)", ejemplo: "juan.perez@example.com" },
           ]}
+          procesarFilas={mapearFilasEvaluadorPool}
           onImportar={async (registros) => {
             const resultado = await importarEvaluadoresMut.mutateAsync({ rol: modalImport, registros });
             // M7: antes el toast siempre decia "revisa el nombre capturado"
