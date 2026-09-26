@@ -17,68 +17,61 @@ beforeEach(() => {
 
 describe("asignarEvaluador", () => {
   it("si ya tiene cuenta REAL (evaluadorCuentaExpiraEn null): solo actualiza el correo, nunca toca expiracion/isActive", async () => {
-    const { tx, calls, setCalls } = makeTxRecorder([[{ userId: 12, evaluadorCuentaExpiraEn: null }]], [{ insertId: 0 }]);
+    const { tx, calls, setCalls } = makeTxRecorder([[{ id: 12, evaluadorCuentaExpiraEn: null }]], [{ insertId: 0 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx, 5, "persona@example.com");
+    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com");
     expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
-    expect(calls).toContain("update");
-    expect(calls).not.toContain("insert");
-    // Aserción estricta: el payload del update debe ser EXACTAMENTE
-    // {email}, sin evaluadorCuentaExpiraEn ni isActive -- una cuenta real
-    // jamas debe adquirir esta columna.
+    expect(calls).toEqual(["select", "update"]);
     expect(setCalls[0]).toEqual({ email: "persona@example.com" });
   });
 
   it("si ya tiene cuenta ON-THE-FLY (evaluadorCuentaExpiraEn no null, ej. ya vencida): refresca expiracion 3 dias habiles y reactiva, en el mismo update", async () => {
     const expiroHaceRato = new Date("2020-01-01T00:00:00.000Z");
-    const { tx, calls, setCalls } = makeTxRecorder([[{ userId: 12, evaluadorCuentaExpiraEn: expiroHaceRato }]], [{ insertId: 0 }]);
+    const { tx, calls, setCalls } = makeTxRecorder([[{ id: 12, evaluadorCuentaExpiraEn: expiroHaceRato }]], [{ insertId: 0 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
     const antes = Date.now();
-    const resultado = await asignarEvaluador(tx, 5, "persona@example.com");
+    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com");
     expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
-    expect(calls).toContain("update");
-    expect(calls).not.toContain("insert");
+    expect(calls).toEqual(["select", "update"]);
     expect(setCalls[0].email).toBe("persona@example.com");
     expect(setCalls[0].isActive).toBe(true);
     expect(setCalls[0].evaluadorCuentaExpiraEn).toBeInstanceOf(Date);
-    // La nueva expiracion es una ventana fresca desde ahora, no la vieja
-    // fecha ya vencida de 2020.
     expect(setCalls[0].evaluadorCuentaExpiraEn.getTime()).toBeGreaterThan(antes);
   });
 
-  it("si NO tiene cuenta: crea usuario con password temporal (única, no forzada a cambiar)", async () => {
-    const { tx, calls } = makeTxRecorder([[{ userId: null, curp: "AAAA000101HDFXXX01", nombreCompleto: "Ana Lopez" }]], [{ insertId: 77 }]);
+  it("si NO tiene cuenta: crea usuario con password temporal (única, no forzada a cambiar), sin tocar servidores_publicos", async () => {
+    const { tx, calls } = makeTxRecorder([[]], [{ insertId: 77 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx, 6, "ana@example.com");
+    const resultado = await asignarEvaluador(tx, "BBBB000101HDFXXX02", "Beto Ruiz", "beto@example.com");
     expect(resultado).toEqual({ userId: 77, passwordTemporalEnClaro: "PASSTEMP12AB" });
-    expect(calls).toContain("insert"); // users
-    expect(calls).toContain("update"); // servidoresPublicos.userId
+    // Solo select + insert -- YA NO hay un segundo update a servidores_publicos
+    // (esa tabla ni se toca en este flujo desde el rediseño 2026-09-26).
+    expect(calls).toEqual(["select", "insert"]);
   });
 
-  it("si crea cuenta nueva, no truena y regresa userId + password -- la expiracion real se verifica contra MySQL real en el Task 10", async () => {
-    const servidor = { userId: null, curp: "TEST900101HDFRRR01", nombreCompleto: "Prueba Uno" };
-    const { tx, calls } = makeTxRecorder([[servidor]], [{ insertId: 55 }]);
+  it("cuenta nueva usa el nombre/curp que vienen del pool, no de un lookup a servidores_publicos", async () => {
+    const { tx, calls } = makeTxRecorder([[]], [{ insertId: 55 }]);
     const fakeDb = { select: tx.select, insert: tx.insert, update: tx.update };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx as any, 10, "nuevo@ejemplo.com");
+    const resultado = await asignarEvaluador(tx as any, "TEST900101HDFRRR01", "Prueba Uno", "nuevo@ejemplo.com");
 
     expect(resultado.userId).toBe(55);
     expect(resultado.passwordTemporalEnClaro).not.toBeNull();
-    expect(calls).toEqual(["select", "insert", "update"]);
+    expect(calls).toEqual(["select", "insert"]);
   });
 });

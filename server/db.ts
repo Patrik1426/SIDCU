@@ -2173,63 +2173,56 @@ type PromocionTx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["tran
 // duplicar la logica de creacion de cuenta en 2 rutas. El password en claro
 // se regresa SOLO para pasarlo en memoria a la fila de
 // promocionCorreosPendientes -- nunca se persiste en ninguna tabla.
+//
+// Rediseño 2026-09-26: ya no recibe servidorId ni toca servidores_publicos --
+// el pool de evaluadores es identidad directa (curp/nombre), la mayoria de
+// Jefes/Companeros nunca fueron importados como servidor. `users.curp` no
+// tiene constraint UNIQUE (gap preexistente del sistema, no se resuelve
+// aqui) -- .limit(1) deja el comportamiento determinista: el primero que
+// encuentre.
 export async function asignarEvaluador(
   tx: PromocionTx,
-  servidorId: number,
+  curp: string,
+  nombre: string,
   correoCapturado: string,
 ): Promise<{ userId: number; passwordTemporalEnClaro: string | null }> {
-  const [servidor] = await tx
+  const [usuario] = await tx
     .select({
-      userId: schema.servidoresPublicos.userId,
-      curp: schema.servidoresPublicos.curp,
-      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
-      // Necesario para distinguir, en la rama de "ya tiene cuenta" de abajo,
-      // una cuenta real (siempre null aqui) de una cuenta on-the-fly que tal
-      // vez ya expiro (no null) -- fix hallazgo revision final: antes esta
-      // rama solo actualizaba el email, asi que si Worker A eligio a un Jefe
-      // on-the-fly cuya cuenta ya vencio (isActive=false por el worker de
-      // expiracion), Worker B eligiendo al MISMO Jefe despues nunca la
-      // reactivaba ni le refrescaba el vencimiento -- la evaluacion quedaba
-      // varada para siempre.
+      id: schema.users.id,
       evaluadorCuentaExpiraEn: schema.users.evaluadorCuentaExpiraEn,
     })
-    .from(schema.servidoresPublicos)
-    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
-    .where(eq(schema.servidoresPublicos.id, servidorId));
+    .from(schema.users)
+    .where(eq(schema.users.curp, curp))
+    .limit(1);
 
-  if (servidor.userId) {
+  if (usuario) {
     // null = cuenta real, nunca tuvo restriccion/expiracion -- nunca se le
     // toca esta columna. No-null = cuenta on-the-fly (vencida o no): refresca
     // la ventana de 3 dias habiles Y reactiva, en el mismo update que el
-    // email, para que una reseleccion posterior (mismo Jefe/Companero elegido
-    // por otro trabajador) nunca deje la cuenta varada desactivada.
-    const esOnTheFly = servidor.evaluadorCuentaExpiraEn !== null;
+    // email, para que una reseleccion posterior nunca deje la cuenta varada.
+    const esOnTheFly = usuario.evaluadorCuentaExpiraEn !== null;
     await tx.update(schema.users).set({
       email: correoCapturado,
       ...(esOnTheFly ? { evaluadorCuentaExpiraEn: calcularExpiracion3DiasHabiles(new Date()), isActive: true } : {}),
-    }).where(eq(schema.users.id, servidor.userId));
-    return { userId: servidor.userId, passwordTemporalEnClaro: null };
+    }).where(eq(schema.users.id, usuario.id));
+    return { userId: usuario.id, passwordTemporalEnClaro: null };
   }
 
   const passwordTemporalEnClaro = generarPasswordTemporal();
   const passwordHash = await hashPassword(passwordTemporalEnClaro);
   // Cuenta nueva -- restringida a solo la pantalla de evaluación hasta 3
-  // días hábiles desde ahora (ver calcularExpiracion3DiasHabiles). Si ya
-  // tenía cuenta (rama de arriba), esta columna nunca se toca -- una
-  // cuenta real nunca queda restringida.
+  // días hábiles desde ahora. Nombre/CURP vienen del pool (CSV), no de
+  // servidores_publicos -- esta persona puede no existir ahí en absoluto.
   const [insertResult] = await tx.insert(schema.users).values({
-    nombre: servidor.nombreCompleto,
-    curp: servidor.curp,
+    nombre,
+    curp,
     email: correoCapturado,
     passwordHash,
     role: "user",
     evaluadorCuentaExpiraEn: calcularExpiracion3DiasHabiles(new Date()),
   });
-  const nuevoUserId = insertResult.insertId;
 
-  await tx.update(schema.servidoresPublicos).set({ userId: nuevoUserId }).where(eq(schema.servidoresPublicos.id, servidorId));
-
-  return { userId: nuevoUserId, passwordTemporalEnClaro };
+  return { userId: insertResult.insertId, passwordTemporalEnClaro };
 }
 
 export async function yaInscritoPromocion(userId: number): Promise<boolean> {
