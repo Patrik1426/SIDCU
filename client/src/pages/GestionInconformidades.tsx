@@ -3,14 +3,36 @@ import { motion } from "framer-motion";
 import { stagger, fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
-import { exportarInconformidadesExcel, exportarInconformidadesPDF } from "@/lib/exportar";
+import { Archive, Download, FileSpreadsheet, FileText } from "lucide-react";
+import JSZip from "jszip";
+import { exportarInconformidadesExcel, exportarInconformidadesPDF, fechaLocalISO } from "@/lib/exportar";
 import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
+
+// Filesystem-unsafe en Windows/macOS/Linux -- un nombreOriginal es texto libre
+// capturado por el trabajador al subir, no validado contra esto.
+function sanitizarNombreArchivo(nombre: string): string {
+  return nombre.replace(/[\\/:*?"<>|]/g, "_").trim() || "archivo.pdf";
+}
+
+// Corre `tareas` con a lo mucho `limite` en vuelo a la vez -- sin esto, un
+// filtro con cientos de PDFs dispararia todos los fetch al mismo tiempo
+// (satura el navegador y golpea S3 con un burst innecesario).
+async function conConcurrenciaLimitada<T>(items: T[], limite: number, tarea: (item: T) => Promise<void>): Promise<void> {
+  let indice = 0;
+  async function trabajador() {
+    while (indice < items.length) {
+      const actual = items[indice++];
+      await tarea(actual);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, items.length) }, trabajador));
+}
 
 export default function GestionInconformidades() {
   const utils = trpc.useUtils();
   const [filtroFactor, setFiltroFactor] = useState<string | undefined>(undefined);
   const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
+  const [descargandoZip, setDescargandoZip] = useState<{ hecho: number; total: number } | null>(null);
   const [verDetalle, setVerDetalle] = useState<number | null>(null);
 
   const { data: casos, isLoading } = trpc.inconformidad.listarAdmin.useQuery({ factor: filtroFactor as any });
@@ -56,6 +78,61 @@ export default function GestionInconformidades() {
     }
   };
 
+  // Respeta filtroFactor igual que Excel/PDF (casos ya viene filtrado por el
+  // query de listarAdmin) -- factores sin PDF (archivoId null) se excluyen.
+  const archivosParaZip = (casos ?? []).flatMap((c) =>
+    c.factores
+      .filter((f): f is typeof f & { archivoId: number; nombreOriginal: string } => f.archivoId !== null && f.nombreOriginal !== null)
+      .map((f) => ({ archivoId: f.archivoId, curp: c.curp, factor: f.factor, nombreOriginal: f.nombreOriginal })),
+  );
+
+  const handleDescargarTodos = async () => {
+    const total = archivosParaZip.length;
+    setDescargandoZip({ hecho: 0, total });
+    const zip = new JSZip();
+    let omitidos = 0;
+    let hecho = 0;
+
+    await conConcurrenciaLimitada(archivosParaZip, 5, async (item) => {
+      try {
+        const { url } = await utils.inconformidad.presignarDescarga.fetch({ archivoId: item.archivoId });
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const nombreZip = `${item.curp}_${item.factor}_${sanitizarNombreArchivo(item.nombreOriginal)}`;
+        zip.file(nombreZip, blob);
+      } catch {
+        omitidos++;
+      } finally {
+        hecho++;
+        setDescargandoZip({ hecho, total });
+      }
+    });
+
+    if (total - omitidos === 0) {
+      toast.error("No se pudo descargar ningún PDF", { description: "Intenta de nuevo." });
+      setDescargandoZip(null);
+      return;
+    }
+
+    const contenido = await zip.generateAsync({ type: "blob" });
+    const enlaceUrl = URL.createObjectURL(contenido);
+    const a = document.createElement("a");
+    a.href = enlaceUrl;
+    a.download = `inconformidades_pdfs_${fechaLocalISO()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(enlaceUrl);
+
+    if (omitidos > 0) {
+      toast.warning(`Se descargaron ${total - omitidos} de ${total} PDFs`, { description: `${omitidos} no se pudieron descargar.` });
+    } else {
+      toast.success(`Se descargaron ${total} PDFs`);
+    }
+    setDescargandoZip(null);
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -87,6 +164,14 @@ export default function GestionInconformidades() {
           >
             <FileText size={16} />
             {exportando === "pdf" ? "Exportando..." : "PDF"}
+          </button>
+          <button
+            onClick={handleDescargarTodos}
+            disabled={descargandoZip !== null || archivosParaZip.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100 disabled:opacity-50"
+          >
+            <Archive size={16} />
+            {descargandoZip ? `Descargando ${descargandoZip.hecho}/${descargandoZip.total}...` : "Descargar todos los PDF"}
           </button>
         </div>
       </motion.div>

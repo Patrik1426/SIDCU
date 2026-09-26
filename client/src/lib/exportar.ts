@@ -74,7 +74,7 @@ const NIVEL_PROG_LABELS: Record<number, string> = { 0: "Nuevo ingreso", 1: "N1",
 // dos bases distintas para el mismo momento: en Mexico (UTC-6), ya entrada
 // la noche local UTC ya rodo al dia siguiente, y el archivo salia fechado
 // un dia adelante del texto "Generado:" que mostraba el dia local real.
-function fechaLocalISO(): string {
+export function fechaLocalISO(): string {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");

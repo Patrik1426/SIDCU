@@ -42,6 +42,7 @@
     "jsonwebtoken": "^9",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.400",
     "mysql2": "^3",
     "nanoid": "^5",
