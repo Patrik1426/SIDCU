@@ -2734,7 +2734,7 @@ export async function listarPoolPromocion(
   rol: "jefe" | "companero",
   filtros?: { search?: string; page?: number; limit?: number },
 ): Promise<{
-  items: Array<{ servidorId: number; nombreCompleto: string; curp: string }>;
+  items: Array<{ curp: string; nombre: string }>;
   total: number;
   page: number;
   limit: number;
@@ -2747,25 +2747,22 @@ export async function listarPoolPromocion(
   const term = filtros?.search ? `%${escaparComodinesLike(filtros.search)}%` : null;
   const where = and(
     eq(schema.promocionEvaluadorPool.rol, rol),
-    term ? or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)) : undefined,
+    term ? or(like(schema.promocionEvaluadorPool.nombre, term), like(schema.promocionEvaluadorPool.curp, term)) : undefined,
   );
 
   const [items, countResult] = await Promise.all([
     d
       .select({
-        servidorId: schema.servidoresPublicos.id,
-        nombreCompleto: schema.servidoresPublicos.nombreCompleto,
-        curp: schema.servidoresPublicos.curp,
+        curp: schema.promocionEvaluadorPool.curp,
+        nombre: schema.promocionEvaluadorPool.nombre,
       })
       .from(schema.promocionEvaluadorPool)
-      .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
       .where(where)
       .limit(limit)
       .offset(offset),
     d
       .select({ count: sql<number>`count(*)` })
       .from(schema.promocionEvaluadorPool)
-      .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
       .where(where),
   ]);
 
@@ -2774,12 +2771,12 @@ export async function listarPoolPromocion(
 }
 
 // Corrige el caso "subimos a alguien en el pool equivocado" sin tener que
-// quitarlo y volver a subir un CSV. Si el servidor ya esta en rolNuevo, no
+// quitarlo y volver a subir un CSV. Si el CURP ya esta en rolNuevo, no
 // se duplica -- se rechaza con un error claro (la PK compuesta
-// (servidorId, rol) tambien lo evitaria a nivel DB, pero aqui se detecta
+// (curp, rol) tambien lo evitaria a nivel DB, pero aqui se detecta
 // antes para dar un mensaje entendible en vez de un error de duplicado).
 export async function moverRolPoolPromocion(
-  servidorId: number,
+  curp: string,
   rolActual: "jefe" | "companero",
   rolNuevo: "jefe" | "companero",
   adminUserId: number,
@@ -2789,20 +2786,22 @@ export async function moverRolPoolPromocion(
     const [actual] = await tx
       .select()
       .from(schema.promocionEvaluadorPool)
-      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolActual)));
+      .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rolActual)));
     if (!actual) return { ok: false as const, error: "NO_ENCONTRADO" as const };
 
     const [destino] = await tx
       .select()
       .from(schema.promocionEvaluadorPool)
-      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolNuevo)));
+      .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rolNuevo)));
     if (destino) return { ok: false as const, error: "YA_EN_ROL_DESTINO" as const };
 
     await tx
       .delete(schema.promocionEvaluadorPool)
-      .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rolActual)));
+      .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rolActual)));
     await tx.insert(schema.promocionEvaluadorPool).values({
-      servidorId,
+      curp,
+      nombre: actual.nombre,
+      rfc: actual.rfc,
       rol: rolNuevo,
       activo: true,
       correoSugerido: actual.correoSugerido,
@@ -2818,19 +2817,19 @@ export async function moverRolPoolPromocion(
 // ninguna inscripcion ya confirmada (promociones.jefeAsignadoId/companeroXId
 // referencian directo a users.id, independientes de este pool).
 export async function quitarDelPoolPromocion(
-  servidorId: number,
+  curp: string,
   rol: "jefe" | "companero",
 ): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADO" }> {
   const d = await getDb();
   const [fila] = await d
     .select()
     .from(schema.promocionEvaluadorPool)
-    .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rol)));
+    .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rol)));
   if (!fila) return { ok: false, error: "NO_ENCONTRADO" };
 
   await d
     .delete(schema.promocionEvaluadorPool)
-    .where(and(eq(schema.promocionEvaluadorPool.servidorId, servidorId), eq(schema.promocionEvaluadorPool.rol, rol)));
+    .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rol)));
   return { ok: true };
 }
 
@@ -3096,13 +3095,11 @@ export async function buscarEnPoolPromocion(
 export async function poolPromocionTieneRegistros(rol: "jefe" | "companero"): Promise<boolean> {
   const d = await getDb();
   const filas = await d
-    .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
+    .select({ curp: schema.promocionEvaluadorPool.curp })
     .from(schema.promocionEvaluadorPool)
-    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
     .where(and(
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
-      eq(schema.servidoresPublicos.estatus, "activo"),
     ))
     .limit(1);
   return filas.length > 0;

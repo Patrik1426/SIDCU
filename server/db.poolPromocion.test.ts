@@ -13,7 +13,7 @@ beforeEach(() => {
 
 describe("listarPoolPromocion", () => {
   it("regresa items y metadatos de paginación con el shape correcto", async () => {
-    const fila = { servidorId: 5, nombreCompleto: "Ana Lopez", curp: "AAAA000101HDFXXX01" };
+    const fila = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez" };
     const { tx } = makeTxRecorder([[fila], [{ count: 1 }]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
@@ -40,39 +40,39 @@ describe("listarPoolPromocion", () => {
 });
 
 describe("moverRolPoolPromocion", () => {
-  it("regresa NO_ENCONTRADO si el servidor no está en el rol actual", async () => {
+  it("regresa NO_ENCONTRADO si el CURP no está en el rol actual", async () => {
     const { tx } = makeTxRecorder([[]], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { moverRolPoolPromocion } = await import("./db");
-    const resultado = await moverRolPoolPromocion(5, "jefe", "companero", 1);
+    const resultado = await moverRolPoolPromocion("AAAA000101HDFXXX01", "jefe", "companero", 1);
     expect(resultado).toEqual({ ok: false, error: "NO_ENCONTRADO" });
   });
 
   it("regresa YA_EN_ROL_DESTINO si ya está en el rol destino", async () => {
-    const filaActual = { servidorId: 5, rol: "jefe", activo: true, correoSugerido: null };
-    const filaDestino = { servidorId: 5, rol: "companero", activo: true, correoSugerido: null };
+    const filaActual = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", rfc: null, rol: "jefe", activo: true, correoSugerido: null };
+    const filaDestino = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", rfc: null, rol: "companero", activo: true, correoSugerido: null };
     const { tx } = makeTxRecorder([[filaActual], [filaDestino]], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { moverRolPoolPromocion } = await import("./db");
-    const resultado = await moverRolPoolPromocion(5, "jefe", "companero", 1);
+    const resultado = await moverRolPoolPromocion("AAAA000101HDFXXX01", "jefe", "companero", 1);
     expect(resultado).toEqual({ ok: false, error: "YA_EN_ROL_DESTINO" });
   });
 
-  it("mueve de rol: borra la fila vieja e inserta la nueva, preservando correoSugerido", async () => {
-    const filaActual = { servidorId: 5, rol: "jefe", activo: true, correoSugerido: "ana@example.com" };
+  it("mueve de rol: borra la fila vieja e inserta la nueva, preservando correoSugerido y rfc", async () => {
+    const filaActual = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", rfc: "AAAA000101AB1", rol: "jefe", activo: true, correoSugerido: "ana@example.com" };
     const { tx, calls } = makeTxRecorder([[filaActual], []], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { moverRolPoolPromocion } = await import("./db");
-    const resultado = await moverRolPoolPromocion(5, "jefe", "companero", 1);
+    const resultado = await moverRolPoolPromocion("AAAA000101HDFXXX01", "jefe", "companero", 1);
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("delete");
     expect(calls).toContain("insert");
@@ -87,19 +87,19 @@ describe("quitarDelPoolPromocion", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { quitarDelPoolPromocion } = await import("./db");
-    const resultado = await quitarDelPoolPromocion(5, "jefe");
+    const resultado = await quitarDelPoolPromocion("AAAA000101HDFXXX01", "jefe");
     expect(resultado).toEqual({ ok: false, error: "NO_ENCONTRADO" });
   });
 
   it("quita la fila del pool", async () => {
-    const fila = { servidorId: 5, rol: "jefe", activo: true, correoSugerido: null };
+    const fila = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", rfc: null, rol: "jefe", activo: true, correoSugerido: null };
     const { tx, calls } = makeTxRecorder([[fila]], []);
     const fakeDb = { select: tx.select, delete: tx.delete };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { quitarDelPoolPromocion } = await import("./db");
-    const resultado = await quitarDelPoolPromocion(5, "jefe");
+    const resultado = await quitarDelPoolPromocion("AAAA000101HDFXXX01", "jefe");
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("delete");
   });

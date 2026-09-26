@@ -11,14 +11,9 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-// Usado por BuscadorEvaluador.tsx para distinguir "sin coincidencias para
-// esta búsqueda" (el catálogo tiene gente, solo no encontró al que
-// escribiste) de "catálogo todavía vacío" (nadie del rol ha sido cargado
-// por el admin) -- antes ambos casos se veían igual (dropdown vacío, sin
-// ningún mensaje), hallazgo de revisión 2026-09-21.
 describe("poolPromocionTieneRegistros", () => {
   it("regresa true si hay al menos un registro activo de ese rol", async () => {
-    const { tx } = makeTxRecorder([[{ servidorId: 1 }]], []);
+    const { tx } = makeTxRecorder([[{ curp: "AAAA000101HDFXXX01" }]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
