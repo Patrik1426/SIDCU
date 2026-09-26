@@ -15,6 +15,14 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
+// El PUT de subida de PDF (Inconformidad) va del navegador directo al bucket
+// via URL firmada -- sin el host de S3 en connect-src, el navegador bloquea
+// el request aunque la firma sea valida (hallazgo real probando con AWS real).
+const s3ConnectSrc =
+  process.env.AWS_S3_BUCKET && process.env.AWS_REGION
+    ? [`https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com`]
+    : [];
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -27,7 +35,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
       fontSrc: ["'self'", "fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "https://challenges.cloudflare.com", "https://cloudflareinsights.com"],
+      connectSrc: ["'self'", "https://challenges.cloudflare.com", "https://cloudflareinsights.com", ...s3ConnectSrc],
       frameSrc: ["https://challenges.cloudflare.com"],
       objectSrc: ["'none'"],
     },
