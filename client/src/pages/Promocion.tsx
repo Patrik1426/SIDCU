@@ -7,7 +7,7 @@ import { Award, CheckCircle2, AlertCircle } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 
-type Seleccion = { servidorId: number; nombre: string; correo: string } | null;
+type Seleccion = { curp: string; nombre: string; correo: string } | null;
 
 // I4 (revision final de rama): antes, tras elegir, la unica forma de
 // cambiar era recargar la pagina completa (perdiendo los otros 2 picks ya
@@ -19,7 +19,7 @@ function CampoEvaluador({
   etiqueta: string;
   rol: "jefe" | "companero";
   seleccion: Seleccion;
-  onElegir: (servidorId: number, nombre: string, correoPrellenado: string | null) => void;
+  onElegir: (curp: string, nombre: string, correoPrellenado: string | null) => void;
   onCorreo: (correo: string) => void;
   onCambiar: () => void;
 }) {
@@ -64,7 +64,7 @@ export default function Promocion() {
   const { data: moduloHabilitado } = trpc.promocion.moduloHabilitado.useQuery();
 
   // El backend ya rechaza (SELECCION_INVALIDA) si 2 de los 3 slots terminan
-  // con el mismo servidorId -- este check es solo para no dejar que el
+  // con el mismo curp -- este check es solo para no dejar que el
   // trabajador llegue hasta "Confirmar" y se entere del error hasta ahi.
   //
   // I2: correoPrellenado sigue la precedencia del spec (seccion 4) --
@@ -72,17 +72,17 @@ export default function Promocion() {
   // se hardcodeaba correo: "" siempre, aunque el backend ya calculaba y
   // regresaba las 3 fuentes (nadie del lado de lectura las leia).
   function elegirSiNoEstaRepetido(
-    servidorId: number,
+    curp: string,
     nombre: string,
     correoPrellenado: string | null,
-    yaElegidos: number[],
+    yaElegidos: string[],
     setter: (s: Seleccion) => void,
   ) {
-    if (yaElegidos.includes(servidorId)) {
+    if (yaElegidos.includes(curp)) {
       toast.error("Esa persona ya está elegida en otro lugar de esta inscripción.");
       return;
     }
-    setter({ servidorId, nombre, correo: correoPrellenado ?? "" });
+    setter({ curp, nombre, correo: correoPrellenado ?? "" });
   }
 
   const confirmarMut = trpc.promocion.confirmarInscripcion.useMutation({
@@ -186,15 +186,15 @@ export default function Promocion() {
         ) : data.elegible ? (
           <div className="mt-6 space-y-5">
             <CampoEvaluador etiqueta="Jefe Inmediato" rol="jefe" seleccion={jefe}
-              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [companero1?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setJefe)}
+              onElegir={(curp, nombre, correoPrellenado) => elegirSiNoEstaRepetido(curp, nombre, correoPrellenado, [companero1?.curp, companero2?.curp].filter((x): x is string => !!x), setJefe)}
               onCorreo={(correo) => setJefe((s) => s && { ...s, correo })}
               onCambiar={() => setJefe(null)} />
             <CampoEvaluador etiqueta="Compañero 1" rol="companero" seleccion={companero1}
-              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [jefe?.servidorId, companero2?.servidorId].filter((x): x is number => !!x), setCompanero1)}
+              onElegir={(curp, nombre, correoPrellenado) => elegirSiNoEstaRepetido(curp, nombre, correoPrellenado, [jefe?.curp, companero2?.curp].filter((x): x is string => !!x), setCompanero1)}
               onCorreo={(correo) => setCompanero1((s) => s && { ...s, correo })}
               onCambiar={() => setCompanero1(null)} />
             <CampoEvaluador etiqueta="Compañero 2" rol="companero" seleccion={companero2}
-              onElegir={(servidorId, nombre, correoPrellenado) => elegirSiNoEstaRepetido(servidorId, nombre, correoPrellenado, [jefe?.servidorId, companero1?.servidorId].filter((x): x is number => !!x), setCompanero2)}
+              onElegir={(curp, nombre, correoPrellenado) => elegirSiNoEstaRepetido(curp, nombre, correoPrellenado, [jefe?.curp, companero1?.curp].filter((x): x is string => !!x), setCompanero2)}
               onCorreo={(correo) => setCompanero2((s) => s && { ...s, correo })}
               onCambiar={() => setCompanero2(null)} />
 
@@ -226,9 +226,9 @@ export default function Promocion() {
         onConfirm={() => {
           if (!jefe || !companero1 || !companero2) return;
           confirmarMut.mutate({
-            jefe: { servidorId: jefe.servidorId, correo: jefe.correo },
-            companero1: { servidorId: companero1.servidorId, correo: companero1.correo },
-            companero2: { servidorId: companero2.servidorId, correo: companero2.correo },
+            jefe: { curp: jefe.curp, nombre: jefe.nombre, correo: jefe.correo },
+            companero1: { curp: companero1.curp, nombre: companero1.nombre, correo: companero1.correo },
+            companero2: { curp: companero2.curp, nombre: companero2.nombre, correo: companero2.correo },
           });
         }}
       />
