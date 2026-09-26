@@ -2251,19 +2251,21 @@ export async function yaInscritoPromocion(userId: number): Promise<boolean> {
 // reactiva sola al reseleccionarla) -- esas SI deben poder seleccionarse de
 // nuevo. Una cuenta real desactivada por otra razon (evaluadorCuentaExpiraEn
 // null, isActive=false) sigue bloqueada, que es la intencion original de I1.
-async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" | "companero"): Promise<boolean> {
+// Rediseño 2026-09-26: ya no hace JOIN a servidores_publicos (esa tabla ni
+// participa en el pool ahora) -- el LEFT JOIN a users es por CURP directo,
+// para seguir excluyendo cuentas inactivas SALVO las on-the-fly vencidas
+// (recuperables, mismo criterio que antes -- ver hallazgo real 2026-09-23).
+async function curpEnPool(tx: PromocionTx, curp: string, rol: "jefe" | "companero"): Promise<boolean> {
   const [fila] = await tx
-    .select({ servidorId: schema.promocionEvaluadorPool.servidorId })
+    .select({ curp: schema.promocionEvaluadorPool.curp })
     .from(schema.promocionEvaluadorPool)
-    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
-    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .leftJoin(schema.users, eq(schema.users.curp, schema.promocionEvaluadorPool.curp))
     .where(and(
-      eq(schema.promocionEvaluadorPool.servidorId, servidorId),
+      eq(schema.promocionEvaluadorPool.curp, curp),
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
-      eq(schema.servidoresPublicos.estatus, "activo"),
       or(
-        isNull(schema.servidoresPublicos.userId),
+        isNull(schema.users.id),
         eq(schema.users.isActive, true),
         isNotNull(schema.users.evaluadorCuentaExpiraEn),
       ),
@@ -2274,13 +2276,13 @@ async function servidorEnPool(tx: PromocionTx, servidorId: number, rol: "jefe" |
 export async function confirmarInscripcion(
   userId: number,
   seleccion: {
-    jefe: { servidorId: number; correo: string };
-    companero1: { servidorId: number; correo: string };
-    companero2: { servidorId: number; correo: string };
+    jefe: { curp: string; nombre: string; correo: string };
+    companero1: { curp: string; nombre: string; correo: string };
+    companero2: { curp: string; nombre: string; correo: string };
   },
 ): Promise<{ ok: true } | { ok: false; error: "NO_ELEGIBLE" | "YA_INSCRITO" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" }> {
-  const ids = [seleccion.jefe.servidorId, seleccion.companero1.servidorId, seleccion.companero2.servidorId];
-  if (new Set(ids).size !== 3) return { ok: false, error: "SELECCION_INVALIDA" };
+  const curps = [seleccion.jefe.curp, seleccion.companero1.curp, seleccion.companero2.curp];
+  if (new Set(curps).size !== 3) return { ok: false, error: "SELECCION_INVALIDA" };
 
   // I3: formato+MX de los 3 correos capturados, ANTES de abrir la
   // transaccion -- resolveMx es I/O de red, no queremos tener un lock/tx de
@@ -2313,34 +2315,28 @@ export async function confirmarInscripcion(
       if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
 
       const [jefeValido, c1Valido, c2Valido] = await Promise.all([
-        servidorEnPool(tx, seleccion.jefe.servidorId, "jefe"),
-        servidorEnPool(tx, seleccion.companero1.servidorId, "companero"),
-        servidorEnPool(tx, seleccion.companero2.servidorId, "companero"),
+        curpEnPool(tx, seleccion.jefe.curp, "jefe"),
+        curpEnPool(tx, seleccion.companero1.curp, "companero"),
+        curpEnPool(tx, seleccion.companero2.curp, "companero"),
       ]);
       if (!jefeValido || !c1Valido || !c2Valido) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
-      // C1: chequeo de auto-seleccion ANTES de llamar asignarEvaluador.
-      // Version anterior llamaba asignarEvaluador para los 3 PRIMERO y
-      // comparaba el userId resultante contra `userId` DESPUES -- si el
-      // trabajador se auto-seleccionaba, asignarEvaluador ya habia hecho un
-      // INSERT (cuenta nueva + password) o UPDATE (correo) que quedaba
-      // commiteado aunque este return rechazara la inscripcion, huerfanando
-      // esa cuenta (notNull + auto-increment en servidoresPublicos.id impide
-      // reusar el mismo id despues). Este chequeo no necesita
-      // asignarEvaluador en absoluto: basta el servidorId propio del
-      // llamante (el mismo select que antes se hacia solo hasta el final,
-      // para auditoria -- se reusa aqui, ver mas abajo).
+      // C1: chequeo de auto-seleccion por CURP propio del llamante, ANTES de
+      // llamar asignarEvaluador -- evita huerfanar una cuenta si el
+      // trabajador se auto-selecciona. servidorPropio.curp viene del mismo
+      // select que ya se hacia (servidoresPublicos por userId), solo se le
+      // agrega la columna curp -- no es un query nuevo.
       const [servidorPropio] = await tx
-        .select({ id: schema.servidoresPublicos.id })
+        .select({ id: schema.servidoresPublicos.id, curp: schema.servidoresPublicos.curp })
         .from(schema.servidoresPublicos)
         .where(eq(schema.servidoresPublicos.userId, userId));
-      if (servidorPropio && ids.includes(servidorPropio.id)) {
+      if (servidorPropio && curps.includes(servidorPropio.curp)) {
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const jefe = await asignarEvaluador(tx, seleccion.jefe.servidorId, seleccion.jefe.correo);
-      const companero1 = await asignarEvaluador(tx, seleccion.companero1.servidorId, seleccion.companero1.correo);
-      const companero2 = await asignarEvaluador(tx, seleccion.companero2.servidorId, seleccion.companero2.correo);
+      const jefe = await asignarEvaluador(tx, seleccion.jefe.curp, seleccion.jefe.nombre, seleccion.jefe.correo);
+      const companero1 = await asignarEvaluador(tx, seleccion.companero1.curp, seleccion.companero1.nombre, seleccion.companero1.correo);
+      const companero2 = await asignarEvaluador(tx, seleccion.companero2.curp, seleccion.companero2.nombre, seleccion.companero2.correo);
 
       const [promoInsert] = await tx.insert(schema.promociones).values({
         userId,
