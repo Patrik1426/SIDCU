@@ -91,7 +91,10 @@ describe("enviarCorreoEvaluador", () => {
 
     const html = sendMock.mock.calls[0][0].html;
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("<a href");
+    // El template legitimo SI trae su propio <a href> (boton "Ingresar a
+    // SIDCU") -- lo que nunca debe aparecer es el href malicioso SIN escapar.
+    expect(html).not.toContain('href="http://phishing.example"');
     expect(html).toContain("&lt;img");
+    expect(html).toContain("&lt;a href=&quot;http://phishing.example&quot;&gt;click&lt;/a&gt;");
   });
 });

@@ -12,14 +12,66 @@ function escapeHtml(valor: string | undefined): string {
   return (valor ?? "").replace(/[&<>"']/g, (c) => ENTIDADES_HTML[c]);
 }
 
+// Layout base institucional (tabla, no flex/grid -- Outlook desktop no
+// soporta CSS moderno). Paleta tomada de client/src/index.css: guinda
+// --color-primary-500/600, dorado --color-accent-500. Todo el texto
+// interpolado en `cuerpoHtml` ya debe venir de escapeHtml() en el llamador.
+function envolverCorreo(tituloInterno: string, cuerpoHtml: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+      <tr>
+        <td style="background-color:#611232;padding:24px 32px;">
+          <span style="color:#ffffff;font-size:20px;font-weight:bold;">SIDCU</span>
+          <div style="color:#e8a3b8;font-size:13px;margin-top:2px;">Secretaría de Cultura</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px;color:#27272a;font-size:15px;line-height:1.6;">
+          <h1 style="font-size:17px;color:#430c23;margin:0 0 16px;">${tituloInterno}</h1>
+          ${cuerpoHtml}
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:20px 32px;background-color:#fafafa;border-top:1px solid #e5e5e5;color:#71717a;font-size:12px;line-height:1.5;">
+          Este es un mensaje automático, no respondas a este correo.<br>
+          © 2026 Secretaría de Cultura · Sistema Informático de SPDC (SIDCU)
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>`;
+}
+
 const PLANTILLAS: Record<"evaluador_nueva_cuenta" | "evaluador_cuenta_existente", (datos: Record<string, string>) => { subject: string; html: string }> = {
   evaluador_nueva_cuenta: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",
-    html: `<p>Hola ${escapeHtml(datos.nombre)},</p><p>Fuiste seleccionado como evaluador de ${escapeHtml(datos.trabajador)} en el proceso de Promoción.</p><p>Tu usuario es tu CURP (<strong>${escapeHtml(datos.curp)}</strong>) y tu contraseña es <strong>${escapeHtml(datos.passwordTemporal)}</strong>. Consérvala, es la que debes usar para entrar.</p>`,
+    html: envolverCorreo(
+      "Fuiste seleccionado como evaluador",
+      `<p>Hola ${escapeHtml(datos.nombre)},</p>
+       <p>Fuiste seleccionado para evaluar a <strong>${escapeHtml(datos.trabajador)}</strong> dentro del proceso de Promoción.</p>
+       <p>Se creó una cuenta para ti en SIDCU con los siguientes datos de acceso:</p>
+       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background-color:#fdf2f5;border-left:4px solid #a57f2c;border-radius:4px;margin:16px 0;">
+         <tr><td style="padding:16px 20px;">
+           <div style="font-size:13px;color:#52525b;margin-bottom:4px;">Usuario (CURP)</div>
+           <div style="font-family:Consolas,monospace;font-size:15px;color:#250613;margin-bottom:12px;">${escapeHtml(datos.curp)}</div>
+           <div style="font-size:13px;color:#52525b;margin-bottom:4px;">Contraseña</div>
+           <div style="font-family:Consolas,monospace;font-size:15px;color:#250613;">${escapeHtml(datos.passwordTemporal)}</div>
+         </td></tr>
+       </table>
+       <p>Guarda esta contraseña, es la que debes usar cada vez que ingreses — no se te pedirá cambiarla.</p>
+       <p><a href="https://sdpc-sidcu.com.mx" style="color:#611232;font-weight:bold;">Ingresar a SIDCU →</a></p>`,
+    ),
   }),
   evaluador_cuenta_existente: (datos) => ({
     subject: "Fuiste seleccionado como evaluador en SIDCU",
-    html: `<p>Hola ${escapeHtml(datos.nombre)},</p><p>Fuiste seleccionado como evaluador de ${escapeHtml(datos.trabajador)} en el proceso de Promoción. Entra a tu portal de SIDCU con tu cuenta habitual para más detalles.</p>`,
+    html: envolverCorreo(
+      "Fuiste seleccionado como evaluador",
+      `<p>Hola ${escapeHtml(datos.nombre)},</p>
+       <p>Fuiste seleccionado para evaluar a <strong>${escapeHtml(datos.trabajador)}</strong> dentro del proceso de Promoción.</p>
+       <p>Ya cuentas con una cuenta en SIDCU — ingresa con tu usuario y contraseña habituales para ver el detalle.</p>
+       <p><a href="https://sdpc-sidcu.com.mx" style="color:#611232;font-weight:bold;">Ingresar a SIDCU →</a></p>`,
+    ),
   }),
 };
 
