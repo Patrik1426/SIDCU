@@ -19,7 +19,7 @@ describe("importarFilaEvaluador", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { importarFilaEvaluador } = await import("./db");
-    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "jefe", undefined, 1);
+    const resultado = await importarFilaEvaluador("AAAA800101HDFXXX01", "Juan Perez", "jefe", undefined, 1);
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("insert");
   });
@@ -43,7 +43,7 @@ describe("importarFilaEvaluador", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { importarFilaEvaluador } = await import("./db");
-    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "companero", "no-es-correo", 1);
+    const resultado = await importarFilaEvaluador("AAAA800101HDFXXX01", "Juan Perez", "companero", "no-es-correo", 1);
     expect(resultado.ok).toBe(true);
     if (resultado.ok) expect(resultado.advertencia).toBeDefined();
   });
@@ -55,8 +55,35 @@ describe("importarFilaEvaluador", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { importarFilaEvaluador } = await import("./db");
-    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "jefe", undefined, 1, "RFCVALIDO01A");
+    const resultado = await importarFilaEvaluador("AAAA800101HDFXXX01", "Juan Perez", "jefe", undefined, 1, "RFCVALIDO01A");
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("insert");
+  });
+
+  // I3 (revision final): el CSV es dato del mundo real, no confiable -- una
+  // fila con CURP mal formado o RFC demasiado largo debe rechazarse ANTES de
+  // llegar al insert, no tronar contra una constraint de MySQL.
+  it("rechaza CURP con formato invalido, sin llegar a insertar", async () => {
+    const { tx, calls } = makeTxRecorder([], []);
+    const fakeDb = { insert: tx.insert };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { importarFilaEvaluador } = await import("./db");
+    const resultado = await importarFilaEvaluador("CURPVALIDA000001", "Juan Perez", "jefe", undefined, 1);
+    expect(resultado.ok).toBe(false);
+    expect(calls).not.toContain("insert");
+  });
+
+  it("rechaza RFC de mas de 13 caracteres, sin llegar a insertar", async () => {
+    const { tx, calls } = makeTxRecorder([], []);
+    const fakeDb = { insert: tx.insert };
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    vi.mocked(drizzle).mockReturnValue(fakeDb as any);
+
+    const { importarFilaEvaluador } = await import("./db");
+    const resultado = await importarFilaEvaluador("AAAA800101HDFXXX01", "Juan Perez", "jefe", undefined, 1, "RFCDEMASIADOLARGO01");
+    expect(resultado.ok).toBe(false);
+    expect(calls).not.toContain("insert");
   });
 });

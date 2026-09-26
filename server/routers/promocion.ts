@@ -163,12 +163,16 @@ export const promocionRouter = router({
           errores.push({ fila: i + 1, error: "Faltan columnas curp/nombre" });
           continue;
         }
-        const resultado = await importarFilaEvaluador(curp, nombre, input.rol, correo, ctx.user.id, rfc);
-        if (resultado.ok) {
-          creados++;
-          if (resultado.advertencia) advertencias.push({ fila: i + 1, advertencia: resultado.advertencia });
-        } else {
-          errores.push({ fila: i + 1, error: resultado.error });
+        try {
+          const resultado = await importarFilaEvaluador(curp, nombre, input.rol, correo, ctx.user.id, rfc);
+          if (resultado.ok) {
+            creados++;
+            if (resultado.advertencia) advertencias.push({ fila: i + 1, advertencia: resultado.advertencia });
+          } else {
+            errores.push({ fila: i + 1, error: resultado.error });
+          }
+        } catch (err: any) {
+          errores.push({ fila: i + 1, error: err.message ?? "Error inesperado al importar esta fila" });
         }
       }
       return { totalProcesados: input.registros.length, creados, errores, advertencias };

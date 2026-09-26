@@ -68,9 +68,9 @@ export default function Promocion() {
   // trabajador llegue hasta "Confirmar" y se entere del error hasta ahi.
   //
   // I2: correoPrellenado sigue la precedencia del spec (seccion 4) --
-  // users.email -> correoSugerido -> servidoresPublicos.email -> "". Antes
-  // se hardcodeaba correo: "" siempre, aunque el backend ya calculaba y
-  // regresaba las 3 fuentes (nadie del lado de lectura las leia).
+  // users.email -> correoSugerido -> "". Antes se hardcodeaba correo: ""
+  // siempre, aunque el backend ya calculaba y regresaba las fuentes (nadie
+  // del lado de lectura las leia).
   function elegirSiNoEstaRepetido(
     curp: string,
     nombre: string,

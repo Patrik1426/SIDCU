@@ -2255,9 +2255,16 @@ export async function yaInscritoPromocion(userId: number): Promise<boolean> {
 // participa en el pool ahora) -- el LEFT JOIN a users es por CURP directo,
 // para seguir excluyendo cuentas inactivas SALVO las on-the-fly vencidas
 // (recuperables, mismo criterio que antes -- ver hallazgo real 2026-09-23).
-async function curpEnPool(tx: PromocionTx, curp: string, rol: "jefe" | "companero"): Promise<boolean> {
+// I2 (revision final): antes solo probaba que el CURP estuviera en el pool
+// (boolean) -- el `nombre` de la cuenta nueva venia sin validar del cliente
+// (seleccion.X.nombre / nuevoNombre), asi que un trabajador o un admin podia
+// escribir cualquier nombre en la cuenta on-the-fly de otra persona. Ahora
+// regresamos el `nombre` curado del pool para que confirmarInscripcion y
+// reasignarEvaluadorPromocion dejen de confiar en el nombre que manda el
+// cliente.
+async function curpEnPool(tx: PromocionTx, curp: string, rol: "jefe" | "companero"): Promise<{ nombre: string } | null> {
   const [fila] = await tx
-    .select({ curp: schema.promocionEvaluadorPool.curp })
+    .select({ nombre: schema.promocionEvaluadorPool.nombre })
     .from(schema.promocionEvaluadorPool)
     .leftJoin(schema.users, eq(schema.users.curp, schema.promocionEvaluadorPool.curp))
     .where(and(
@@ -2270,7 +2277,7 @@ async function curpEnPool(tx: PromocionTx, curp: string, rol: "jefe" | "companer
         isNotNull(schema.users.evaluadorCuentaExpiraEn),
       ),
     ));
-  return !!fila;
+  return fila ?? null;
 }
 
 export async function confirmarInscripcion(
@@ -2314,12 +2321,12 @@ export async function confirmarInscripcion(
       const elegibilidad = calcularElegibilidadPromocion(completadas.map((c) => c.calificacion ?? 0));
       if (!elegibilidad.elegible) return { ok: false as const, error: "NO_ELEGIBLE" as const };
 
-      const [jefeValido, c1Valido, c2Valido] = await Promise.all([
+      const [jefePool, c1Pool, c2Pool] = await Promise.all([
         curpEnPool(tx, seleccion.jefe.curp, "jefe"),
         curpEnPool(tx, seleccion.companero1.curp, "companero"),
         curpEnPool(tx, seleccion.companero2.curp, "companero"),
       ]);
-      if (!jefeValido || !c1Valido || !c2Valido) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+      if (!jefePool || !c1Pool || !c2Pool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
       // C1: chequeo de auto-seleccion por CURP propio del llamante, ANTES de
       // llamar asignarEvaluador -- evita huerfanar una cuenta si el
@@ -2334,9 +2341,9 @@ export async function confirmarInscripcion(
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const jefe = await asignarEvaluador(tx, seleccion.jefe.curp, seleccion.jefe.nombre, seleccion.jefe.correo);
-      const companero1 = await asignarEvaluador(tx, seleccion.companero1.curp, seleccion.companero1.nombre, seleccion.companero1.correo);
-      const companero2 = await asignarEvaluador(tx, seleccion.companero2.curp, seleccion.companero2.nombre, seleccion.companero2.correo);
+      const jefe = await asignarEvaluador(tx, seleccion.jefe.curp, jefePool.nombre, seleccion.jefe.correo);
+      const companero1 = await asignarEvaluador(tx, seleccion.companero1.curp, c1Pool.nombre, seleccion.companero1.correo);
+      const companero2 = await asignarEvaluador(tx, seleccion.companero2.curp, c2Pool.nombre, seleccion.companero2.correo);
 
       const [promoInsert] = await tx.insert(schema.promociones).values({
         userId,
@@ -2696,6 +2703,18 @@ export async function importarFilaEvaluador(
     return { ok: false, error: "Faltan columnas curp/nombre" };
   }
 
+  // I3 (revision final): el CSV es dato del mundo real, no confiable --
+  // sin esto una fila con CURP mal formado o un nombre/RFC absurdamente
+  // largo tronaba contra una constraint de MySQL y (antes del fix del
+  // router de abajo) podia abortar el batch completo en vez de solo esa
+  // fila.
+  if (!/^[A-Z]{4}\d{6}[HM][A-Z]{5}[0-9A-Z]\d$/.test(curpNormalizada)) {
+    return { ok: false, error: `CURP "${curpNormalizada}" no tiene formato válido` };
+  }
+  if (nombreNormalizado.length > 255) {
+    return { ok: false, error: "Nombre excede 255 caracteres" };
+  }
+
   let advertencia: string | undefined;
   let correoSugerido: string | null = null;
   if (correoCsv) {
@@ -2707,6 +2726,9 @@ export async function importarFilaEvaluador(
     }
   }
   const rfcNormalizado = rfcCsv?.trim() ? rfcCsv.trim().toUpperCase() : null;
+  if (rfcNormalizado && rfcNormalizado.length > 13) {
+    return { ok: false, error: `RFC "${rfcNormalizado}" excede 13 caracteres` };
+  }
 
   const d = await getDb();
   await d.insert(schema.promocionEvaluadorPool)
@@ -2836,9 +2858,15 @@ export async function quitarDelPoolPromocion(
 export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
   const d = await getDb();
   const trabajador = alias(schema.servidoresPublicos, "trabajador");
-  const jefe = alias(schema.servidoresPublicos, "jefe");
-  const companero1 = alias(schema.servidoresPublicos, "companero1");
-  const companero2 = alias(schema.servidoresPublicos, "companero2");
+  // jefeAsignadoId/companeroXId en `promociones` son users.id (FK a `users`,
+  // onDelete: "restrict" -- una fila coincidente esta GARANTIZADA a existir).
+  // Este branch (identidad directa por CURP) dejo de requerir/crear una fila
+  // en servidores_publicos para evaluadores que solo vienen del CSV del
+  // pool, asi que resolvemos el nombre contra `users` directo, no contra
+  // servidores_publicos.
+  const jefe = alias(schema.users, "jefe");
+  const companero1 = alias(schema.users, "companero1");
+  const companero2 = alias(schema.users, "companero2");
   // Fix 2 (revision final): GestionPromocion.tsx necesita saber si el slot
   // ya tiene una evaluacion 'enviado' para deshabilitar el boton "Reasignar"
   // -- reasignar un evaluador que ya contesto choca con el unique
@@ -2873,9 +2901,9 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
         trabajadorUserId: schema.promociones.userId,
         trabajadorNombre: trabajador.nombreCompleto,
         trabajadorCurp: trabajador.curp,
-        jefeNombre: jefe.nombreCompleto,
-        companero1Nombre: companero1.nombreCompleto,
-        companero2Nombre: companero2.nombreCompleto,
+        jefeNombre: jefe.nombre,
+        companero1Nombre: companero1.nombre,
+        companero2Nombre: companero2.nombre,
         jefeEvaluacionEstado: evalJefe.estado,
         companero1EvaluacionEstado: evalCompanero1.estado,
         companero2EvaluacionEstado: evalCompanero2.estado,
@@ -2890,9 +2918,9 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       })
       .from(schema.promociones)
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
-      .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
-      .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
-      .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
+      .leftJoin(jefe, eq(jefe.id, schema.promociones.jefeAsignadoId))
+      .leftJoin(companero1, eq(companero1.id, schema.promociones.companero1Id))
+      .leftJoin(companero2, eq(companero2.id, schema.promociones.companero2Id))
       .leftJoin(evalJefe, and(eq(evalJefe.promocionId, schema.promociones.id), eq(evalJefe.rol, "jefe")))
       .leftJoin(evalCompanero1, and(eq(evalCompanero1.promocionId, schema.promociones.id), eq(evalCompanero1.rol, "companero1")))
       .leftJoin(evalCompanero2, and(eq(evalCompanero2.promocionId, schema.promociones.id), eq(evalCompanero2.rol, "companero2")))
@@ -2905,16 +2933,18 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
       .innerJoin(trabajador, eq(trabajador.userId, schema.promociones.userId))
       .where(where),
     // Panorama global (sin filtro de busqueda) -- cuantas inscripciones
-    // tienen alguna referencia de evaluador rota (leftJoin no encontro fila
-    // en servidores_publicos), para el resumen que ve el admin arriba de la
-    // lista sin tener que escanear miles de filas una por una.
+    // tienen alguna referencia de evaluador rota. jefeAsignadoId/companeroXId
+    // son FK a users.id con onDelete:"restrict", asi que este leftJoin contra
+    // `users` SIEMPRE deberia encontrar fila -- conReferenciaRota deberia ser
+    // estructuralmente 0 de aqui en adelante. La query se deja igual (barata,
+    // defensiva) para no tener que rehacer el KPI de GestionPromocion.tsx.
     d
       .select({ count: sql<number>`count(*)` })
       .from(schema.promociones)
-      .leftJoin(jefe, eq(jefe.userId, schema.promociones.jefeAsignadoId))
-      .leftJoin(companero1, eq(companero1.userId, schema.promociones.companero1Id))
-      .leftJoin(companero2, eq(companero2.userId, schema.promociones.companero2Id))
-      .where(or(isNull(jefe.userId), isNull(companero1.userId), isNull(companero2.userId))),
+      .leftJoin(jefe, eq(jefe.id, schema.promociones.jefeAsignadoId))
+      .leftJoin(companero1, eq(companero1.id, schema.promociones.companero1Id))
+      .leftJoin(companero2, eq(companero2.id, schema.promociones.companero2Id))
+      .where(or(isNull(jefe.id), isNull(companero1.id), isNull(companero2.id))),
   ]);
 
   const total = countResult[0]?.count ?? 0;
@@ -3071,19 +3101,32 @@ export async function buscarEnPoolPromocion(
     ))
     .limit(15);
 
-  return filas.map((f) => ({
-    curp: f.curp,
-    nombre: f.nombre,
-    tieneCuenta: f.userId !== null,
-    correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? null,
-  }));
+  // M3: users.curp no tiene UNIQUE (gap aceptado y documentado) -- si 2
+  // cuentas comparten CURP, el leftJoin de arriba puede regresar la misma
+  // fila del pool 2 veces. BuscadorEvaluador.tsx usa `key={r.curp}`, asi que
+  // un duplicado aqui se renderizaria/keyearia 2 veces. Dedupe por curp,
+  // quedandonos con la primera ocurrencia.
+  const vistos = new Set<string>();
+  return filas
+    .filter((f) => {
+      if (vistos.has(f.curp)) return false;
+      vistos.add(f.curp);
+      return true;
+    })
+    .map((f) => ({
+      curp: f.curp,
+      nombre: f.nombre,
+      tieneCuenta: f.userId !== null,
+      correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? null,
+    }));
 }
 
 // Existencia (no listado) del catálogo por rol -- usado por
 // BuscadorEvaluador.tsx para distinguir "catálogo vacío" (nadie de ese rol
 // cargado por el admin todavía) de "sin coincidencias para esta búsqueda"
-// (catálogo con gente, solo no encontró lo que escribiste). Mismos filtros
-// de activo/estatus que buscarEnPoolPromocion, sin término de búsqueda.
+// (catálogo con gente, solo no encontró lo que escribiste). Mismo filtro de
+// `activo` que buscarEnPoolPromocion (ya no hay `estatus` de servidor que
+// filtrar, el pool es identidad directa), sin término de búsqueda.
 export async function poolPromocionTieneRegistros(rol: "jefe" | "companero"): Promise<boolean> {
   const d = await getDb();
   const filas = await d
@@ -3116,8 +3159,8 @@ export async function reasignarEvaluadorPromocion(
 
   try {
     return await d.transaction(async (tx) => {
-      const enPool = await curpEnPool(tx, nuevoCurp, rolPool);
-      if (!enPool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
+      const poolRow = await curpEnPool(tx, nuevoCurp, rolPool);
+      if (!poolRow) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
       const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
       if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
@@ -3149,7 +3192,7 @@ export async function reasignarEvaluadorPromocion(
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoCurp, nuevoNombre, correoCapturado);
+      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoCurp, poolRow.nombre, correoCapturado);
 
       // La fila `evaluaciones` del slot reasignado solo puede estar en
       // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie

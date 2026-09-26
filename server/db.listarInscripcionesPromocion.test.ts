@@ -87,7 +87,7 @@ describe("reasignarEvaluadorPromocion", () => {
   });
 
   it("rechaza si la promocion no existe", async () => {
-    const { tx } = makeTxRecorder([[{ curp: "CCCC000101HDFXXX05" }], []], []);
+    const { tx } = makeTxRecorder([[{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }], []], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
@@ -100,7 +100,7 @@ describe("reasignarEvaluadorPromocion", () => {
   it("reasigna via asignarEvaluador y audita en una transaccion", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ curp: "CCCC000101HDFXXX05" }], // curpEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }], // curpEnPool: valido
       [promoExistente],
       [{ id: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
       [{ id: 55, evaluadorCuentaExpiraEn: null }], // asignarEvaluador: select interno, ya tiene cuenta
@@ -119,7 +119,7 @@ describe("reasignarEvaluadorPromocion", () => {
   it("reasignar borra la evaluacion en borrador del slot viejo y crea una nueva para el evaluador nuevo", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ curp: "CCCC000101HDFXXX05" }],
+      [{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }],
       [promoExistente],
       [{ id: 55 }],
       [{ id: 55, evaluadorCuentaExpiraEn: null }],
@@ -138,7 +138,7 @@ describe("reasignarEvaluadorPromocion", () => {
   it("regresa EVALUACION_YA_ENVIADA si el slot reasignado ya tenia una evaluacion enviada", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx } = makeTxRecorder([
-      [{ curp: "CCCC000101HDFXXX05" }],
+      [{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }],
       [promoExistente],
       [{ id: 55 }],
       [{ id: 55, evaluadorCuentaExpiraEn: null }],
@@ -159,7 +159,7 @@ describe("reasignarEvaluadorPromocion", () => {
   it("regresa REASIGNACION_CONCURRENTE si el ER_DUP_ENTRY NO fue por una evaluacion ya enviada", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx } = makeTxRecorder([
-      [{ curp: "CCCC000101HDFXXX05" }],
+      [{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }],
       [promoExistente],
       [{ id: 55 }],
       [{ id: 55, evaluadorCuentaExpiraEn: null }],
@@ -180,7 +180,7 @@ describe("reasignarEvaluadorPromocion", () => {
   it("rechaza por conflicto SIN llamar asignarEvaluador si el CURP ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ curp: "CCCC000101HDFXXX05" }], // curpEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05", nombre: "Nombre X" }], // curpEnPool: valido
       [promoExistente],
       [{ id: 30 }], // users.id ya vinculado a ese CURP: coincide con companero2Id -> conflicto
     ], []);

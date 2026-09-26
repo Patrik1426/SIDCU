@@ -52,9 +52,9 @@ describe("confirmarInscripcion", () => {
     vi.resetModules();
     const { tx, calls } = makeTxRecorder([
       [{ calificacion: 75 }, { calificacion: 90 }], // cursos
-      [{ curp: "JEFE000101HDFXXX01" }], // pool jefe valido
-      [{ curp: "COMP000101HDFXXX02" }], // pool companero1 valido
-      [{ curp: "COMP000101HDFXXX03" }], // pool companero2 valido
+      [{ curp: "JEFE000101HDFXXX01", nombre: "Jefe Ejemplo" }], // pool jefe valido
+      [{ curp: "COMP000101HDFXXX02", nombre: "Companero Uno" }], // pool companero1 valido
+      [{ curp: "COMP000101HDFXXX03", nombre: "Companero Dos" }], // pool companero2 valido
       [{ id: 42, curp: "OTRO000101HDFXXX99" }], // servidorPropio (no coincide con ninguno) -- se reusa para auditoria
       [{ id: 100, evaluadorCuentaExpiraEn: null }], // asignarEvaluador jefe: ya tiene cuenta
       [{ id: 200, evaluadorCuentaExpiraEn: null }], // asignarEvaluador companero1: ya tiene cuenta
@@ -77,9 +77,9 @@ describe("confirmarInscripcion", () => {
     vi.resetModules();
     const { tx, calls } = makeTxRecorder([
       [{ calificacion: 75 }, { calificacion: 90 }], // cursos
-      [{ curp: "JEFE000101HDFXXX01" }], // pool jefe valido
-      [{ curp: "COMP000101HDFXXX02" }], // pool companero1 valido
-      [{ curp: "COMP000101HDFXXX03" }], // pool companero2 valido
+      [{ curp: "JEFE000101HDFXXX01", nombre: "Jefe Ejemplo" }], // pool jefe valido
+      [{ curp: "COMP000101HDFXXX02", nombre: "Companero Uno" }], // pool companero1 valido
+      [{ curp: "COMP000101HDFXXX03", nombre: "Companero Dos" }], // pool companero2 valido
       [{ id: 20, curp: "COMP000101HDFXXX02" }], // servidorPropio.curp == companero1.curp -> auto-seleccion
     ], []);
     const fakeDb = { transaction: vi.fn((cb: any) => cb(tx)) };
@@ -112,9 +112,9 @@ describe("confirmarInscripcion", () => {
     vi.resetModules();
     const { tx, calls } = makeTxRecorder([
       [{ calificacion: 75 }, { calificacion: 90 }], // cursos completados
-      [{ curp: "JEFE000101HDFXXX01" }], // pool jefe: SI regresa fila pese a isActive=false
-      [{ curp: "COMP000101HDFXXX02" }], // pool companero1
-      [{ curp: "COMP000101HDFXXX03" }], // pool companero2
+      [{ curp: "JEFE000101HDFXXX01", nombre: "Jefe Ejemplo" }], // pool jefe: SI regresa fila pese a isActive=false
+      [{ curp: "COMP000101HDFXXX02", nombre: "Companero Uno" }], // pool companero1
+      [{ curp: "COMP000101HDFXXX03", nombre: "Companero Dos" }], // pool companero2
       [{ id: 1, curp: "PROPIO0101HDFXXX00" }], // servidorPropio (sin coincidir, auto-seleccion check)
       [], // asignarEvaluador jefe: sin cuenta
       [], // asignarEvaluador companero1: sin cuenta
@@ -150,9 +150,9 @@ describe("confirmarInscripcion", () => {
     const { tx, calls } = makeTxRecorder(
       [
         completadas,
-        [{ activo: true }], // pool jefe
-        [{ activo: true }], // pool companero1
-        [{ activo: true }], // pool companero2
+        [{ activo: true, nombre: "Jefe De Prueba" }], // pool jefe
+        [{ activo: true, nombre: "Companero Uno" }], // pool companero1
+        [{ activo: true, nombre: "Companero Dos" }], // pool companero2
         [{ id: 1, curp: "PROPIO0101HDFXXX00" }], // servidorPropio (distinto -> sin auto-seleccion)
         [], // asignarEvaluador jefe: sin cuenta
         [], // asignarEvaluador companero1: sin cuenta
