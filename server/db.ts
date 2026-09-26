@@ -3111,7 +3111,8 @@ export async function poolPromocionTieneRegistros(rol: "jefe" | "companero"): Pr
 export async function reasignarEvaluadorPromocion(
   promocionId: number,
   rol: "jefe" | "companero1" | "companero2",
-  nuevoServidorId: number,
+  nuevoCurp: string,
+  nuevoNombre: string,
   correoCapturado: string,
   adminUserId: number,
 ): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "SELECCION_INVALIDA" | "CORREO_INVALIDO" | "EVALUACION_YA_ENVIADA" | "REASIGNACION_CONCURRENTE" }> {
@@ -3126,37 +3127,40 @@ export async function reasignarEvaluadorPromocion(
 
   try {
     return await d.transaction(async (tx) => {
-      const enPool = await servidorEnPool(tx, nuevoServidorId, rolPool);
+      const enPool = await curpEnPool(tx, nuevoCurp, rolPool);
       if (!enPool) return { ok: false as const, error: "SELECCION_INVALIDA" as const };
 
       const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
       if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
 
-      // Chequeo de conflicto ANTES de asignarEvaluador: si el servidor destino
-      // ya tiene cuenta vinculada, usamos ESE userId para detectar auto-conflicto
+      // Chequeo de conflicto ANTES de asignarEvaluador: si el CURP destino ya
+      // tiene cuenta vinculada, usamos ESE userId para detectar auto-conflicto
       // sin llamar todavia a asignarEvaluador (que haria un UPDATE users.email
       // que quedaria commiteado aunque rechacemos despues -- Drizzle solo hace
-      // rollback ante un throw, no ante un return de fallo logico). Si el
-      // servidor aun no tiene cuenta (userId null), no hay nada que pueda
-      // coincidir todavia, asi que se sigue derecho a asignarEvaluador.
-      const [servidorVinculado] = await tx
-        .select({ userId: schema.servidoresPublicos.userId })
-        .from(schema.servidoresPublicos)
-        .where(eq(schema.servidoresPublicos.id, nuevoServidorId));
+      // rollback ante un throw, no ante un return de fallo logico). Si el CURP
+      // aun no tiene cuenta (usuarioVinculado es undefined), no hay nada que
+      // pueda coincidir todavia, asi que se sigue derecho a asignarEvaluador.
+      // Rediseño 2026-09-26: se busca directo en `users` por CURP, ya no via
+      // servidores_publicos.userId (esa tabla ni participa en el pool ahora).
+      const [usuarioVinculado] = await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.curp, nuevoCurp))
+        .limit(1);
 
       if (
-        servidorVinculado?.userId != null &&
+        usuarioVinculado?.id != null &&
         (
-          servidorVinculado.userId === promo.userId ||
-          (rol !== "jefe" && servidorVinculado.userId === promo.jefeAsignadoId) ||
-          (rol !== "companero1" && servidorVinculado.userId === promo.companero1Id) ||
-          (rol !== "companero2" && servidorVinculado.userId === promo.companero2Id)
+          usuarioVinculado.id === promo.userId ||
+          (rol !== "jefe" && usuarioVinculado.id === promo.jefeAsignadoId) ||
+          (rol !== "companero1" && usuarioVinculado.id === promo.companero1Id) ||
+          (rol !== "companero2" && usuarioVinculado.id === promo.companero2Id)
         )
       ) {
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoServidorId, correoCapturado);
+      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoCurp, nuevoNombre, correoCapturado);
 
       // La fila `evaluaciones` del slot reasignado solo puede estar en
       // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie

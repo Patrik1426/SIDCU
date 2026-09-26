@@ -51,40 +51,28 @@ describe("listarInscripcionesPromocion", () => {
 });
 
 describe("reasignarEvaluadorPromocion", () => {
-  it("rechaza si el nuevo servidor no esta en el pool del rol correcto", async () => {
-    const { tx } = makeTxRecorder([[]], []); // servidorEnPool: no encontrado
+  it("rechaza si el nuevo CURP no esta en el pool del rol correcto", async () => {
+    const { tx } = makeTxRecorder([[]], []); // curpEnPool: no encontrado
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 999, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CURPQUENOESTA0001", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
   });
 
-  // I1 (revision final de rama): servidorEnPool (compartido con
-  // confirmarInscripcion) ahora exige servidoresPublicos.estatus="activo" y
-  // (si tiene cuenta) users.isActive -- antes solo miraba
-  // promocionEvaluadorPool.rol+activo, una regresion del fix c55d401 del
-  // diseño anterior. El mock no evalua el WHERE real (limitacion de este
-  // arnes de pruebas, ver db.transaction-test-helpers.ts): esta prueba fija
-  // el CONTRATO -- si MySQL excluye la fila por el join nuevo, se rechaza
-  // igual que si nunca hubiera estado en el pool.
   it("rechaza si el servidor/usuario esta inactivo (simulado por MySQL sin regresar fila)", async () => {
-    const { tx } = makeTxRecorder([[]], []); // servidorEnPool: excluido por estatus/isActive
+    const { tx } = makeTxRecorder([[]], []); // curpEnPool: excluido por activo/isActive
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
   });
 
-  // I3 (revision final de rama): validarCorreoEvaluador (formato+MX) antes
-  // solo se llamaba desde importarFilaEvaluador -- el correo capturado por
-  // el admin al reasignar solo pasaba por z.string().email() en el router.
-  // Corre ANTES de abrir la transaccion.
   it("rechaza con CORREO_INVALIDO sin abrir transaccion ni consultar el pool", async () => {
     const { validarCorreoEvaluador } = await import("./lib/validarCorreo");
     vi.mocked(validarCorreoEvaluador).mockResolvedValueOnce({ ok: false, error: "formato de correo inválido" });
@@ -93,36 +81,36 @@ describe("reasignarEvaluadorPromocion", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "no-es-correo", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "no-es-correo", 1);
     expect(resultado).toEqual({ ok: false, error: "CORREO_INVALIDO" });
     expect(fakeDb.transaction).not.toHaveBeenCalled();
   });
 
   it("rechaza si la promocion no existe", async () => {
-    const { tx } = makeTxRecorder([[{ servidorId: 5 }], []], []);
+    const { tx } = makeTxRecorder([[{ curp: "CCCC000101HDFXXX05" }], []], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(999, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(999, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "PROMOCION_NO_ENCONTRADA" });
   });
 
   it("reasigna via asignarEvaluador y audita en una transaccion", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ servidorId: 5 }], // servidorEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05" }], // curpEnPool: valido
       [promoExistente],
-      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
-      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
+      [{ id: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
+      [{ id: 55, evaluadorCuentaExpiraEn: null }], // asignarEvaluador: select interno, ya tiene cuenta
     ], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("update");
     expect(calls).toContain("insert");
@@ -131,34 +119,30 @@ describe("reasignarEvaluadorPromocion", () => {
   it("reasignar borra la evaluacion en borrador del slot viejo y crea una nueva para el evaluador nuevo", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ servidorId: 5 }], // servidorEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05" }],
       [promoExistente],
-      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
-      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
+      [{ id: 55 }],
+      [{ id: 55, evaluadorCuentaExpiraEn: null }],
     ], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
 
     expect(resultado).toEqual({ ok: true });
     expect(calls).toContain("delete");
   });
 
-  it("regresa EVALUACION_YA_ENVIADA si el slot reasignado ya tenia una evaluacion enviada (DELETE no la toca, INSERT choca con el unique promocionId+rol)", async () => {
-    // Hallazgo revision final: el DELETE solo borra estado='borrador', asi
-    // que si el evaluador viejo ya contesto, no hay nada que borrar y el
-    // INSERT de la fila nueva viola eval_promocion_rol_idx (ER_DUP_ENTRY) --
-    // antes esto se propagaba como 500 crudo (INTERNAL_SERVER_ERROR).
+  it("regresa EVALUACION_YA_ENVIADA si el slot reasignado ya tenia una evaluacion enviada", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx } = makeTxRecorder([
-      [{ servidorId: 5 }], // servidorEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05" }],
       [promoExistente],
-      [{ userId: 55 }], // chequeo de conflicto pre-asignarEvaluador: ya vinculado, sin conflicto
-      [{ userId: 55 }], // asignarEvaluador: select interno, ya tiene cuenta
-      [{ estado: "enviado" }], // Minor (revision final 2): post-catch, distingue la causa real del ER_DUP_ENTRY -- aqui SI ya estaba enviado
+      [{ id: 55 }],
+      [{ id: 55, evaluadorCuentaExpiraEn: null }],
+      [{ estado: "enviado" }], // post-catch: distingue la causa real del ER_DUP_ENTRY
     ], []);
     tx.insert = vi.fn(() => {
       throw Object.assign(new Error("Duplicate entry"), { code: "ER_DUP_ENTRY" });
@@ -168,24 +152,17 @@ describe("reasignarEvaluadorPromocion", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "EVALUACION_YA_ENVIADA" });
   });
 
-  it("regresa REASIGNACION_CONCURRENTE si el ER_DUP_ENTRY NO fue por una evaluacion ya enviada (2 reasignaciones al mismo slot casi al mismo tiempo)", async () => {
-    // Minor parqueado en la revision final: el catch original mapeaba TODO
-    // ER_DUP_ENTRY a "ya envio su evaluacion", pero ese mismo error de MySQL
-    // tambien puede salir si otra reasignacion concurrente ya inserto una
-    // fila borrador nueva para el mismo (promocionId, rol) -- caso de carrera
-    // real, no "ya evaluo". El post-catch relee el estado real de la fila:
-    // si sigue en 'borrador' (o no la encuentra), es la colision concurrente,
-    // no una evaluacion enviada.
+  it("regresa REASIGNACION_CONCURRENTE si el ER_DUP_ENTRY NO fue por una evaluacion ya enviada", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx } = makeTxRecorder([
-      [{ servidorId: 5 }],
+      [{ curp: "CCCC000101HDFXXX05" }],
       [promoExistente],
-      [{ userId: 55 }],
-      [{ userId: 55 }],
+      [{ id: 55 }],
+      [{ id: 55, evaluadorCuentaExpiraEn: null }],
       [{ estado: "borrador" }], // la fila que gano la carrera ya existe, pero sigue sin contestar
     ], []);
     tx.insert = vi.fn(() => {
@@ -196,28 +173,23 @@ describe("reasignarEvaluadorPromocion", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "REASIGNACION_CONCURRENTE" });
   });
 
-  it("rechaza por conflicto SIN llamar asignarEvaluador si el servidor ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
-    // Regresion del hallazgo de revision: antes, el chequeo de conflicto corria
-    // DESPUES de asignarEvaluador, asi que un UPDATE users.email ya commiteado
-    // sobrevivia aunque la reasignacion se rechazara. Ahora el chequeo usa el
-    // userId ya vinculado en servidoresPublicos (un simple select) ANTES de
-    // tocar asignarEvaluador -- si hay conflicto, no debe haber ningun "update".
+  it("rechaza por conflicto SIN llamar asignarEvaluador si el CURP ya vinculado coincide con otro puesto (no debe tocar users.email)", async () => {
     const promoExistente = { id: 1, userId: 1, jefeAsignadoId: 10, companero1Id: 20, companero2Id: 30 };
     const { tx, calls } = makeTxRecorder([
-      [{ servidorId: 5 }], // servidorEnPool: valido
+      [{ curp: "CCCC000101HDFXXX05" }], // curpEnPool: valido
       [promoExistente],
-      [{ userId: 30 }], // servidoresPublicos.userId ya vinculado: coincide con companero2Id -> conflicto
+      [{ id: 30 }], // users.id ya vinculado a ese CURP: coincide con companero2Id -> conflicto
     ], []);
     const fakeDb = { select: tx.select, transaction: vi.fn((cb: any) => cb(tx)) };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { reasignarEvaluadorPromocion } = await import("./db");
-    const resultado = await reasignarEvaluadorPromocion(1, "companero1", 5, "nuevo@example.com", 1);
+    const resultado = await reasignarEvaluadorPromocion(1, "companero1", "CCCC000101HDFXXX05", "Nombre X", "nuevo@example.com", 1);
     expect(resultado).toEqual({ ok: false, error: "SELECCION_INVALIDA" });
     expect(calls).not.toContain("update");
     expect(calls).not.toContain("insert");
