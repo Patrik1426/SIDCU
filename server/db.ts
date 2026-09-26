@@ -3026,52 +3026,45 @@ function escaparComodinesLike(valor: string): string {
   return valor.replace(/[%_\\]/g, (c) => `\\${c}`);
 }
 
-// Filtra por el pool curado (promocion_evaluador_pool) en vez de buscar en
-// todo el padron -- reemplaza a la extinta buscarEvaluadorPromocion (admin,
-// sin pool), que ya no tenia ningun caller real (ver revision final de
-// rama, M3). `excluirUserId` es users.id -- comparamos contra
-// servidoresPublicos.userId, que puede ser NULL (persona sin cuenta
-// todavia). ne(columna, valor) contra NULL evalua a NULL en SQL, no a true
-// -- sin el or(isNull(...), ...) esas filas desaparecerian del resultado
-// por accidente para TODOS los que buscan, no solo para el propio
-// trabajador.
-//
-// I2: correoPrellenado sigue la precedencia del spec (seccion 4):
-// users.email (cuenta ya existente) -> correoSugerido (CSV) ->
-// servidoresPublicos.email (padron) -> null (el frontend cae a "").
+// Rediseño 2026-09-26: ya no hay servidores_publicos en este flujo -- la
+// precedencia de correoPrellenado se reduce a 2 fuentes (antes 3, ver spec
+// seccion "Backend"): users.email (cuenta ya existente) -> correoSugerido
+// (CSV). `excluido` resuelve el CURP del propio llamante (si tiene) para no
+// mostrarlo en su propia busqueda -- si no tiene CURP (o no existe), no se
+// excluye nada. `.limit(1)` en el select de `excluido`: users.curp no tiene
+// UNIQUE (a diferencia de users.id, que si), asi que sin el limit una fila
+// duplicada de CURP haria que drizzle regrese mas de un renglon donde solo
+// se espera 0 o 1.
 export async function buscarEnPoolPromocion(
   q: string,
   rol: "jefe" | "companero",
   excluirUserId: number,
-): Promise<Array<{ servidorId: number; nombreCompleto: string; curp: string; tieneCuenta: boolean; correoPrellenado: string | null }>> {
+): Promise<Array<{ curp: string; nombre: string; tieneCuenta: boolean; correoPrellenado: string | null }>> {
   const d = await getDb();
+  const [excluido] = await d
+    .select({ curp: schema.users.curp })
+    .from(schema.users)
+    .where(eq(schema.users.id, excluirUserId))
+    .limit(1);
+
   const term = `%${escaparComodinesLike(q)}%`;
   const filas = await d
     .select({
-      servidorId: schema.servidoresPublicos.id,
-      nombreCompleto: schema.servidoresPublicos.nombreCompleto,
-      curp: schema.servidoresPublicos.curp,
-      userId: schema.servidoresPublicos.userId,
-      emailPadron: schema.servidoresPublicos.email,
+      curp: schema.promocionEvaluadorPool.curp,
+      nombre: schema.promocionEvaluadorPool.nombre,
       correoSugerido: schema.promocionEvaluadorPool.correoSugerido,
+      userId: schema.users.id,
       emailCuenta: schema.users.email,
     })
     .from(schema.promocionEvaluadorPool)
-    .innerJoin(schema.servidoresPublicos, eq(schema.servidoresPublicos.id, schema.promocionEvaluadorPool.servidorId))
-    .leftJoin(schema.users, eq(schema.users.id, schema.servidoresPublicos.userId))
+    .leftJoin(schema.users, eq(schema.users.curp, schema.promocionEvaluadorPool.curp))
     .where(and(
       eq(schema.promocionEvaluadorPool.rol, rol),
       eq(schema.promocionEvaluadorPool.activo, true),
-      eq(schema.servidoresPublicos.estatus, "activo"),
-      or(isNull(schema.servidoresPublicos.userId), ne(schema.servidoresPublicos.userId, excluirUserId)),
-      or(like(schema.servidoresPublicos.nombreCompleto, term), like(schema.servidoresPublicos.curp, term)),
-      // Mismo criterio que servidorEnPool (ver comentario ahi, hallazgo real
-      // 2026-09-23): no mostrar en la busqueda a alguien que de todos modos
-      // seria rechazado al confirmar -- pero una cuenta on-the-fly de
-      // Evaluadores expirada (evaluadorCuentaExpiraEn no null) SI debe seguir
-      // apareciendo, porque reseleccionarla la reactiva.
+      excluido?.curp ? ne(schema.promocionEvaluadorPool.curp, excluido.curp) : undefined,
+      or(like(schema.promocionEvaluadorPool.nombre, term), like(schema.promocionEvaluadorPool.curp, term)),
       or(
-        isNull(schema.servidoresPublicos.userId),
+        isNull(schema.users.id),
         eq(schema.users.isActive, true),
         isNotNull(schema.users.evaluadorCuentaExpiraEn),
       ),
@@ -3079,11 +3072,10 @@ export async function buscarEnPoolPromocion(
     .limit(15);
 
   return filas.map((f) => ({
-    servidorId: f.servidorId,
-    nombreCompleto: f.nombreCompleto,
     curp: f.curp,
+    nombre: f.nombre,
     tieneCuenta: f.userId !== null,
-    correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? f.emailPadron ?? null,
+    correoPrellenado: f.emailCuenta ?? f.correoSugerido ?? null,
   }));
 }
 
