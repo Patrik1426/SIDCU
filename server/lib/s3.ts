@@ -1,5 +1,6 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
 let client: S3Client | null = null;
 let bucket: string | null = null;
@@ -16,10 +17,27 @@ function getS3() {
   return { client: client!, bucket: bucket! };
 }
 
-export async function urlSubida(key: string, contentType: string): Promise<string> {
+// POST firmado con política (no PUT+getSignedUrl) -- un PUT presignado simple
+// no tiene forma de restringir el tamaño DENTRO de la firma: el límite de
+// 10MB solo se hacía cumplir DESPUÉS (HeadObject en confirmarSubida), y
+// cualquiera con la URL podía reusarla dentro de los 600s de validez para
+// un segundo PUT con distinto contenido (hallazgo de la revisión de
+// Inconformidad, ver CLAUDE.md → Pendiente). Con POST + `Conditions:
+// content-length-range`, S3 mismo rechaza el request si el archivo excede
+// `maxBytes` -- el límite queda dentro de la firma, no solo verificado
+// después de que el archivo ya se subió.
+export async function urlSubida(key: string, contentType: string, maxBytes: number): Promise<{ url: string; fields: Record<string, string> }> {
   const { client, bucket } = getS3();
-  const cmd = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType });
-  return getSignedUrl(client, cmd, { expiresIn: 600 });
+  return createPresignedPost(client, {
+    Bucket: bucket,
+    Key: key,
+    Expires: 600,
+    Conditions: [
+      ["content-length-range", 0, maxBytes],
+      { "Content-Type": contentType },
+    ],
+    Fields: { "Content-Type": contentType },
+  });
 }
 
 export async function urlDescarga(key: string, nombreOriginal: string): Promise<string> {

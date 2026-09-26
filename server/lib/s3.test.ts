@@ -3,13 +3,19 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const sendMock = vi.fn();
 vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: vi.fn(() => ({ send: sendMock })),
-  PutObjectCommand: vi.fn((input) => ({ input, __type: "Put" })),
   GetObjectCommand: vi.fn((input) => ({ input, __type: "Get" })),
   DeleteObjectCommand: vi.fn((input) => ({ input, __type: "Delete" })),
   HeadObjectCommand: vi.fn((input) => ({ input, __type: "Head" })),
 }));
 vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: vi.fn(async (_client, cmd) => `https://signed.example/${cmd.__type}`),
+}));
+const createPresignedPostMock = vi.fn(async (_client, opts) => ({
+  url: "https://signed.example/Post",
+  fields: { key: opts.Key, Policy: "fake-policy", "Content-Type": opts.Fields?.["Content-Type"] },
+}));
+vi.mock("@aws-sdk/s3-presigned-post", () => ({
+  createPresignedPost: (client: unknown, opts: unknown) => createPresignedPostMock(client, opts),
 }));
 
 const ENV = {
@@ -23,13 +29,23 @@ describe("server/lib/s3", () => {
   beforeEach(() => {
     vi.resetModules();
     sendMock.mockReset();
+    createPresignedPostMock.mockClear();
     for (const [k, v] of Object.entries(ENV)) process.env[k] = v;
   });
 
-  it("urlSubida regresa una URL firmada de PUT", async () => {
+  it("urlSubida regresa una URL + fields de POST firmado", async () => {
     const { urlSubida } = await import("./s3");
-    const url = await urlSubida("inconformidad/1/2/abc.pdf", "application/pdf");
-    expect(url).toBe("https://signed.example/Put");
+    const { url, fields } = await urlSubida("inconformidad/1/2/abc.pdf", "application/pdf", 10_000_000);
+    expect(url).toBe("https://signed.example/Post");
+    expect(fields.key).toBe("inconformidad/1/2/abc.pdf");
+    expect(fields["Content-Type"]).toBe("application/pdf");
+  });
+
+  it("urlSubida firma la política con content-length-range usando maxBytes", async () => {
+    const { urlSubida } = await import("./s3");
+    await urlSubida("k", "application/pdf", 12345);
+    const opts = createPresignedPostMock.mock.calls[0][1];
+    expect(opts.Conditions).toContainEqual(["content-length-range", 0, 12345]);
   });
 
   it("verificarArchivo regresa existe:true con el tamano real cuando el objeto existe", async () => {
@@ -55,7 +71,7 @@ describe("server/lib/s3", () => {
   it("revienta con mensaje claro si falta una variable de entorno", async () => {
     delete process.env.AWS_S3_BUCKET;
     const { urlSubida } = await import("./s3");
-    await expect(urlSubida("k", "application/pdf")).rejects.toThrow("AWS_S3_BUCKET no está configurado");
+    await expect(urlSubida("k", "application/pdf", 10_000_000)).rejects.toThrow("AWS_S3_BUCKET no está configurado");
   });
 
   it("borrarArchivoSeguro nunca lanza, solo loguea si falla", async () => {

@@ -12,17 +12,26 @@ type Estado =
   | { tipo: "error"; mensaje: string; recuperable: boolean; archivo: File | null; retomar: (() => void) | null }
   | { tipo: "completado"; nombreOriginal: string };
 
-function subirConProgreso(url: string, archivo: File, onProgreso: (pct: number) => void): Promise<void> {
+// POST con FormData (no PUT crudo) -- el server firma un POST con política
+// (`content-length-range`, ver server/lib/s3.ts::urlSubida) para que S3
+// mismo rechace un archivo que exceda el límite, en vez de solo detectarlo
+// DESPUÉS con un HeadObject en confirmarSubida. Los campos de `fields` van
+// TODOS antes que `file` en el FormData -- S3 ignora cualquier campo que
+// llegue después del archivo en un POST multipart.
+function subirConProgreso(url: string, fields: Record<string, string>, archivo: File, onProgreso: (pct: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) formData.append(key, value);
+    formData.append("file", archivo);
+
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", TIPO_PDF);
+    xhr.open("POST", url);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgreso(Math.round((e.loaded / e.total) * 100));
     };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`PUT falló: ${xhr.status}`)));
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Subida falló: ${xhr.status}`)));
     xhr.onerror = () => reject(new Error("Error de red durante la subida"));
-    xhr.send(archivo);
+    xhr.send(formData);
   });
 }
 
@@ -83,15 +92,16 @@ export default function SubidaPDF({
     }
   }
 
-  // Reintenta el PUT a S3 reusando el archivoId/url ya emitidos por un
-  // presignarSubida anterior -- NO vuelve a llamar presignarSubida. Sin esto,
-  // cada reintento de un PUT que falla por red (wifi inestable, etc.) mintaba
-  // una fila nueva en archivos_cargados + un S3 key nuevo, dejando huerfano
-  // cada intento previo (bug real encontrado en code review post-Task 12).
-  async function reintentarSubida(archivo: File, archivoId: number, url: string) {
+  // Reintenta la subida a S3 reusando el archivoId/url/fields ya emitidos
+  // por un presignarSubida anterior -- NO vuelve a llamar presignarSubida.
+  // Sin esto, cada reintento de una subida que falla por red (wifi
+  // inestable, etc.) mintaba una fila nueva en archivos_cargados + un S3
+  // key nuevo, dejando huerfano cada intento previo (bug real encontrado en
+  // code review post-Task 12).
+  async function reintentarSubida(archivo: File, archivoId: number, url: string, fields: Record<string, string>) {
     setEstado({ tipo: "subiendo", archivo, progreso: 0, factorId });
     try {
-      await subirConProgreso(url, archivo, (pct) =>
+      await subirConProgreso(url, fields, archivo, (pct) =>
         setEstado((prev) => (prev.tipo === "subiendo" ? { ...prev, progreso: pct } : prev)),
       );
       setEstado({ tipo: "confirmando", archivo });
@@ -111,7 +121,7 @@ export default function SubidaPDF({
         mensaje: err.message ?? "No se pudo subir el archivo",
         recuperable: true,
         archivo,
-        retomar: () => reintentarSubida(archivo, archivoId, url),
+        retomar: () => reintentarSubida(archivo, archivoId, url, fields),
       });
     }
   }
@@ -132,17 +142,19 @@ export default function SubidaPDF({
     // nunca se actualizaba a tiempo dentro de la misma llamada async).
     let archivoIdActual: number | undefined;
     let urlActual: string | undefined;
+    let fieldsActual: Record<string, string> | undefined;
     let putTerminado = false;
 
     setEstado({ tipo: "subiendo", archivo, progreso: 0, factorId });
     try {
-      const { archivoId, url } = await presignarMut.mutateAsync({
+      const { archivoId, url, fields } = await presignarMut.mutateAsync({
         factorId, nombreOriginal: archivo.name, tipoArchivo: TIPO_PDF, tamanoBytes: archivo.size,
       });
       archivoIdActual = archivoId;
       urlActual = url;
+      fieldsActual = fields;
 
-      await subirConProgreso(url, archivo, (pct) =>
+      await subirConProgreso(url, fields, archivo, (pct) =>
         setEstado((prev) => (prev.tipo === "subiendo" ? { ...prev, progreso: pct } : prev)),
       );
       putTerminado = true;
@@ -160,7 +172,7 @@ export default function SubidaPDF({
         return;
       }
       if (putTerminado && archivoIdActual !== undefined) {
-        // El PUT a S3 ya termino -- solo fallo confirmarSubida. Reintentar
+        // La subida a S3 ya termino -- solo fallo confirmarSubida. Reintentar
         // NO debe resubir el archivo, solo reintentar la confirmacion con el
         // mismo archivoId ya emitido.
         setEstado({
@@ -170,16 +182,16 @@ export default function SubidaPDF({
           archivo,
           retomar: () => reintentarConfirmacion(archivo, archivoIdActual!),
         });
-      } else if (archivoIdActual !== undefined && urlActual !== undefined) {
-        // presignarSubida SI se completo (ya tenemos archivoId/url validos)
-        // pero el PUT a S3 fallo antes de terminar -- reintentar debe reusar
-        // ese mismo archivoId/url, nunca volver a presignar.
+      } else if (archivoIdActual !== undefined && urlActual !== undefined && fieldsActual !== undefined) {
+        // presignarSubida SI se completo (ya tenemos archivoId/url/fields
+        // validos) pero la subida a S3 fallo antes de terminar -- reintentar
+        // debe reusar ese mismo archivoId/url/fields, nunca volver a presignar.
         setEstado({
           tipo: "error",
           mensaje: err.message ?? "No se pudo subir el archivo",
           recuperable: true,
           archivo,
-          retomar: () => reintentarSubida(archivo, archivoIdActual!, urlActual!),
+          retomar: () => reintentarSubida(archivo, archivoIdActual!, urlActual!, fieldsActual!),
         });
       } else {
         // presignarSubida mismo fallo -- el server ya limpio cualquier fila

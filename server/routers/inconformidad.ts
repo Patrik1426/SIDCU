@@ -155,8 +155,8 @@ export const inconformidadRouter = router({
       const s3Key = `inconformidad/${ctx.user.id}/${input.factorId}/${nanoid()}.pdf`;
       const { id: archivoId } = await crearArchivoPendiente(ctx.user.id, input.nombreOriginal, input.tipoArchivo, input.tamanoBytes, s3Key);
       try {
-        const url = await urlSubida(s3Key, input.tipoArchivo);
-        return { archivoId, url, s3Key };
+        const { url, fields } = await urlSubida(s3Key, input.tipoArchivo, MAX_PDF_BYTES);
+        return { archivoId, url, fields };
       } catch (err) {
         await borrarArchivoPendiente(archivoId, ctx.user.id);
         throw errorS3Seguro(err);
@@ -174,17 +174,14 @@ export const inconformidadRouter = router({
 
       // Chequeo temprano, ANTES de tocar S3 -- mismo guard que ya tiene
       // presignarSubida. REDUCE la ventana en la que alguien podía reusar
-      // la URL firmada del PUT (válida 600s) DESPUÉS de enviar su
-      // inconformidad y llamar confirmarSubida de nuevo -- las ramas de
-      // limpieza de abajo (archivo no existe / excede tamaño / no es PDF)
-      // podían borrar el adjunto ya congelado de un factor enviado antes de
-      // llegar al rechazo real de confirmarSubidaInconformidad. NO la
-      // cierra del todo (queda una ventana más chica entre esta lectura y
-      // las llamadas a S3 de abajo, ninguna de las dos bajo lock) -- cerrar
-      // eso de raíz implica rediseñar el PUT a POST firmado con política
-      // (ver CLAUDE.md → Pendiente), no antes de tener llaves AWS reales.
-      // Select angosto (solo `estado`), no el objeto completo con join a
-      // factores/archivos que no se usa aquí.
+      // la URL firmada DESPUÉS de enviar su inconformidad y llamar
+      // confirmarSubida de nuevo -- las ramas de limpieza de abajo (archivo
+      // no existe / excede tamaño / no es PDF) podían borrar el adjunto ya
+      // congelado de un factor enviado antes de llegar al rechazo real de
+      // confirmarSubidaInconformidad. NO la cierra del todo (queda una
+      // ventana más chica entre esta lectura y las llamadas a S3 de abajo,
+      // ninguna de las dos bajo lock). Select angosto (solo `estado`), no
+      // el objeto completo con join a factores/archivos que no se usa aquí.
       const estadoActual = await obtenerEstadoInconformidad(ctx.user.id);
       if (estadoActual === null) throw traducirError("NO_INICIADA");
       if (estadoActual !== "borrador") throw traducirError("YA_ENVIADA");
@@ -199,6 +196,12 @@ export const inconformidadRouter = router({
         await borrarArchivoPendiente(input.archivoId, ctx.user.id);
         throw new TRPCError({ code: "BAD_REQUEST", message: "No se pudo confirmar la subida, intenta de nuevo." });
       }
+      // Defensa en profundidad: la política del POST firmado (content-length-range
+      // en urlSubida) ya rechaza en S3 mismo cualquier archivo que exceda
+      // MAX_PDF_BYTES -- este objeto nunca debería llegar aquí con un tamaño
+      // mayor. Se deja el chequeo de todos modos, no cuesta nada y cubre un
+      // bucket mal configurado o una política que cambie sin que este código
+      // se entere.
       if ((verificacion.tamanoBytes ?? 0) > MAX_PDF_BYTES) {
         await borrarArchivoSeguro(archivo.s3Key);
         await borrarArchivoPendiente(input.archivoId, ctx.user.id);
