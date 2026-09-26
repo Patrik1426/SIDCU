@@ -63,7 +63,8 @@ function traducirErrorReasignar(error: ErrorCodigoReasignar): TRPCError {
 }
 
 const evaluadorSeleccionSchema = z.object({
-  servidorId: z.number().int().positive(),
+  curp: z.string().length(18),
+  nombre: z.string().min(2),
   correo: z.string().email(),
 });
 
@@ -157,11 +158,12 @@ export const promocionRouter = router({
         const curp = (row["curp"] ?? "").toString().trim();
         const nombre = (row["nombre"] ?? "").toString().trim();
         const correo = (row["correo"] ?? "").toString().trim() || undefined;
+        const rfc = (row["rfc"] ?? "").toString().trim() || undefined;
         if (!curp || !nombre) {
           errores.push({ fila: i + 1, error: "Faltan columnas curp/nombre" });
           continue;
         }
-        const resultado = await importarFilaEvaluador(curp, nombre, input.rol, correo, ctx.user.id);
+        const resultado = await importarFilaEvaluador(curp, nombre, input.rol, correo, ctx.user.id, rfc);
         if (resultado.ok) {
           creados++;
           if (resultado.advertencia) advertencias.push({ fila: i + 1, advertencia: resultado.advertencia });
@@ -194,11 +196,12 @@ export const promocionRouter = router({
     .input(z.object({
       promocionId: z.number(),
       rol: z.enum(["jefe", "companero1", "companero2"]),
-      nuevoServidorId: z.number(),
+      nuevoCurp: z.string().length(18),
+      nuevoNombre: z.string().min(2),
       correo: z.string().email(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoServidorId, input.correo, ctx.user.id);
+      const resultado = await reasignarEvaluadorPromocion(input.promocionId, input.rol, input.nuevoCurp, input.nuevoNombre, input.correo, ctx.user.id);
       if (!resultado.ok) throw traducirErrorReasignar(resultado.error);
       return { success: true };
     }),
@@ -214,12 +217,12 @@ export const promocionRouter = router({
 
   moverRolPool: adminProcedure
     .input(z.object({
-      servidorId: z.number().int().positive(),
+      curp: z.string().length(18),
       rolActual: z.enum(["jefe", "companero"]),
       rolNuevo: z.enum(["jefe", "companero"]),
     }))
     .mutation(async ({ ctx, input }) => {
-      const resultado = await moverRolPoolPromocion(input.servidorId, input.rolActual, input.rolNuevo, ctx.user.id);
+      const resultado = await moverRolPoolPromocion(input.curp, input.rolActual, input.rolNuevo, ctx.user.id);
       if (!resultado.ok) {
         throw new TRPCError({
           code: resultado.error === "NO_ENCONTRADO" ? "NOT_FOUND" : "CONFLICT",
@@ -230,9 +233,9 @@ export const promocionRouter = router({
     }),
 
   quitarDelPool: adminProcedure
-    .input(z.object({ servidorId: z.number().int().positive(), rol: z.enum(["jefe", "companero"]) }))
+    .input(z.object({ curp: z.string().length(18), rol: z.enum(["jefe", "companero"]) }))
     .mutation(async ({ input }) => {
-      const resultado = await quitarDelPoolPromocion(input.servidorId, input.rol);
+      const resultado = await quitarDelPoolPromocion(input.curp, input.rol);
       if (!resultado.ok) throw new TRPCError({ code: "NOT_FOUND", message: "No se encontró en ese pool." });
       return { success: true };
     }),
