@@ -35,10 +35,12 @@ function mapearFilasEvaluadorPool(registros: Record<string, string>[]): Record<s
     const buscar = (target: string) => headers.find((h) => normalizarHeader(h) === target);
     const hCurp = buscar("CURP");
     const hNombre = buscar("NOMBRE");
+    const hRfc = buscar("RFC");
     const hCorreo = buscar("CORREO") ?? buscar("EMAIL");
     return {
       curp: hCurp ? row[hCurp] : "",
       nombre: hNombre ? row[hNombre] : "",
+      rfc: hRfc ? row[hRfc] : "",
       correo: hCorreo ? row[hCorreo] : "",
     };
   });
@@ -55,7 +57,7 @@ export default function GestionPromocion() {
   // haciendo la reasignacion -- antes BuscadorEvaluador excluia
   // implicitamente a ctx.user.id (el admin) porque buscarEnPool no recibia
   // ningun override.
-  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; trabajadorUserId: number; nuevoServidorId: number; nuevoNombre: string; correo?: string } | null>(null);
+  const [reasignando, setReasignando] = useState<{ promocionId: number; rol: Rol; trabajadorUserId: number; nuevoCurp: string; nuevoNombre: string; correo?: string } | null>(null);
 
   // Catalogo de evaluadores: ver y corregir lo que ya se subio por CSV a
   // cada pool (antes no habia ninguna pantalla para esto, solo se podia
@@ -64,7 +66,7 @@ export default function GestionPromocion() {
   const [tabPool, setTabPool] = useState<RolPool>("jefe");
   const [searchPool, setSearchPool] = useState("");
   const [pagePool, setPagePool] = useState(1);
-  const [quitando, setQuitando] = useState<{ servidorId: number; rol: RolPool; nombreCompleto: string } | null>(null);
+  const [quitando, setQuitando] = useState<{ curp: string; rol: RolPool; nombre: string } | null>(null);
   const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery({ search: search || undefined, page, limit: 20 });
@@ -250,14 +252,14 @@ export default function GestionPromocion() {
                 ) : (
                   <div className="divide-y divide-gray-100">
                     {pool?.items.map((p) => (
-                      <div key={p.servidorId} className="flex items-center justify-between gap-3 px-5 py-2.5">
+                      <div key={p.curp} className="flex items-center justify-between gap-3 px-5 py-2.5">
                         <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombreCompleto}</p>
+                          <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombre}</p>
                           <p className="text-[11.5px] text-gray-400 tabular-nums">{p.curp}</p>
                         </div>
                         <div className="flex shrink-0 gap-2">
                           <button
-                            onClick={() => moverRolMut.mutate({ servidorId: p.servidorId, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
+                            onClick={() => moverRolMut.mutate({ curp: p.curp, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
                             disabled={moverRolMut.isPending}
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           >
@@ -265,7 +267,7 @@ export default function GestionPromocion() {
                             Mover a {tabPool === "jefe" ? "Compañeros" : "Jefes"}
                           </button>
                           <button
-                            onClick={() => setQuitando({ servidorId: p.servidorId, rol: tabPool, nombreCompleto: p.nombreCompleto })}
+                            onClick={() => setQuitando({ curp: p.curp, rol: tabPool, nombre: p.nombre })}
                             className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11.5px] font-semibold text-rose-600 hover:bg-rose-50"
                           >
                             <Trash2 size={12} />
@@ -430,7 +432,7 @@ export default function GestionPromocion() {
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoServidorId: 0, nuevoNombre: "" })}
+                                    onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoCurp: "", nuevoNombre: "" })}
                                     className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
                                   >
                                     <RefreshCw size={11} />
@@ -471,6 +473,7 @@ export default function GestionPromocion() {
           columnas={[
             { key: "curp", label: "CURP", ejemplo: "AAAA000101HDFXXX01" },
             { key: "nombre", label: "Nombre", ejemplo: "Juan Pérez López" },
+            { key: "rfc", label: "RFC (opcional)", ejemplo: "AAAA000101AB1" },
             { key: "correo", label: "Correo (opcional)", ejemplo: "juan.perez@example.com" },
           ]}
           procesarFilas={mapearFilasEvaluadorPool}
@@ -501,11 +504,11 @@ export default function GestionPromocion() {
         open={!!quitando}
         variant="danger"
         title="¿Quitar del pool?"
-        message={quitando ? `${quitando.nombreCompleto} ya no aparecerá como opción elegible de ${quitando.rol === "jefe" ? "Jefe" : "Compañero"}. No afecta inscripciones ya confirmadas.` : ""}
+        message={quitando ? `${quitando.nombre} ya no aparecerá como opción elegible de ${quitando.rol === "jefe" ? "Jefe" : "Compañero"}. No afecta inscripciones ya confirmadas.` : ""}
         confirmLabel="Sí, quitar"
         loading={quitarDelPoolMut.isPending}
         onCancel={() => setQuitando(null)}
-        onConfirm={() => quitando && quitarDelPoolMut.mutate({ servidorId: quitando.servidorId, rol: quitando.rol })}
+        onConfirm={() => quitando && quitarDelPoolMut.mutate({ curp: quitando.curp, rol: quitando.rol })}
       />
 
       {reasignando && (
@@ -515,9 +518,9 @@ export default function GestionPromocion() {
             <BuscadorEvaluador
               rol={reasignando.rol === "jefe" ? "jefe" : "companero"}
               excluirUserId={reasignando.trabajadorUserId}
-              onElegir={(servidorId, nombre, correoPrellenado) => setReasignando({ ...reasignando, nuevoServidorId: servidorId, nuevoNombre: nombre, correo: correoPrellenado ?? reasignando.correo })}
+              onElegir={(curp, nombre, correoPrellenado) => setReasignando({ ...reasignando, nuevoCurp: curp, nuevoNombre: nombre, correo: correoPrellenado ?? reasignando.correo })}
             />
-            {reasignando.nuevoServidorId > 0 && (
+            {reasignando.nuevoCurp && (
               <>
                 <p className="mt-2 text-xs text-slate-500">Elegido: {reasignando.nuevoNombre}</p>
                 <input
@@ -537,10 +540,11 @@ export default function GestionPromocion() {
                 onClick={() => reasignarMut.mutate({
                   promocionId: reasignando.promocionId,
                   rol: reasignando.rol,
-                  nuevoServidorId: reasignando.nuevoServidorId,
+                  nuevoCurp: reasignando.nuevoCurp,
+                  nuevoNombre: reasignando.nuevoNombre,
                   correo: reasignando.correo ?? "",
                 })}
-                disabled={reasignando.nuevoServidorId === 0 || !reasignando.correo || reasignarMut.isPending}
+                disabled={!reasignando.nuevoCurp || !reasignando.correo || reasignarMut.isPending}
                 className="flex-1 rounded-xl bg-primary-600 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
               >
                 Confirmar
