@@ -3,6 +3,7 @@ import { router, protectedProcedureSinRestriccion, adminProcedure } from "../trp
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import {
+  obtenerCurpUsuario,
   obtenerFactoresConfig,
   obtenerInconformidad,
   obtenerEstadoInconformidad,
@@ -152,7 +153,14 @@ export const inconformidadRouter = router({
       if (!inconformidad || !factor) throw new TRPCError({ code: "NOT_FOUND", message: "Factor no encontrado." });
       if (inconformidad.estado !== "borrador") throw traducirError("YA_ENVIADA");
 
-      const s3Key = `inconformidad/${ctx.user.id}/${input.factorId}/${nanoid()}.pdf`;
+      // Carpeta legible a simple vista en el bucket real (CURP + factor) en
+      // vez de userId/factorId numericos -- antes habia que cruzar contra la
+      // DB para saber de quien era cada PDF (hallazgo real revisando el
+      // bucket en vivo, 2026-09-26). curp puede venir null en teoria
+      // (users.curp es nullable en schema) -- cae a userId para no bloquear
+      // la subida por un detalle cosmetico.
+      const curp = await obtenerCurpUsuario(ctx.user.id);
+      const s3Key = `inconformidad/${curp ?? ctx.user.id}/${factor.factor}/${nanoid()}.pdf`;
       const { id: archivoId } = await crearArchivoPendiente(ctx.user.id, input.nombreOriginal, input.tipoArchivo, input.tamanoBytes, s3Key);
       try {
         const { url, fields } = await urlSubida(s3Key, input.tipoArchivo, MAX_PDF_BYTES);
