@@ -18,6 +18,7 @@ const LIKERT_OPCIONES = ["siempre", "frecuente", "algunas_veces", "nunca"] as co
 export default function Autoevaluacion() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.autoevaluacion.miEstado.useQuery();
+  const { data: habilitado } = trpc.autoevaluacion.moduloHabilitado.useQuery();
   const [respuestas, setRespuestas] = useState<Record<number, string>>({});
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   // 1 pregunta a la vez -- ver todas juntas invita a contestar por patron
@@ -99,7 +100,15 @@ export default function Autoevaluacion() {
           </div>
         )}
 
-        {data.estado === "no_iniciada" && (
+        {data.estado === "no_iniciada" && habilitado === false && (
+          <div className="text-center">
+            <ListChecks className="mx-auto h-10 w-10 text-gray-300" />
+            <p className="mt-3 font-medium text-gray-700">Esta sección no está disponible por ahora</p>
+            <p className="mt-1 text-sm text-gray-500">Vuelve a intentarlo más tarde.</p>
+          </div>
+        )}
+
+        {data.estado === "no_iniciada" && habilitado !== false && (
           <div className="text-center">
             <ListChecks className="mx-auto h-10 w-10 text-primary-300" />
             <p className="mt-3 font-medium text-gray-700">Tu autoevaluación está lista para empezar</p>

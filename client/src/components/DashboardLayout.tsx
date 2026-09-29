@@ -119,6 +119,32 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   });
   const yaInscritoPromocion = miElegibilidadPromocion?.yaInscrito === true;
 
+  // Mismo criterio: pausa nunca esconde trabajo ya hecho. Autoevaluación no
+  // tiene un solo flag "yaInscrito" como Promoción -- "borrador" (ya la
+  // empezó) y "enviado" (ya la mandó) cuentan como trabajo en curso/hecho,
+  // solo "no_iniciada"/"sin_promocion" son estados sin nada que perder al
+  // ocultar el link.
+  const { data: autoevaluacionHabilitada } = trpc.autoevaluacion.moduloHabilitado.useQuery(undefined, {
+    enabled: role === "user" && !esEvaluadorRestringido,
+  });
+  const { data: miEstadoAutoevaluacion } = trpc.autoevaluacion.miEstado.useQuery(undefined, {
+    enabled: role === "user" && !esEvaluadorRestringido,
+  });
+  const autoevaluacionEnCurso = miEstadoAutoevaluacion?.estado === "borrador" || miEstadoAutoevaluacion?.estado === "enviado";
+
+  // Evaluadores: exigirModuloHabilitado (server) solo bloquea "iniciar", la
+  // lectura de pendientes nunca se esconde -- si el evaluador ya tiene algo
+  // asignado, el link se queda (la pagina/wizard es quien avisa que no puede
+  // iniciar mientras el modulo esta en pausa). Solo se oculta si de plano no
+  // hay nada asignado.
+  const { data: evaluadoresHabilitados } = trpc.evaluadores.moduloHabilitado.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const { data: misPendientesEvaluador } = trpc.evaluadores.misPendientes.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const tienePendientesEvaluador = (misPendientesEvaluador?.length ?? 0) > 0;
+
   // Cuenta on-the-fly restringida: el gate de App.tsx ya bloquea cualquier
   // ruta que no sea /portal/evaluaciones, pero sin este filtro el sidebar
   // seguía ofreciendo el nav completo de rol `user` (Portal, Catálogo
@@ -130,6 +156,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     if (esEvaluadorRestringido) return item.href === "/portal/evaluaciones";
     if (item.href === "/portal/inconformidad") return inconformidadHabilitada !== false || tieneCasoEnviado;
     if (item.href === "/portal/promocion") return promocionHabilitada !== false || yaInscritoPromocion;
+    if (item.href === "/portal/autoevaluacion") return autoevaluacionHabilitada !== false || autoevaluacionEnCurso;
+    if (item.href === "/portal/evaluaciones") return evaluadoresHabilitados !== false || tienePendientesEvaluador;
     return true;
   });
 

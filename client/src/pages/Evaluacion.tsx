@@ -21,6 +21,7 @@ export default function Evaluacion() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.evaluadores.miEvaluacion.useQuery({ evaluacionId });
+  const { data: habilitado } = trpc.evaluadores.moduloHabilitado.useQuery();
   const [respuestas, setRespuestas] = useState<Record<number, string>>({});
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   const [indiceActual, setIndiceActual] = useState(0);
@@ -118,7 +119,15 @@ export default function Evaluacion() {
       </motion.div>
 
       <motion.div variants={fadeUp} className="rounded-2xl bg-white p-8 shadow-card-rest border border-gray-100">
-        {noIniciada && (
+        {noIniciada && habilitado === false && (
+          <div className="text-center">
+            <ListChecks className="mx-auto h-10 w-10 text-gray-300" />
+            <p className="mt-3 font-medium text-gray-700">Esta sección no está disponible por ahora</p>
+            <p className="mt-1 text-sm text-gray-500">Vuelve a intentarlo más tarde.</p>
+          </div>
+        )}
+
+        {noIniciada && habilitado !== false && (
           <div className="text-center">
             <ListChecks className="mx-auto h-10 w-10 text-primary-300" />
             <p className="mt-3 font-medium text-gray-700">Esta evaluación está lista para empezar</p>
