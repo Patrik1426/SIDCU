@@ -34,6 +34,28 @@ export const solicitudesRouter = router({
 
       const d = await getDb();
 
+      // Candado de seguridad: max 2 solicitudes activas totales, sin importar
+      // bloque. El limite real es "1 por bloque" (abajo), pero ese chequeo se
+      // salta entero si el curso no tiene bloque asignado (hallazgo real en
+      // local: los 10 cursos existentes tenian bloque NULL, cualquiera podia
+      // inscribirse a mas de 2). Este tope nunca deja pasar de largo aunque
+      // bloque vuelva a quedar sin capturar por error.
+      const activasTotal = await d.select({ id: schema.solicitudesCurso.id })
+        .from(schema.solicitudesCurso)
+        .where(and(
+          eq(schema.solicitudesCurso.userId, ctx.user.id),
+          or(
+            eq(schema.solicitudesCurso.estado, "pendiente"),
+            eq(schema.solicitudesCurso.estado, "aprobada")
+          ),
+        ));
+      if (activasTotal.length >= 2) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Ya tienes 2 cursos activos. No puedes inscribirte a más.",
+        });
+      }
+
       const [cursoNuevo] = await d.select({ bloque: schema.cursos.bloque })
         .from(schema.cursos)
         .where(eq(schema.cursos.id, input.cursoId));

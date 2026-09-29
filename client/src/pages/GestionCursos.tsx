@@ -200,7 +200,7 @@ export default function GestionCursos() {
       duracionHoras: Number(form.duracionHoras),
       modalidad: form.modalidad as "presencial" | "virtual" | "mixto",
       tipoPrograma: form.tipoPrograma as "PAC" | "SPC" | "SDPC",
-      bloque: form.bloque ? Number(form.bloque) : undefined,
+      bloque: Number(form.bloque),
       // El backend resuelve/valida la finalidad final segun tipoPrograma
       // (fija para SPC/SDPC, una de las 4 opciones para PAC) -- aqui solo
       // se manda lo que el usuario eligio/ve en pantalla.
