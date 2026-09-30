@@ -90,19 +90,28 @@ export const perfilRouter = router({
         });
       }
 
-      await d.update(schema.servidoresPublicos).set({
-        nombreCompleto: ctx.user.nombre,
-        rfc: input.rfc,
-        curp: input.curp,
-        cargo: input.cargo,
-        dependencia: input.dependencia,
-        nivel: input.nivelGobierno,
-        grupoFuncion: input.grupoFuncion,
-        fechaIngreso: input.fechaIngreso,
-        datosContacto: input.datosContacto ?? null,
-        email: input.email ?? existingSrv.email,
-        actualizadoPor: ctx.user.id,
-      }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
+      // input.curp es texto libre (validado por formato, no forzado a
+      // coincidir con el CURP de login) -- si el trabajador corrige un typo
+      // aqui, debe propagarse a users.curp tambien (login es 100% por CURP,
+      // ver routers.ts::login) o la cuenta queda sin poder loguearse con su
+      // CURP correcto. Mismo hueco real que ya se encontro y cerro en
+      // actualizarServidor (server/db.ts) para el modulo admin Servidores.
+      await d.transaction(async (tx) => {
+        await tx.update(schema.servidoresPublicos).set({
+          nombreCompleto: ctx.user.nombre,
+          rfc: input.rfc,
+          curp: input.curp,
+          cargo: input.cargo,
+          dependencia: input.dependencia,
+          nivel: input.nivelGobierno,
+          grupoFuncion: input.grupoFuncion,
+          fechaIngreso: input.fechaIngreso,
+          datosContacto: input.datosContacto ?? null,
+          email: input.email ?? existingSrv.email,
+          actualizadoPor: ctx.user.id,
+        }).where(eq(schema.servidoresPublicos.id, existingSrv.id));
+        await tx.update(schema.users).set({ curp: input.curp }).where(eq(schema.users.id, ctx.user.id));
+      });
 
       return { success: true, id };
     }),

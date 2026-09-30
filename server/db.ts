@@ -382,16 +382,45 @@ export async function obtenerServidorPorId(id: number) {
   return servidor ?? null;
 }
 
+// nombreCompleto y curp viven duplicados en users (cuenta del trabajador --
+// login por CURP, nombre en saludo/cedula) y servidores_publicos (este
+// modulo, la fuente que edita el admin) -- 2 columnas por campo sin trigger
+// ni sincronizacion. Hallazgo real (2026-09-30): un admin corrigio el
+// nombre aqui y nunca se reflejo en la cedula porque esta lee users.nombre,
+// que nunca se tocaba -- mismo hueco existia (mas grave) para curp: login
+// es 100% contra users.curp (ver routers.ts::login), asi que corregir un
+// CURP mal capturado desde aqui dejaba al trabajador sin poder loguearse
+// con su CURP correcto. Si el servidor tiene cuenta vinculada y
+// nombreCompleto/curp cambian, se propagan a users en la misma transaccion.
 export async function actualizarServidor(
   id: number,
   data: Partial<InsertServidorPublico>,
 ) {
   const d = await getDb();
   try {
-    await d
-      .update(schema.servidoresPublicos)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(schema.servidoresPublicos.id, id));
+    if (data.nombreCompleto !== undefined || data.curp !== undefined) {
+      await d.transaction(async (tx) => {
+        await tx
+          .update(schema.servidoresPublicos)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(schema.servidoresPublicos.id, id));
+        const [servidor] = await tx
+          .select({ userId: schema.servidoresPublicos.userId })
+          .from(schema.servidoresPublicos)
+          .where(eq(schema.servidoresPublicos.id, id));
+        if (servidor?.userId) {
+          const syncUsers: Partial<{ nombre: string; curp: string }> = {};
+          if (data.nombreCompleto !== undefined) syncUsers.nombre = data.nombreCompleto;
+          if (data.curp !== undefined) syncUsers.curp = data.curp;
+          await tx.update(schema.users).set(syncUsers).where(eq(schema.users.id, servidor.userId));
+        }
+      });
+    } else {
+      await d
+        .update(schema.servidoresPublicos)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.servidoresPublicos.id, id));
+    }
   } catch (err) {
     const campo = campoDuplicadoServidor(err);
     if (campo) throw new ServidorDuplicadoError(campo);
