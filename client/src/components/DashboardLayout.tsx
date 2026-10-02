@@ -96,10 +96,24 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   // /servidores, el saludo del sidebar se queda con el nombre viejo hasta
   // que la sesion se renueve. servidor.nombreCompleto es una query viva,
   // siempre al dia.
+  const utils = trpc.useUtils();
   const { data: servidorPropio } = trpc.servidores.miServidor.useQuery(undefined, {
     enabled: role === "user",
   });
   const nombreMostrado = servidorPropio?.nombreCompleto ?? user?.nombre;
+
+  // DashboardLayout es el layout persistente -- cada <Route> en App.tsx lo
+  // envuelve por separado, pero NUNCA se desmonta/remonta al navegar entre
+  // paginas DEL MISMO layout (confirmado con Playwright: la query de arriba
+  // solo se pide una vez, al primer login, nunca de nuevo al hacer click en
+  // el sidebar). Antes "se arreglaba solo" por casualidad porque Portal.tsx
+  // pide la misma query y React Query comparte cache por key -- si el
+  // trabajador nunca visita /portal en su sesion, el nombre del sidebar se
+  // queda viejo indefinidamente. invalidate() en cada cambio de ruta lo
+  // refresca de verdad, sin depender de que otra pagina lo pida por su cuenta.
+  useEffect(() => {
+    if (role === "user") utils.servidores.miServidor.invalidate();
+  }, [location, role, utils]);
 
   // No es el candado real (eso ya lo hacen los procedures server-side, ver
   // exigirModuloHabilitado en el router) -- solo evita mostrar un link a
