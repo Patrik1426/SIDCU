@@ -125,9 +125,11 @@ export default function CatalogoCursos() {
 
   if (perfilLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
+      <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+        <motion.div variants={fadeUp} className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+        </motion.div>
+      </motion.div>
     );
   }
 
@@ -158,7 +160,7 @@ export default function CatalogoCursos() {
 
       {/* Block selector */}
       {bloques.length > 1 && (
-        <motion.div variants={fadeUp} className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           {bloques.map(({ bloque }) => (
             <button
               key={bloque ?? "sin-bloque"}
@@ -172,7 +174,7 @@ export default function CatalogoCursos() {
               {bloque != null ? `Bloque ${bloque}` : "Sin bloque"}
             </button>
           ))}
-        </motion.div>
+        </div>
       )}
 
       {/* Course Grid */}
@@ -186,13 +188,12 @@ export default function CatalogoCursos() {
           <p className="mt-3 text-slate-500">No se encontraron cursos con los filtros seleccionados</p>
         </motion.div>
       ) : (
-        <motion.div key={bloqueActivo ?? "sin-bloque"} variants={stagger} initial="hidden" animate="show" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div key={bloqueActivo ?? "sin-bloque"} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {cursosDelBloque.map((curso: any) => {
             const estado = getEstadoSolicitud(curso.id);
             return (
-              <motion.div
+              <div
                 key={curso.id}
-                variants={fadeUp}
                 onClick={() => setSelectedCursoId(curso.id)}
                 className="relative cursor-pointer rounded-2xl bg-white p-5 shadow-card-rest border border-slate-200/60 hover:border-primary-200 hover:shadow-card-hover transition-all"
               >
@@ -225,10 +226,10 @@ export default function CatalogoCursos() {
                     </span>
                   )}
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       )}
 
       {/* Detail Modal */}

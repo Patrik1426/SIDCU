@@ -8,6 +8,7 @@ import CrearUsuarioModal from "@/components/usuarios/CrearUsuarioModal";
 import ResetPasswordModal from "@/components/usuarios/ResetPasswordModal";
 import SolicitudesBajaSection from "@/components/usuarios/SolicitudesBajaSection";
 import { ROLE_CONFIG, ROLES } from "@/lib/roles";
+import { Skeleton } from "@/components/Skeleton";
 import {
   UserCog,
   Search,
@@ -49,7 +50,7 @@ export default function Usuarios() {
 
   const { data, isLoading } = trpc.usuarios.listar.useQuery(
     { search: search || undefined, estatus: estatusFilter || undefined, page },
-    { retry: false }
+    { retry: false, placeholderData: (prev) => prev }
   );
   const usuarios = data?.items;
 
@@ -184,30 +185,36 @@ export default function Usuarios() {
 
       {/* Users list */}
       {isLoading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-primary-500" />
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 rounded-2xl border border-slate-200/60 bg-white p-4 shadow-card-rest">
+              <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-3.5 w-1/3" />
+                <Skeleton className="mt-2 h-2.5 w-1/4" />
+              </div>
+              <Skeleton className="h-6 w-20 rounded-lg" />
+            </div>
+          ))}
         </div>
       ) : !usuarios?.length ? (
-        <motion.div variants={fadeUp} className="flex flex-col items-center py-16 text-center">
+        <div className="flex flex-col items-center py-16 text-center">
           <div className="rounded-2xl bg-slate-50 p-5">
             <UserCog size={28} className="text-slate-300" />
           </div>
           <p className="mt-4 text-sm font-medium text-slate-400">
             {search || estatusFilter ? "Sin resultados para ese filtro" : "Sin usuarios registrados"}
           </p>
-        </motion.div>
+        </div>
       ) : (
-        <motion.div variants={fadeUp} className="space-y-2">
+        <div className="space-y-2">
           {(usuarios as any[]).map((usr) => {
             const roleConfig = ROLE_CONFIG[usr.role] ?? ROLE_CONFIG.user;
             const isSelf = usr.id === currentUser?.id;
 
             return (
-              <motion.div
+              <div
                 key={usr.id}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3 }}
                 className={`group relative flex items-center gap-4 rounded-2xl border bg-white p-4 shadow-card-rest transition-all hover:shadow-card-hover ${
                   usr.isActive ? "border-slate-200/60" : "border-rose-200/60 bg-rose-50/30"
                 }`}
@@ -319,10 +326,10 @@ export default function Usuarios() {
                 >
                   {usr.isActive ? <UserCheck size={16} /> : <UserX size={16} />}
                 </button>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       )}
 
       {/* Paginación */}

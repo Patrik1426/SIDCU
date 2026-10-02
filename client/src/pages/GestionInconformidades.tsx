@@ -7,6 +7,7 @@ import { Archive, Download, FileSpreadsheet, FileText } from "lucide-react";
 import JSZip from "jszip";
 import { exportarInconformidadesExcel, exportarInconformidadesPDF, fechaLocalISO } from "@/lib/exportar";
 import { FACTOR_INCONFORMIDAD_LABELS as FACTOR_LABELS } from "@shared/const";
+import { Skeleton } from "@/components/Skeleton";
 
 // Filesystem-unsafe en Windows/macOS/Linux -- un nombreOriginal es texto libre
 // capturado por el trabajador al subir, no validado contra esto.
@@ -35,7 +36,10 @@ export default function GestionInconformidades() {
   const [descargandoZip, setDescargandoZip] = useState<{ hecho: number; total: number } | null>(null);
   const [verDetalle, setVerDetalle] = useState<number | null>(null);
 
-  const { data: casos, isLoading } = trpc.inconformidad.listarAdmin.useQuery({ factor: filtroFactor as any });
+  const { data: casos, isLoading } = trpc.inconformidad.listarAdmin.useQuery(
+    { factor: filtroFactor as any },
+    { placeholderData: (prev) => prev },
+  );
   const { data: config } = trpc.inconformidad.factoresDisponibles.useQuery();
 
   const toggleMut = trpc.inconformidad.actualizarConfigFactor.useMutation({
@@ -133,14 +137,6 @@ export default function GestionInconformidades() {
     setDescargandoZip(null);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
-    );
-  }
-
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={fadeUp} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -221,14 +217,26 @@ export default function GestionInconformidades() {
       </motion.div>
 
       <motion.div variants={stagger} className="space-y-3">
-        {(casos ?? []).length === 0 ? (
-          <motion.div variants={fadeUp} className="rounded-2xl bg-white p-12 text-center shadow-card-rest border border-gray-100">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl bg-white p-5 shadow-card-rest border border-gray-100">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="mt-2 h-2.5 w-28" />
+                </div>
+                <Skeleton className="h-5 w-24 rounded-lg" />
+              </div>
+            </div>
+          ))
+        ) : (casos ?? []).length === 0 ? (
+          <div className="rounded-2xl bg-white p-12 text-center shadow-card-rest border border-gray-100">
             <FileText className="mx-auto h-12 w-12 text-gray-300" />
             <p className="mt-3 font-medium text-gray-600">No hay inconformidades enviadas</p>
-          </motion.div>
+          </div>
         ) : (
           casos!.map((caso) => (
-            <motion.div key={caso.id} variants={fadeUp} className="rounded-2xl bg-white p-5 shadow-card-rest border border-gray-100">
+            <div key={caso.id} className="rounded-2xl bg-white p-5 shadow-card-rest border border-gray-100">
               <button
                 type="button"
                 onClick={() => setVerDetalle(verDetalle === caso.id ? null : caso.id)}
@@ -266,7 +274,7 @@ export default function GestionInconformidades() {
                   ))}
                 </div>
               )}
-            </motion.div>
+            </div>
           ))
         )}
       </motion.div>
