@@ -91,6 +91,16 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     enabled: role === "user" && !esEvaluadorRestringido,
   });
 
+  // Mismo criterio que Portal.tsx: user.nombre viene del JWT (snapshot del
+  // login, vive hasta 7 dias) -- si un admin corrige el nombre desde
+  // /servidores, el saludo del sidebar se queda con el nombre viejo hasta
+  // que la sesion se renueve. servidor.nombreCompleto es una query viva,
+  // siempre al dia.
+  const { data: servidorPropio } = trpc.servidores.miServidor.useQuery(undefined, {
+    enabled: role === "user",
+  });
+  const nombreMostrado = servidorPropio?.nombreCompleto ?? user?.nombre;
+
   // No es el candado real (eso ya lo hacen los procedures server-side, ver
   // exigirModuloHabilitado en el router) -- solo evita mostrar un link a
   // una seccion que ahora mismo va a rechazar todo. `!== false` para no
@@ -293,8 +303,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           {collapsed ? (
             <>
               <div className="flex justify-center mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-500 text-micro font-bold text-white" title={user?.nombre ?? "Usuario"}>
-                  {user?.nombre?.charAt(0)?.toUpperCase() ?? "U"}
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-500 text-micro font-bold text-white" title={nombreMostrado ?? "Usuario"}>
+                  {nombreMostrado?.charAt(0)?.toUpperCase() ?? "U"}
                 </div>
               </div>
               <button
@@ -309,11 +319,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <>
               <div className="mb-2 flex items-center gap-2.5 rounded-lg bg-white/12 px-2.5 py-2">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-500 text-micro font-bold text-white">
-                  {user?.nombre?.charAt(0)?.toUpperCase() ?? "U"}
+                  {nombreMostrado?.charAt(0)?.toUpperCase() ?? "U"}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-semibold text-white">
-                    {user?.nombre}
+                    {nombreMostrado}
                   </p>
                   <p className="text-micro font-medium text-white/50">
                     {ROLE_LABELS[role] ?? role}
