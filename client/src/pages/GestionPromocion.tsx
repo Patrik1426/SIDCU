@@ -258,7 +258,18 @@ export default function GestionPromocion() {
                     {pool?.items.map((p) => (
                       <div key={p.curp} className="flex items-center justify-between gap-3 px-5 py-2.5">
                         <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombre}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-[13px] font-semibold text-gray-800">{p.nombre}</p>
+                            {!p.seleccionable && (
+                              <span
+                                title="Esta persona tiene una cuenta desactivada en SIDCU -- el trabajador no puede seleccionarla hasta que se reactive"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700"
+                              >
+                                <AlertCircle size={11} />
+                                Cuenta inactiva
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11.5px] text-gray-400 tabular-nums">{p.curp}</p>
                         </div>
                         <div className="flex shrink-0 gap-2">

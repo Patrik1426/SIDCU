@@ -2793,7 +2793,7 @@ export async function listarPoolPromocion(
   rol: "jefe" | "companero",
   filtros?: { search?: string; page?: number; limit?: number },
 ): Promise<{
-  items: Array<{ curp: string; nombre: string }>;
+  items: Array<{ curp: string; nombre: string; seleccionable: boolean }>;
   total: number;
   page: number;
   limit: number;
@@ -2814,8 +2814,20 @@ export async function listarPoolPromocion(
       .select({
         curp: schema.promocionEvaluadorPool.curp,
         nombre: schema.promocionEvaluadorPool.nombre,
+        userId: schema.users.id,
+        userIsActive: schema.users.isActive,
+        evaluadorCuentaExpiraEn: schema.users.evaluadorCuentaExpiraEn,
       })
       .from(schema.promocionEvaluadorPool)
+      // leftJoin a users: el catalogo admin mostraba a todos por igual, sin
+      // avisar que alguien con cuenta inactiva (no on-the-fly vencida) no es
+      // seleccionable del lado trabajador (buscarEnPoolPromocion SI la
+      // excluye) -- hallazgo real, el admin no tenia forma de saber por que
+      // el trabajador no encontraba a alguien que el si veia aqui. Mismo
+      // criterio de "seleccionable" que buscarEnPoolPromocion: sin cuenta,
+      // cuenta activa, o cuenta on-the-fly vencida (recuperable) cuentan
+      // como seleccionable -- solo una cuenta real desactivada no cuenta.
+      .leftJoin(schema.users, eq(schema.users.curp, schema.promocionEvaluadorPool.curp))
       .where(where)
       .limit(limit)
       .offset(offset),
@@ -2826,7 +2838,27 @@ export async function listarPoolPromocion(
   ]);
 
   const total = countResult[0]?.count ?? 0;
-  return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+  // users.curp no tiene UNIQUE (gap aceptado, ver buscarEnPoolPromocion) --
+  // el leftJoin puede duplicar una fila del pool si 2 cuentas comparten
+  // CURP. Dedupe por curp, misma estrategia ya usada ahi.
+  const vistos = new Set<string>();
+  return {
+    items: items
+      .filter((f) => {
+        if (vistos.has(f.curp)) return false;
+        vistos.add(f.curp);
+        return true;
+      })
+      .map((f) => ({
+        curp: f.curp,
+        nombre: f.nombre,
+        seleccionable: f.userId === null || f.userIsActive === true || f.evaluadorCuentaExpiraEn !== null,
+      })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 }
 
 // Corrige el caso "subimos a alguien en el pool equivocado" sin tener que

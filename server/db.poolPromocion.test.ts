@@ -12,17 +12,23 @@ beforeEach(() => {
 });
 
 describe("listarPoolPromocion", () => {
-  it("regresa items y metadatos de paginación con el shape correcto", async () => {
-    const fila = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez" };
-    const { tx } = makeTxRecorder([[fila], [{ count: 1 }]], []);
+  it("regresa items y metadatos de paginación con el shape correcto, marcando seleccionable segun la cuenta vinculada", async () => {
+    // sin cuenta vinculada (userId null) -- seleccionable
+    const filaSinCuenta = { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", userId: null, userIsActive: null, evaluadorCuentaExpiraEn: null };
+    // cuenta real desactivada (evaluadorCuentaExpiraEn null) -- NO seleccionable
+    const filaInactiva = { curp: "BBBB000101HDFXXX02", nombre: "Beto Perez", userId: 5, userIsActive: false, evaluadorCuentaExpiraEn: null };
+    const { tx } = makeTxRecorder([[filaSinCuenta, filaInactiva], [{ count: 2 }]], []);
     const fakeDb = { select: tx.select };
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { listarPoolPromocion } = await import("./db");
     const resultado = await listarPoolPromocion("jefe", { page: 1, limit: 20 });
-    expect(resultado.items).toEqual([fila]);
-    expect(resultado.total).toBe(1);
+    expect(resultado.items).toEqual([
+      { curp: "AAAA000101HDFXXX01", nombre: "Ana Lopez", seleccionable: true },
+      { curp: "BBBB000101HDFXXX02", nombre: "Beto Perez", seleccionable: false },
+    ]);
+    expect(resultado.total).toBe(2);
     expect(resultado.totalPages).toBe(1);
   });
 
