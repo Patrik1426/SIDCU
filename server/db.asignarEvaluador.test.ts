@@ -16,17 +16,19 @@ beforeEach(() => {
 });
 
 describe("asignarEvaluador", () => {
-  it("si ya tiene cuenta REAL (evaluadorCuentaExpiraEn null): solo actualiza el correo, nunca toca expiracion/isActive", async () => {
+  it("si ya tiene cuenta REAL (evaluadorCuentaExpiraEn null): solo actualiza el correo, nunca toca expiracion/isActive -- y sincroniza correoSugerido del pool", async () => {
     const { tx, calls, setCalls } = makeTxRecorder([[{ id: 12, evaluadorCuentaExpiraEn: null }]], [{ insertId: 0 }]);
     const fakeDb = {};
     const { drizzle } = await import("drizzle-orm/mysql2");
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com");
+    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com", "jefe");
     expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
-    expect(calls).toEqual(["select", "update"]);
-    expect(setCalls[0]).toEqual({ email: "persona@example.com" });
+    // select (users) -> update (pool, correoSugerido) -> update (users, email)
+    expect(calls).toEqual(["select", "update", "update"]);
+    expect(setCalls[0]).toEqual({ correoSugerido: "persona@example.com" });
+    expect(setCalls[1]).toEqual({ email: "persona@example.com" });
   });
 
   it("si ya tiene cuenta ON-THE-FLY (evaluadorCuentaExpiraEn no null, ej. ya vencida): refresca expiracion 3 dias habiles y reactiva, en el mismo update", async () => {
@@ -38,13 +40,13 @@ describe("asignarEvaluador", () => {
 
     const { asignarEvaluador } = await import("./db");
     const antes = Date.now();
-    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com");
+    const resultado = await asignarEvaluador(tx, "AAAA000101HDFXXX01", "Ana Lopez", "persona@example.com", "jefe");
     expect(resultado).toEqual({ userId: 12, passwordTemporalEnClaro: null });
-    expect(calls).toEqual(["select", "update"]);
-    expect(setCalls[0].email).toBe("persona@example.com");
-    expect(setCalls[0].isActive).toBe(true);
-    expect(setCalls[0].evaluadorCuentaExpiraEn).toBeInstanceOf(Date);
-    expect(setCalls[0].evaluadorCuentaExpiraEn.getTime()).toBeGreaterThan(antes);
+    expect(calls).toEqual(["select", "update", "update"]);
+    expect(setCalls[1].email).toBe("persona@example.com");
+    expect(setCalls[1].isActive).toBe(true);
+    expect(setCalls[1].evaluadorCuentaExpiraEn).toBeInstanceOf(Date);
+    expect(setCalls[1].evaluadorCuentaExpiraEn.getTime()).toBeGreaterThan(antes);
   });
 
   it("si NO tiene cuenta: crea usuario con password temporal (única, no forzada a cambiar), sin tocar servidores_publicos", async () => {
@@ -54,11 +56,10 @@ describe("asignarEvaluador", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx, "BBBB000101HDFXXX02", "Beto Ruiz", "beto@example.com");
+    const resultado = await asignarEvaluador(tx, "BBBB000101HDFXXX02", "Beto Ruiz", "beto@example.com", "companero");
     expect(resultado).toEqual({ userId: 77, passwordTemporalEnClaro: "PASSTEMP12AB" });
-    // Solo select + insert -- YA NO hay un segundo update a servidores_publicos
-    // (esa tabla ni se toca en este flujo desde el rediseño 2026-09-26).
-    expect(calls).toEqual(["select", "insert"]);
+    // select (users) -> update (pool, correoSugerido) -> insert (users nueva)
+    expect(calls).toEqual(["select", "update", "insert"]);
   });
 
   it("cuenta nueva usa el nombre/curp que vienen del pool, no de un lookup a servidores_publicos", async () => {
@@ -68,10 +69,10 @@ describe("asignarEvaluador", () => {
     vi.mocked(drizzle).mockReturnValue(fakeDb as any);
 
     const { asignarEvaluador } = await import("./db");
-    const resultado = await asignarEvaluador(tx as any, "TEST900101HDFRRR01", "Prueba Uno", "nuevo@ejemplo.com");
+    const resultado = await asignarEvaluador(tx as any, "TEST900101HDFRRR01", "Prueba Uno", "nuevo@ejemplo.com", "jefe");
 
     expect(resultado.userId).toBe(55);
     expect(resultado.passwordTemporalEnClaro).not.toBeNull();
-    expect(calls).toEqual(["select", "insert"]);
+    expect(calls).toEqual(["select", "update", "insert"]);
   });
 });

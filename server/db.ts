@@ -2222,6 +2222,7 @@ export async function asignarEvaluador(
   curp: string,
   nombre: string,
   correoCapturado: string,
+  rolPool: "jefe" | "companero",
 ): Promise<{ userId: number; passwordTemporalEnClaro: string | null }> {
   const [usuario] = await tx
     .select({
@@ -2231,6 +2232,18 @@ export async function asignarEvaluador(
     .from(schema.users)
     .where(eq(schema.users.curp, curp))
     .limit(1);
+
+  // Sincroniza el correoSugerido del catalogo con el correo real capturado
+  // -- pedido real del cliente 2026-10-07: una persona puede ser
+  // seleccionada como evaluador mas de una vez, asi que corregir el correo
+  // aqui (al confirmar inscripcion o reasignar) debe reflejarse en el
+  // catalogo para la PROXIMA seleccion, no quedarse aislado en esta sola
+  // cuenta. Mismo tx -- si el resto de la operacion hace rollback, esto
+  // tambien.
+  await tx
+    .update(schema.promocionEvaluadorPool)
+    .set({ correoSugerido: correoCapturado })
+    .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rolPool)));
 
   if (usuario) {
     // null = cuenta real, nunca tuvo restriccion/expiracion -- nunca se le
@@ -2378,9 +2391,9 @@ export async function confirmarInscripcion(
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const jefe = await asignarEvaluador(tx, seleccion.jefe.curp, jefePool.nombre, seleccion.jefe.correo);
-      const companero1 = await asignarEvaluador(tx, seleccion.companero1.curp, c1Pool.nombre, seleccion.companero1.correo);
-      const companero2 = await asignarEvaluador(tx, seleccion.companero2.curp, c2Pool.nombre, seleccion.companero2.correo);
+      const jefe = await asignarEvaluador(tx, seleccion.jefe.curp, jefePool.nombre, seleccion.jefe.correo, "jefe");
+      const companero1 = await asignarEvaluador(tx, seleccion.companero1.curp, c1Pool.nombre, seleccion.companero1.correo, "companero");
+      const companero2 = await asignarEvaluador(tx, seleccion.companero2.curp, c2Pool.nombre, seleccion.companero2.correo, "companero");
 
       const [promoInsert] = await tx.insert(schema.promociones).values({
         userId,
@@ -3297,7 +3310,7 @@ export async function reasignarEvaluadorPromocion(
         return { ok: false as const, error: "SELECCION_INVALIDA" as const };
       }
 
-      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoCurp, poolRow.nombre, correoCapturado);
+      const { userId: nuevoUserId, passwordTemporalEnClaro } = await asignarEvaluador(tx, nuevoCurp, poolRow.nombre, correoCapturado, rolPool);
 
       // La fila `evaluaciones` del slot reasignado solo puede estar en
       // 'borrador' -- una evaluación 'enviada' no se puede perder (nadie
@@ -3393,8 +3406,19 @@ export async function editarCorreoEvaluadorAsignado(
 
     const userId = rol === "jefe" ? promo.jefeAsignadoId : rol === "companero1" ? promo.companero1Id : promo.companero2Id;
 
-    const [anterior] = await tx.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId));
+    const [anterior] = await tx.select({ email: schema.users.email, curp: schema.users.curp }).from(schema.users).where(eq(schema.users.id, userId));
     await tx.update(schema.users).set({ email: nuevoEmail }).where(eq(schema.users.id, userId));
+    // Mismo motivo que en asignarEvaluador: sincroniza el catalogo para que
+    // la proxima vez que se seleccione a esta misma persona ya precargue el
+    // correo corregido, en vez de seguir ofreciendo el correoSugerido viejo
+    // del CSV.
+    if (anterior?.curp) {
+      const rolPool = rol === "jefe" ? "jefe" : "companero";
+      await tx
+        .update(schema.promocionEvaluadorPool)
+        .set({ correoSugerido: nuevoEmail })
+        .where(and(eq(schema.promocionEvaluadorPool.curp, anterior.curp), eq(schema.promocionEvaluadorPool.rol, rolPool)));
+    }
     await tx.insert(schema.auditoria).values({
       servidorId: null,
       usuarioId: adminUserId,

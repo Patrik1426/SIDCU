@@ -586,7 +586,7 @@ export default function GestionPromocion() {
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditandoCorreo(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-sm font-bold text-slate-900">Editar correo</h3>
-            <p className="mb-3 text-xs text-slate-500">{editandoCorreo.nombre} — solo afecta lo que se precarga la próxima vez que un trabajador la seleccione. No cambia inscripciones ya confirmadas.</p>
+            <p className="mb-3 text-xs text-slate-500">{editandoCorreo.nombre} — no cambia el correo real de inscripciones ya confirmadas (eso se corrige desde "Editar correo" junto a cada evaluador).</p>
             <input
               type="email"
               autoFocus
@@ -618,7 +618,7 @@ export default function GestionPromocion() {
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditandoCorreoAsignado(null)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-sm font-bold text-slate-900">Editar correo</h3>
-            <p className="mb-3 text-xs text-slate-500">{editandoCorreoAsignado.nombre} — corrige el destinatario de los correos de esta inscripción. No afecta a otras inscripciones ni al catálogo.</p>
+            <p className="mb-3 text-xs text-slate-500">{editandoCorreoAsignado.nombre} — corrige el correo real de esta persona (afecta también otras inscripciones donde participe y el catálogo).</p>
             <input
               type="email"
               autoFocus
