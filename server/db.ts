@@ -2793,7 +2793,7 @@ export async function listarPoolPromocion(
   rol: "jefe" | "companero",
   filtros?: { search?: string; page?: number; limit?: number },
 ): Promise<{
-  items: Array<{ curp: string; nombre: string; seleccionable: boolean }>;
+  items: Array<{ curp: string; nombre: string; seleccionable: boolean; correoSugerido: string | null }>;
   total: number;
   page: number;
   limit: number;
@@ -2814,6 +2814,7 @@ export async function listarPoolPromocion(
       .select({
         curp: schema.promocionEvaluadorPool.curp,
         nombre: schema.promocionEvaluadorPool.nombre,
+        correoSugerido: schema.promocionEvaluadorPool.correoSugerido,
         userId: schema.users.id,
         userIsActive: schema.users.isActive,
         evaluadorCuentaExpiraEn: schema.users.evaluadorCuentaExpiraEn,
@@ -2852,6 +2853,7 @@ export async function listarPoolPromocion(
       .map((f) => ({
         curp: f.curp,
         nombre: f.nombre,
+        correoSugerido: f.correoSugerido,
         seleccionable: f.userId === null || f.userIsActive === true || f.evaluadorCuentaExpiraEn !== null,
       })),
     total,
@@ -2924,6 +2926,32 @@ export async function quitarDelPoolPromocion(
   return { ok: true };
 }
 
+// Corrige correoSugerido desde el catalogo (ej. typo del CSV original, o
+// la persona reporta que ese correo ya no es el suyo). Solo afecta lo que
+// se PRECARGA la proxima vez que un trabajador seleccione a esta persona --
+// no toca ninguna inscripcion ya confirmada (ver editarCorreoEvaluadorAsignado
+// para eso). Pedido real del cliente 2026-10-07: "modificar el correo desde
+// el catalogo" para que el admin tenga ese control, sin quitarle al
+// trabajador la posibilidad de capturarlo/corregirlo el mismo al seleccionar.
+export async function editarCorreoSugeridoPool(
+  curp: string,
+  rol: "jefe" | "companero",
+  correo: string | null,
+): Promise<{ ok: true } | { ok: false; error: "NO_ENCONTRADO" }> {
+  const d = await getDb();
+  const [fila] = await d
+    .select({ curp: schema.promocionEvaluadorPool.curp })
+    .from(schema.promocionEvaluadorPool)
+    .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rol)));
+  if (!fila) return { ok: false, error: "NO_ENCONTRADO" };
+
+  await d
+    .update(schema.promocionEvaluadorPool)
+    .set({ correoSugerido: correo })
+    .where(and(eq(schema.promocionEvaluadorPool.curp, curp), eq(schema.promocionEvaluadorPool.rol, rol)));
+  return { ok: true };
+}
+
 export async function listarInscripcionesPromocion(filtros?: { search?: string; page?: number; limit?: number }) {
   const d = await getDb();
   const trabajador = alias(schema.servidoresPublicos, "trabajador");
@@ -2973,6 +3001,9 @@ export async function listarInscripcionesPromocion(filtros?: { search?: string; 
         jefeNombre: jefe.nombre,
         companero1Nombre: companero1.nombre,
         companero2Nombre: companero2.nombre,
+        jefeEmail: jefe.email,
+        companero1Email: companero1.email,
+        companero2Email: companero2.email,
         jefeEvaluacionEstado: evalJefe.estado,
         companero1EvaluacionEstado: evalCompanero1.estado,
         companero2EvaluacionEstado: evalCompanero2.estado,
@@ -3331,6 +3362,50 @@ export async function reasignarEvaluadorPromocion(
     }
     throw err;
   }
+}
+
+// Corrige el correo YA CAPTURADO de un evaluador en una inscripcion
+// confirmada -- a diferencia de reasignarEvaluadorPromocion (que cambia de
+// PERSONA), esto deja a la misma persona, solo pisa users.email. Pedido
+// real del cliente 2026-10-07: si el trabajador capturo mal el correo al
+// seleccionar, hoy no habia forma de corregirlo salvo reasignar (lo que
+// perderia la evaluacion si ya la habia contestado). No bloquea por estado
+// de la evaluacion -- corregir el correo nunca deberia perder nada, a
+// diferencia de reasignar.
+// El correo se lee "al vuelo" en procesarLotePendientesCorreo (SELECT por
+// destinatarioUserId en el momento de enviar, no un snapshot guardado en
+// promocion_correos_pendientes) -- un correo que ya quedo en estado
+// 'pendiente' usa el valor nuevo solo en que se vuelva a leer antes de
+// enviarse, sin tocar esa fila aparte.
+export async function editarCorreoEvaluadorAsignado(
+  promocionId: number,
+  rol: "jefe" | "companero1" | "companero2",
+  nuevoEmail: string,
+  adminUserId: number,
+): Promise<{ ok: true } | { ok: false; error: "PROMOCION_NO_ENCONTRADA" | "CORREO_INVALIDO" }> {
+  const correoValido = await validarCorreoEvaluador(nuevoEmail);
+  if (!correoValido.ok) return { ok: false, error: "CORREO_INVALIDO" };
+
+  const d = await getDb();
+  return d.transaction(async (tx) => {
+    const [promo] = await tx.select().from(schema.promociones).where(eq(schema.promociones.id, promocionId));
+    if (!promo) return { ok: false as const, error: "PROMOCION_NO_ENCONTRADA" as const };
+
+    const userId = rol === "jefe" ? promo.jefeAsignadoId : rol === "companero1" ? promo.companero1Id : promo.companero2Id;
+
+    const [anterior] = await tx.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId));
+    await tx.update(schema.users).set({ email: nuevoEmail }).where(eq(schema.users.id, userId));
+    await tx.insert(schema.auditoria).values({
+      servidorId: null,
+      usuarioId: adminUserId,
+      accion: "actualizar",
+      descripcion: `Promoción #${promocionId}: corrigió correo de ${rol}`,
+      cambiosAnteriores: JSON.stringify({ email: anterior?.email ?? null }),
+      cambiosPosterior: JSON.stringify({ email: nuevoEmail }),
+    });
+
+    return { ok: true as const };
+  });
 }
 
 const TOPE_INTENTOS_CORREO = 5;

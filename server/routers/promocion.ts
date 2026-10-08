@@ -11,11 +11,13 @@ import {
   listarInscripcionesPromocion,
   listarResultadosPromocion,
   reasignarEvaluadorPromocion,
+  editarCorreoEvaluadorAsignado,
   listarCorreosFallidosPromocion,
   reintentarCorreoPromocion,
   listarPoolPromocion,
   moverRolPoolPromocion,
   quitarDelPoolPromocion,
+  editarCorreoSugeridoPool,
   obtenerConfigModuloPromocion,
   moduloPromocionHabilitado,
   actualizarModuloPromocionManual,
@@ -241,6 +243,38 @@ export const promocionRouter = router({
     .mutation(async ({ input }) => {
       const resultado = await quitarDelPoolPromocion(input.curp, input.rol);
       if (!resultado.ok) throw new TRPCError({ code: "NOT_FOUND", message: "No se encontró en ese pool." });
+      return { success: true };
+    }),
+
+  // Solo corrige correoSugerido (lo que se precarga la proxima vez que un
+  // trabajador seleccione a esta persona) -- nunca toca una inscripcion ya
+  // confirmada, ver editarCorreoEvaluador para eso.
+  editarCorreoSugeridoPool: adminProcedure
+    .input(z.object({ curp: z.string().length(18), rol: z.enum(["jefe", "companero"]), correo: z.string().email().nullable() }))
+    .mutation(async ({ input }) => {
+      const resultado = await editarCorreoSugeridoPool(input.curp, input.rol, input.correo);
+      if (!resultado.ok) throw new TRPCError({ code: "NOT_FOUND", message: "No se encontró en ese pool." });
+      return { success: true };
+    }),
+
+  // Corrige el correo YA CAPTURADO de un evaluador en una inscripcion
+  // confirmada -- misma persona, solo pisa users.email (a diferencia de
+  // reasignarEvaluador, que cambia de persona y puede perder una evaluacion
+  // en curso). No bloquea por estado de la evaluacion.
+  editarCorreoEvaluador: adminProcedure
+    .input(z.object({
+      promocionId: z.number(),
+      rol: z.enum(["jefe", "companero1", "companero2"]),
+      correo: z.string().email(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const resultado = await editarCorreoEvaluadorAsignado(input.promocionId, input.rol, input.correo, ctx.user.id);
+      if (!resultado.ok) {
+        throw new TRPCError({
+          code: resultado.error === "PROMOCION_NO_ENCONTRADA" ? "NOT_FOUND" : "BAD_REQUEST",
+          message: resultado.error === "PROMOCION_NO_ENCONTRADA" ? "Inscripción no encontrada." : "El correo capturado no es válido o su dominio no existe.",
+        });
+      }
       return { success: true };
     }),
 

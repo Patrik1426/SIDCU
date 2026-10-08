@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { stagger, fadeUp } from "@/lib/animations";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2, X, FileSpreadsheet, FileText } from "lucide-react";
+import { Search, ChevronRight, RefreshCw, Briefcase, Users, AlertCircle, ArrowLeftRight, Trash2, X, FileSpreadsheet, FileText, Mail } from "lucide-react";
 import ImportarCSVModal from "@/components/ImportarCSVModal";
 import BuscadorEvaluador from "@/components/BuscadorEvaluador";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -69,6 +69,16 @@ export default function GestionPromocion() {
   const [pagePool, setPagePool] = useState(1);
   const [quitando, setQuitando] = useState<{ curp: string; rol: RolPool; nombre: string } | null>(null);
   const [exportando, setExportando] = useState<"excel" | "pdf" | null>(null);
+  // Editar correoSugerido desde el catalogo -- pedido real del cliente
+  // 2026-10-07: antes solo el trabajador podia capturar/corregir el correo
+  // al seleccionar a alguien, el admin no tenia forma de corregir un typo
+  // del CSV sin volver a subir todo el archivo.
+  const [editandoCorreo, setEditandoCorreo] = useState<{ curp: string; rol: RolPool; nombre: string; correoActual: string } | null>(null);
+  // Editar correo YA CAPTURADO de un evaluador en una inscripcion confirmada
+  // -- pedido real del cliente 2026-10-07: distinto de editandoCorreo arriba
+  // (ese es el correoSugerido del pool, solo precarga futura). Este corrige
+  // el destinatario real de los correos de esa inscripcion especifica.
+  const [editandoCorreoAsignado, setEditandoCorreoAsignado] = useState<{ promocionId: number; rol: Rol; nombre: string; correoActual: string } | null>(null);
 
   const { data, isLoading } = trpc.promocion.listarInscripciones.useQuery(
     { search: search || undefined, page, limit: 20 },
@@ -99,10 +109,26 @@ export default function GestionPromocion() {
       toast.error(err.message);
     },
   });
+  const editarCorreoPoolMut = trpc.promocion.editarCorreoSugeridoPool.useMutation({
+    onSuccess: () => {
+      utils.promocion.listarPool.invalidate();
+      setEditandoCorreo(null);
+      toast.success("Correo actualizado");
+    },
+    onError: (err) => toast.error(err.message),
+  });
   const reintentarMut = trpc.promocion.reintentarCorreo.useMutation({
     onSuccess: () => {
       utils.promocion.listarCorreosFallidos.invalidate();
       toast.success("Correo regresado a la cola de envío");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const editarCorreoAsignadoMut = trpc.promocion.editarCorreoEvaluador.useMutation({
+    onSuccess: () => {
+      utils.promocion.listarInscripciones.invalidate();
+      setEditandoCorreoAsignado(null);
+      toast.success("Correo actualizado");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -274,6 +300,13 @@ export default function GestionPromocion() {
                         </div>
                         <div className="flex shrink-0 gap-2">
                           <button
+                            onClick={() => setEditandoCorreo({ curp: p.curp, rol: tabPool, nombre: p.nombre, correoActual: p.correoSugerido ?? "" })}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50"
+                          >
+                            <Mail size={12} />
+                            Editar correo
+                          </button>
+                          <button
                             onClick={() => moverRolMut.mutate({ curp: p.curp, rolActual: tabPool, rolNuevo: tabPool === "jefe" ? "companero" : "jefe" })}
                             disabled={moverRolMut.isPending}
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11.5px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
@@ -384,10 +417,10 @@ export default function GestionPromocion() {
           <div className="px-4 py-10 text-center text-sm text-gray-400">Sin inscripciones</div>
         ) : (
           data?.items.map((item) => {
-            const evaluadores: { rol: Rol; label: string; nombre: string | null; icon: typeof Briefcase; evaluacionEnviada: boolean }[] = [
-              { rol: "jefe", label: "Jefe inmediato", nombre: item.jefeNombre, icon: Briefcase, evaluacionEnviada: item.jefeEvaluacionEstado === "enviado" },
-              { rol: "companero1", label: "Compañero 1", nombre: item.companero1Nombre, icon: Users, evaluacionEnviada: item.companero1EvaluacionEstado === "enviado" },
-              { rol: "companero2", label: "Compañero 2", nombre: item.companero2Nombre, icon: Users, evaluacionEnviada: item.companero2EvaluacionEstado === "enviado" },
+            const evaluadores: { rol: Rol; label: string; nombre: string | null; correo: string | null; icon: typeof Briefcase; evaluacionEnviada: boolean }[] = [
+              { rol: "jefe", label: "Jefe inmediato", nombre: item.jefeNombre, correo: item.jefeEmail, icon: Briefcase, evaluacionEnviada: item.jefeEvaluacionEstado === "enviado" },
+              { rol: "companero1", label: "Compañero 1", nombre: item.companero1Nombre, correo: item.companero1Email, icon: Users, evaluacionEnviada: item.companero1EvaluacionEstado === "enviado" },
+              { rol: "companero2", label: "Compañero 2", nombre: item.companero2Nombre, correo: item.companero2Email, icon: Users, evaluacionEnviada: item.companero2EvaluacionEstado === "enviado" },
             ];
             const completos = evaluadores.filter((e) => e.nombre).length;
             const abierto = expandido === item.id;
@@ -447,24 +480,36 @@ export default function GestionPromocion() {
                                 <span className={`mt-0.5 block truncate text-[12.5px] font-semibold ${roto ? "text-amber-700" : "text-gray-800"}`}>
                                   {e.nombre ?? "— cuenta no encontrada"}
                                 </span>
-                                {e.evaluacionEnviada ? (
-                                  <span
-                                    className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-400"
-                                    title="Ese evaluador ya envió su evaluación; no se puede reasignar."
-                                  >
-                                    <RefreshCw size={11} />
-                                    Ya evaluó — no se puede reasignar
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoCurp: "", nuevoNombre: "" })}
-                                    className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
-                                  >
-                                    <RefreshCw size={11} />
-                                    Reasignar
-                                  </button>
-                                )}
+                                <span className="mt-1 flex flex-wrap items-center gap-2.5">
+                                  {e.evaluacionEnviada ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-400"
+                                      title="Ese evaluador ya envió su evaluación; no se puede reasignar."
+                                    >
+                                      <RefreshCw size={11} />
+                                      Ya evaluó — no se puede reasignar
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setReasignando({ promocionId: item.id, rol: e.rol, trabajadorUserId: item.trabajadorUserId, nuevoCurp: "", nuevoNombre: "" })}
+                                      className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary-500 hover:text-primary-600 hover:underline"
+                                    >
+                                      <RefreshCw size={11} />
+                                      Reasignar
+                                    </button>
+                                  )}
+                                  {e.nombre && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditandoCorreoAsignado({ promocionId: item.id, rol: e.rol, nombre: e.nombre!, correoActual: e.correo ?? "" })}
+                                      className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-500 hover:text-gray-700 hover:underline"
+                                    >
+                                      <Mail size={11} />
+                                      Editar correo
+                                    </button>
+                                  )}
+                                </span>
                               </span>
                             </div>
                           );
@@ -536,6 +581,70 @@ export default function GestionPromocion() {
         onCancel={() => setQuitando(null)}
         onConfirm={() => quitando && quitarDelPoolMut.mutate({ curp: quitando.curp, rol: quitando.rol })}
       />
+
+      {editandoCorreo && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditandoCorreo(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-sm font-bold text-slate-900">Editar correo</h3>
+            <p className="mb-3 text-xs text-slate-500">{editandoCorreo.nombre} — solo afecta lo que se precarga la próxima vez que un trabajador la seleccione. No cambia inscripciones ya confirmadas.</p>
+            <input
+              type="email"
+              autoFocus
+              value={editandoCorreo.correoActual}
+              onChange={(e) => setEditandoCorreo({ ...editandoCorreo, correoActual: e.target.value })}
+              placeholder="correo@ejemplo.com"
+              className={inputClass + " w-full"}
+            />
+            {editarCorreoPoolMut.error && (
+              <p className="mt-2 text-xs text-rose-600">{editarCorreoPoolMut.error.message}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setEditandoCorreo(null)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={() => editarCorreoPoolMut.mutate({ curp: editandoCorreo.curp, rol: editandoCorreo.rol, correo: editandoCorreo.correoActual || null })}
+                disabled={editarCorreoPoolMut.isPending}
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {editarCorreoPoolMut.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editandoCorreoAsignado && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditandoCorreoAsignado(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-sm font-bold text-slate-900">Editar correo</h3>
+            <p className="mb-3 text-xs text-slate-500">{editandoCorreoAsignado.nombre} — corrige el destinatario de los correos de esta inscripción. No afecta a otras inscripciones ni al catálogo.</p>
+            <input
+              type="email"
+              autoFocus
+              value={editandoCorreoAsignado.correoActual}
+              onChange={(e) => setEditandoCorreoAsignado({ ...editandoCorreoAsignado, correoActual: e.target.value })}
+              placeholder="correo@ejemplo.com"
+              className={inputClass + " w-full"}
+            />
+            {editarCorreoAsignadoMut.error && (
+              <p className="mt-2 text-xs text-rose-600">{editarCorreoAsignadoMut.error.message}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setEditandoCorreoAsignado(null)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={() => editarCorreoAsignadoMut.mutate({ promocionId: editandoCorreoAsignado.promocionId, rol: editandoCorreoAsignado.rol, correo: editandoCorreoAsignado.correoActual })}
+                disabled={!editandoCorreoAsignado.correoActual || editarCorreoAsignadoMut.isPending}
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {editarCorreoAsignadoMut.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reasignando && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setReasignando(null)}>
